@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(echo Company ID: $COMPANY_ID:*)"
+    ]
+  }
+}
