@@ -248,8 +248,11 @@ const propertySchema = new mongoose.Schema(
     // Base commission percentage for this property
     // Partner's actual commission = basePercentage × partnerTierPercentage
     // Example: 5% base × 50% (Gold tier) = 2.5% effective rate
+    // If isFixed is true, fixedAmount is used instead of percentage
     commission: {
       basePercentage: { type: Number, default: 0 }, // e.g., 5 for 5%
+      isFixed: { type: Boolean, default: false }, // true = fixed amount, false = percentage
+      fixedAmount: { type: Number, default: null } // Fixed commission amount
     },
 
     // ========== METADATA ==========

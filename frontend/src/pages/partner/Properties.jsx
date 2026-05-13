@@ -171,6 +171,15 @@ const Properties = () => {
   const getCommissionDisplay = (property) => {
     if (!selectedPartnership) return null;
 
+    // Check if fixed commission
+    if (property.commission?.isFixed && property.commission?.fixedAmount) {
+      return {
+        isFixed: true,
+        fixedAmount: property.commission.fixedAmount,
+        currency: property.pricing?.currency || 'INR'
+      };
+    }
+
     const baseCommission = property.commission?.basePercentage || 0;
     const tierPercentage = selectedPartnership.commissionPercentage ||
       (selectedPartnership.tier === 'platinum' ? 60 :
@@ -180,6 +189,7 @@ const Properties = () => {
     const partnerCommission = (baseCommission * tierPercentage) / 100;
 
     return {
+      isFixed: false,
       base: baseCommission,
       tier: tierPercentage,
       partner: partnerCommission
@@ -398,17 +408,33 @@ const Properties = () => {
                       </div>
 
                       {/* Commission Badge */}
-                      {commission && commission.base > 0 && (
+                      {commission && (commission.isFixed ? commission.fixedAmount : commission.base > 0) && (
                         <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-gray-600">Your Commission:</span>
-                            <span className="font-semibold text-green-700">
-                              {commission.partner.toFixed(1)}% of sale
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Base: {commission.base}% × Your Share: {commission.tier}%
-                          </p>
+                          {commission.isFixed ? (
+                            <>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-600">Your Commission:</span>
+                                <span className="font-semibold text-green-700">
+                                  {commission.currency === 'AED' ? 'AED ' : '₹'}{parseFloat(commission.fixedAmount).toLocaleString()} (Fixed)
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Fixed commission amount
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-600">Your Commission:</span>
+                                <span className="font-semibold text-green-700">
+                                  {commission.partner.toFixed(1)}% of sale
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Base: {commission.base}% × Your Share: {commission.tier}%
+                              </p>
+                            </>
+                          )}
                         </div>
                       )}
 

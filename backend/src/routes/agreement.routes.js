@@ -49,7 +49,7 @@ router.get(
 
 // ==================== ADMIN ROUTES ====================
 
-// Get all agreement templates (company_superadmin, partner_manager, platform_admin)
+// Get all agreement templates (READ-ONLY for partner_manager)
 router.get(
   '/',
   protect,
@@ -57,7 +57,7 @@ router.get(
   getAgreementTemplates
 );
 
-// Get partners with their signed agreements (grouped by partner)
+// Get partners with their signed agreements (grouped by partner) - READ ONLY
 router.get(
   '/signatures/partners',
   protect,
@@ -65,7 +65,7 @@ router.get(
   getPartnersWithSignatures
 );
 
-// Get agreement details for a specific partnership
+// Get agreement details for a specific partnership - READ ONLY
 router.get(
   '/signatures/partnership/:partnershipId',
   protect,
@@ -73,7 +73,7 @@ router.get(
   getPartnershipAgreementDetails
 );
 
-// Get all signed agreements (admin view)
+// Get all signed agreements (admin view) - READ ONLY
 router.get(
   '/signatures/all',
   protect,
@@ -81,46 +81,49 @@ router.get(
   getSignedAgreements
 );
 
-// Get single agreement template
+// Get single agreement template - READ ONLY
 router.get(
   '/:id',
   protect,
   getAgreementTemplate
 );
 
-// Create agreement template (company_superadmin, partner_manager, platform_admin)
+// ==================== WRITE OPERATIONS (company_superadmin and platform_admin ONLY) ====================
+// Partner Manager does NOT have access to these routes
+
+// Create agreement template (company_superadmin, platform_admin ONLY)
 router.post(
   '/',
   protect,
-  restrictTo('company_superadmin', 'partner_manager', 'platform_admin'),
+  restrictTo('company_superadmin', 'platform_admin'),
   createAgreementTemplate
 );
 
-// Update agreement template (company_superadmin, partner_manager, platform_admin)
+// Update agreement template (company_superadmin, platform_admin ONLY)
 router.put(
   '/:id',
   protect,
-  restrictTo('company_superadmin', 'partner_manager', 'platform_admin'),
+  restrictTo('company_superadmin', 'platform_admin'),
   updateAgreementTemplate
 );
 
-// Create new version of agreement (company_superadmin, partner_manager, platform_admin)
+// Create new version of agreement (company_superadmin, platform_admin ONLY)
 router.post(
   '/:id/new-version',
   protect,
-  restrictTo('company_superadmin', 'partner_manager', 'platform_admin'),
+  restrictTo('company_superadmin', 'platform_admin'),
   createNewVersion
 );
 
-// Delete agreement template (company_superadmin, partner_manager, platform_admin)
+// Delete agreement template (company_superadmin, platform_admin ONLY)
 router.delete(
   '/:id',
   protect,
-  restrictTo('company_superadmin', 'partner_manager', 'platform_admin'),
+  restrictTo('company_superadmin', 'platform_admin'),
   deleteAgreementTemplate
 );
 
-// Get partners who haven't signed latest version
+// Get partners who haven't signed latest version - READ ONLY
 router.get(
   '/:id/pending-signatures',
   protect,

@@ -16,36 +16,49 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   // Check if user is logged in on mount
+  // Tokens are now stored in httpOnly cookies, so we just verify with the server
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const response = await api.get('/auth/me');
-          setUser(response.data.data.user);
-        } catch (error) {
-          localStorage.removeItem('token');
-          setUser(null);
-        }
+      try {
+        // Try to get current user - cookies are sent automatically
+        const response = await api.get('/auth/me');
+        setUser(response.data.data.user);
+      } catch (error) {
+        // Not authenticated - this is expected for users who haven't logged in
+        // No need to show error, just set user to null
+        setUser(null);
+        // Clear any stale localStorage data
+        localStorage.removeItem('user');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     checkAuth();
   }, []);
 
   // Login function
+  // Tokens are now set in httpOnly cookies by the server
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
-    const { token, user } = response.data.data;
-    localStorage.setItem('token', token);
+    const { user } = response.data.data;
+    // Token is automatically set in httpOnly cookie by the server
+    // No need to store in localStorage
     setUser(user);
-    return { token, user };
+    return { user };
   };
 
   // Logout function
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
+  const logout = async () => {
+    try {
+      // Call logout endpoint to blacklist token and clear cookies
+      await api.post('/auth/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      // Clear any stale localStorage data
+      localStorage.removeItem('user');
+    }
   };
 
   // Register company
@@ -100,6 +113,18 @@ export const AuthProvider = ({ children }) => {
     return user.role === roles;
   };
 
+  // Refresh user data from server
+  const refreshUser = async () => {
+    try {
+      const response = await api.get('/auth/me');
+      setUser(response.data.data.user);
+      return response.data.data.user;
+    } catch (error) {
+      setUser(null);
+      throw error;
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -108,6 +133,7 @@ export const AuthProvider = ({ children }) => {
     registerCompany,
     registerPartner,
     updateUser,
+    refreshUser,
     getDashboardPath,
     hasRole,
     isAuthenticated: !!user

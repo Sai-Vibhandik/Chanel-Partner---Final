@@ -296,10 +296,10 @@ const Login = () => {
           <div className="mt-8 p-4 bg-gray-100 rounded-xl">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Demo Accounts</p>
             <div className="space-y-2 text-xs text-gray-600">
-              <div className="flex justify-between items-center">
+              {/* <div className="flex justify-between items-center">
                 <span className="font-medium text-gray-700">Platform Admin:</span>
                 <span>admin@platform.com</span>
-              </div>
+              </div> */}
               <div className="flex justify-between items-center">
                 <span className="font-medium text-gray-700">Company Admin:</span>
                 <span>admin@abcdevelopers.com</span>

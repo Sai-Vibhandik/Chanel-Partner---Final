@@ -152,8 +152,6 @@ export const sidebarConfig = {
       { path: '/partner-manager/dashboard', label: 'Dashboard', icon: sidebarIcons.dashboard },
       { path: '/partner-manager/partners', label: 'Partners', icon: sidebarIcons.partners },
       { path: '/company/kyc-verification', label: 'KYC Verification', icon: sidebarIcons.documents },
-      { path: '/company/agreements', label: 'Agreements', icon: sidebarIcons.agreements },
-      { path: '/company/signed-agreements', label: 'Signed Agreements', icon: sidebarIcons.documents },
       { path: '/partner-manager/offices', label: 'Office Locations', icon: sidebarIcons.office },
       { path: '/partner-manager/visits', label: 'Visits', icon: sidebarIcons.visits },
       { path: '/finance-manager/commissions', label: 'Commissions', icon: sidebarIcons.commissions },

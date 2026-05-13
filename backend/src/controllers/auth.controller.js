@@ -5,6 +5,15 @@ import AgreementTemplate from '../models/AgreementTemplate.js';
 import LoginLog from '../models/LoginLog.js';
 import PartnerCompany from '../models/PartnerCompany.js';
 import { generateToken, verifyToken } from '../utils/token.js';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  setAuthCookies,
+  clearAuthCookies,
+  getTokensFromRequest,
+  verifyRefreshToken,
+  blacklistToken
+} from '../utils/cookieTokens.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.service.js';
 import { parseUserAgent } from '../utils/userAgent.js';
@@ -208,117 +217,6 @@ Date: _________________________
 Partner: {{partnerName}}
 Signature: _________________________
 Date: _________________________`
-    },
-    {
-      companyId,
-      type: 'code_of_conduct',
-      name: 'Code of Conduct',
-      isRequired: true,
-      displayOrder: 3,
-      createdBy: userId,
-      content: `CODE OF CONDUCT
-
-This Code of Conduct applies to all Channel Partners associated with {{companyName}}.
-
-By signing below, I, {{partnerName}}, agree to abide by the following standards of conduct:
-
-1. PROFESSIONAL CONDUCT
-a) I will conduct all business activities in a professional and ethical manner
-b) I will treat all clients, colleagues, and Company representatives with respect
-c) I will dress appropriately and present a professional image
-
-2. HONESTY AND INTEGRITY
-a) I will provide accurate and truthful information to clients about properties
-b) I will not make false or misleading statements about properties or the Company
-c) I will disclose all material facts that may affect a client's decision
-
-3. COMPLIANCE WITH LAWS
-a) I will comply with all applicable real estate laws and regulations
-b) I will obtain and maintain any required licenses or registrations
-c) I will not engage in any unlawful or fraudulent activities
-
-4. CONFLICT OF INTEREST
-a) I will disclose any potential conflicts of interest to the Company
-b) I will not represent competing interests without prior disclosure
-
-5. CONFIDENTIALITY
-a) I will protect the confidentiality of client information
-b) I will not share proprietary Company information with competitors
-
-6. ANTI-BRIBERY AND CORRUPTION
-a) I will not offer, give, or accept bribes or improper payments
-b) I will report any instances of suspected corruption
-
-7. DATA PROTECTION
-a) I will handle personal data in accordance with applicable data protection laws
-b) I will not misuse or share client data without proper authorization
-
-VIOLATIONS
-Violation of this Code of Conduct may result in termination of partnership, forfeiture of pending commissions, and/or legal action.
-
-I acknowledge that I have read and understood this Code of Conduct and agree to abide by its terms.
-
-Partner: {{partnerName}}
-Signature: _________________________
-Date: _________________________`
-    },
-    {
-      companyId,
-      type: 'gdpr_consent',
-      name: 'Data Protection Consent (GDPR)',
-      isRequired: true,
-      displayOrder: 4,
-      createdBy: userId,
-      content: `DATA PROTECTION CONSENT FORM
-
-In accordance with the General Data Protection Regulation (GDPR) and applicable data protection laws, we require your consent to process your personal data.
-
-PERSONAL DATA COLLECTED:
-- Name and contact details
-- Business information
-- Identification documents
-- Communication records
-- Transaction history
-
-PURPOSES OF PROCESSING:
-- Managing your partnership with {{companyName}}
-- Processing commissions and payments
-- Compliance with legal obligations
-- Communication about properties and business updates
-- Improving our services
-
-YOUR RIGHTS:
-You have the right to:
-a) Access your personal data
-b) Rectify inaccurate data
-c) Erase your data (subject to legal retention requirements)
-d) Restrict processing
-e) Data portability
-f) Object to processing
-g) Withdraw consent at any time
-
-DATA RETENTION:
-Your data will be retained for the duration of your partnership and for a period of 7 years after termination, or as required by law.
-
-DATA SHARING:
-Your data may be shared with:
-- Property developers and associated parties
-- Regulatory authorities (as required)
-- Payment processors
-- Professional advisors
-
-SECURITY:
-We implement appropriate technical and organizational measures to protect your data.
-
-CONSENT:
-By signing below, I consent to the processing of my personal data as described above:
-
-Partner Name: {{partnerName}}
-Email: {{partnerEmail}}
-Phone: {{partnerPhone}}
-
-Signature: _________________________
-Date: {{date}}`
     }
   ];
 
@@ -622,9 +520,6 @@ export const login = async (req, res, next) => {
       }
     }
 
-    // Note: Partners are not blocked by company status. They can log in and browse companies.
-    // Their access to company-specific features depends on their partnership status in PartnerCompany.
-
     // Log successful login
     await logLoginAttempt({
       email,
@@ -643,13 +538,21 @@ export const login = async (req, res, next) => {
     });
     await user.save({ validateBeforeSave: false });
 
-    // Generate token
-    const token = generateToken({
+    // Generate tokens
+    const tokenPayload = {
       userId: user._id,
       companyId: user.companyId,
       role: user.role
-    });
+    };
 
+    // Generate both access token (short-lived) and refresh token (long-lived)
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Set tokens in httpOnly cookies
+    setAuthCookies(res, accessToken, refreshToken);
+
+    // Response without token in body (token is in cookie)
     res.status(200).json({
       success: true,
       message: 'Login successful',
@@ -661,8 +564,8 @@ export const login = async (req, res, next) => {
           lastName: user.lastName,
           role: user.role,
           companyId: user.companyId
-        },
-        token
+        }
+        // Token is now in httpOnly cookie, not in response body
       }
     });
   } catch (error) {
@@ -708,8 +611,13 @@ export const getMe = async (req, res, next) => {
  */
 export const logout = async (req, res, next) => {
   try {
-    // In a stateless JWT system, logout is handled client-side
-    // You could implement token blacklisting if needed
+    // Blacklist the current access token
+    if (req.accessToken) {
+      blacklistToken(req.accessToken);
+    }
+
+    // Clear auth cookies
+    clearAuthCookies(res);
 
     res.status(200).json({
       success: true,
@@ -776,18 +684,30 @@ export const resetPassword = async (req, res, next) => {
     user.resetPasswordExpire = undefined;
     await user.save();
 
-    // Generate new token
-    const newToken = generateToken({
+    // Generate tokens and set cookies
+    const tokenPayload = {
       userId: user._id,
       companyId: user.companyId,
       role: user.role
-    });
+    };
+
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Set tokens in httpOnly cookies
+    setAuthCookies(res, accessToken, refreshToken);
 
     res.status(200).json({
       success: true,
       message: 'Password reset successful',
       data: {
-        token: newToken
+        user: {
+          id: user._id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role
+        }
       }
     });
   } catch (error) {
@@ -821,7 +741,7 @@ export const verifyEmail = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: 'Email verified successfully'
+      message: 'Email verified successfully. You can now login.'
     });
   } catch (error) {
     next(error);
@@ -880,26 +800,57 @@ export const resendVerificationEmail = async (req, res, next) => {
 /**
  * @desc    Refresh token
  * @route   POST /api/auth/refresh-token
- * @access  Private
+ * @access  Public (requires refresh token in cookie)
  */
 export const refreshToken = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id);
+    // Get refresh token from cookies
+    const { refreshToken } = getTokensFromRequest(req);
 
-    if (!user) {
-      throw new ApiError(404, 'User not found');
+    if (!refreshToken) {
+      throw new ApiError(401, 'Refresh token not found. Please log in again.');
     }
 
-    // Generate new token
-    const token = generateToken({
+    // Verify refresh token
+    const decoded = verifyRefreshToken(refreshToken);
+
+    if (!decoded || decoded.type !== 'refresh') {
+      throw new ApiError(401, 'Invalid refresh token. Please log in again.');
+    }
+
+    // Get user
+    const user = await User.findById(decoded.userId);
+
+    if (!user || !user.isActive) {
+      throw new ApiError(401, 'User not found or inactive. Please log in again.');
+    }
+
+    // Generate new tokens
+    const tokenPayload = {
       userId: user._id,
       companyId: user.companyId,
       role: user.role
-    });
+    };
+
+    const newAccessToken = generateAccessToken(tokenPayload);
+    const newRefreshToken = generateRefreshToken(tokenPayload);
+
+    // Set new tokens in cookies
+    setAuthCookies(res, newAccessToken, newRefreshToken);
 
     res.status(200).json({
       success: true,
-      data: { token }
+      message: 'Token refreshed successfully',
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          companyId: user.companyId
+        }
+      }
     });
   } catch (error) {
     next(error);
@@ -962,6 +913,24 @@ export const changePassword = async (req, res, next) => {
     // Update password
     user.password = newPassword;
     await user.save();
+
+    // Invalidate all existing tokens by blacklisting current token
+    if (req.accessToken) {
+      blacklistToken(req.accessToken);
+    }
+
+    // Generate new tokens
+    const tokenPayload = {
+      userId: user._id,
+      companyId: user.companyId,
+      role: user.role
+    };
+
+    const accessToken = generateAccessToken(tokenPayload);
+    const newRefreshToken = generateRefreshToken(tokenPayload);
+
+    // Set new tokens in cookies
+    setAuthCookies(res, accessToken, newRefreshToken);
 
     res.status(200).json({
       success: true,

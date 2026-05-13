@@ -9,6 +9,7 @@ import {
   getPartnerUnreadCount
 } from '../controllers/chat.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
+import { chatLimiter } from '../middlewares/rateLimit.middleware.js';
 
 const router = express.Router();
 
@@ -55,9 +56,10 @@ router.get(
   getConversationMessages
 );
 
-// Send a message
+// Send a message - Rate limited to prevent spam (100 messages per minute)
 router.post(
   '/conversations/:partnershipId/:adminType/send',
+  chatLimiter,
   sendMessage
 );
 

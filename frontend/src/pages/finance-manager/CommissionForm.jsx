@@ -108,18 +108,33 @@ const CommissionForm = () => {
       return;
     }
 
+    const currency = selectedProperty.pricing?.currency || 'INR';
+
+    // Check if property has fixed commission
+    if (selectedProperty.commission?.isFixed && selectedProperty.commission?.fixedAmount) {
+      setPreview({
+        isFixed: true,
+        fixedAmount: selectedProperty.commission.fixedAmount,
+        currency,
+        tier: selectedPartnership.tier,
+        commissionAmount: selectedProperty.commission.fixedAmount
+      });
+      return;
+    }
+
     // Get property's base commission percentage (e.g., 5%)
     const propertyBasePercentage = selectedProperty.commission?.basePercentage || selectedProperty.commission?.percentage || 0;
 
     // If property has no base commission set, show warning
     if (propertyBasePercentage === 0) {
       setPreview({
+        isFixed: false,
         tier: selectedPartnership.tier,
         propertyBasePercentage: 0,
         tierPercentage: 0,
         effectivePercentage: 0,
         commissionAmount: 0,
-        currency: selectedProperty.pricing?.currency || 'INR',
+        currency,
         warning: 'This property has no commission percentage set. Please edit the property to add commission.'
       });
       return;
@@ -147,13 +162,14 @@ const CommissionForm = () => {
     const commissionAmount = Math.round(salePrice * (effectivePercentage / 100));
 
     setPreview({
+      isFixed: false,
       tier: selectedPartnership.tier,
       propertyBasePercentage,
       tierPercentage,
       overridePercentage,
       effectivePercentage,
       commissionAmount,
-      currency: selectedProperty.pricing?.currency || 'INR'
+      currency
     });
   };
 

@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import Company from '../models/Company.js';
 import AgreementTemplate from '../models/AgreementTemplate.js';
 import AgreementSignature from '../models/AgreementSignature.js';
+import Visit from '../models/Visit.js';
+import Commission from '../models/Commission.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { sendPartnershipApprovedEmail } from '../services/email.service.js';
 
@@ -775,6 +777,441 @@ export const leaveCompany = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'You have left the company'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get partner performance report
+ * @route   GET /api/partner-company/reports/performance
+ * @access  Private (Partner Manager, Company SuperAdmin, Finance Manager)
+ */
+export const getPerformanceReport = async (req, res, next) => {
+  try {
+    const { startDate, endDate, tier, sortBy = 'totalVisits', sortOrder = 'desc', page = 1, limit = 10 } = req.query;
+    const companyId = req.user.companyId;
+
+    // Build date filter
+    const dateFilter = {};
+    if (startDate || endDate) {
+      dateFilter.createdAt = {};
+      if (startDate) dateFilter.createdAt.$gte = new Date(startDate);
+      if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
+    }
+
+    // Build match query for partnerships
+    const matchQuery = { companyId, status: 'active' };
+    if (tier) matchQuery.tier = tier;
+
+    // Get total count for pagination
+    const totalPartnerships = await PartnerCompany.countDocuments(matchQuery);
+    const totalPages = Math.ceil(totalPartnerships / parseInt(limit));
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Aggregation pipeline for partner performance
+    const partners = await PartnerCompany.aggregate([
+      { $match: matchQuery },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'partnerId',
+          foreignField: '_id',
+          as: 'partner'
+        }
+      },
+      { $unwind: '$partner' },
+      {
+        $lookup: {
+          from: 'visits',
+          let: { partnerId: '$partnerId', companyId: '$companyId' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$partnerId', '$$partnerId'] },
+                    { $eq: ['$companyId', '$$companyId'] },
+                    startDate ? { $gte: ['$createdAt', new Date(startDate)] } : { $ne: ['$createdAt', null] },
+                    endDate ? { $lte: ['$createdAt', new Date(endDate)] } : { $ne: ['$createdAt', null] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: 'visits'
+        }
+      },
+      {
+        $lookup: {
+          from: 'commissions',
+          let: { partnerId: '$partnerId', companyId: '$companyId' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$partner', '$$partnerId'] },
+                    { $eq: ['$companyId', '$$companyId'] },
+                    startDate ? { $gte: ['$createdAt', new Date(startDate)] } : { $ne: ['$createdAt', null] },
+                    endDate ? { $lte: ['$createdAt', new Date(endDate)] } : { $ne: ['$createdAt', null] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: 'commissions'
+        }
+      },
+      {
+        $project: {
+          partnershipId: '$_id',
+          partnerId: '$partnerId',
+          partnerName: { $concat: ['$partner.firstName', ' ', '$partner.lastName'] },
+          partnerEmail: '$partner.email',
+          tier: 1,
+          kycStatus: 1,
+          totalVisits: { $size: '$visits' },
+          completedVisits: {
+            $size: {
+              $filter: {
+                input: '$visits',
+                as: 'visit',
+                cond: { $eq: ['$$visit.status', 'completed'] }
+              }
+            }
+          },
+          totalCommissions: {
+            $sum: {
+              $map: {
+                input: '$commissions',
+                as: 'commission',
+                in: '$$commission.commission.calculatedAmount'
+              }
+            }
+          },
+          paidCommissions: {
+            $sum: {
+              $map: {
+                input: {
+                  $filter: {
+                    input: '$commissions',
+                    as: 'commission',
+                    cond: { $eq: ['$$commission.status', 'paid'] }
+                  }
+                },
+                as: 'paidCommission',
+                in: '$$paidCommission.commission.calculatedAmount'
+              }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          conversionRate: {
+            $cond: {
+              if: { $gt: ['$totalVisits', 0] },
+              then: { $multiply: [{ $divide: ['$completedVisits', '$totalVisits'] }, 100] },
+              else: 0
+            }
+          }
+        }
+      },
+      { $sort: { [sortBy]: sortOrder === 'desc' ? -1 : 1 } },
+      { $skip: skip },
+      { $limit: parseInt(limit) }
+    ]);
+
+    // Calculate summary stats
+    const summary = await PartnerCompany.aggregate([
+      { $match: { companyId, status: 'active' } },
+      {
+        $group: {
+          _id: null,
+          totalPartners: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Calculate tier breakdown
+    const tierBreakdown = await PartnerCompany.aggregate([
+      { $match: { companyId, status: 'active' } },
+      {
+        $group: {
+          _id: '$tier',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Calculate total visits and commissions
+    const visitStats = await Visit.aggregate([
+      {
+        $match: {
+          companyId,
+          ...dateFilter
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          completed: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          }
+        }
+      }
+    ]);
+
+    const commissionStats = await Commission.aggregate([
+      {
+        $match: {
+          companyId,
+          ...dateFilter
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: '$commission.calculatedAmount' },
+          paidAmount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'paid'] }, '$commission.calculatedAmount', 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    // Format tier breakdown
+    const tierMap = { bronze: 0, silver: 0, gold: 0, platinum: 0 };
+    tierBreakdown.forEach(item => {
+      if (item._id && tierMap.hasOwnProperty(item._id)) {
+        tierMap[item._id] = item.count;
+      }
+    });
+
+    // Calculate average conversion rate
+    const avgConversion = partners.length > 0
+      ? partners.reduce((sum, p) => sum + (p.conversionRate || 0), 0) / partners.length
+      : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        partners,
+        summary: {
+          totalPartners: summary[0]?.totalPartners || 0,
+          totalVisits: visitStats[0]?.total || 0,
+          completedVisits: visitStats[0]?.completed || 0,
+          totalCommissions: commissionStats[0]?.totalAmount || 0,
+          paidCommissions: commissionStats[0]?.paidAmount || 0,
+          avgConversionRate: avgConversion
+        },
+        tierBreakdown: tierMap,
+        pagination: {
+          total: totalPartnerships,
+          page: parseInt(page),
+          pages: totalPages
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get commission report
+ * @route   GET /api/partner-company/reports/commissions
+ * @access  Private (Partner Manager, Company SuperAdmin, Finance Manager)
+ */
+export const getCommissionReport = async (req, res, next) => {
+  try {
+    const { startDate, endDate, page = 1, limit = 10 } = req.query;
+    const companyId = req.user.companyId;
+
+    // Build date filter
+    const dateFilter = {};
+    if (startDate || endDate) {
+      dateFilter.createdAt = {};
+      if (startDate) dateFilter.createdAt.$gte = new Date(startDate);
+      if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
+    }
+
+    // Get summary stats
+    const [
+      totalCount,
+      totalAmount,
+      pendingStats,
+      approvedStats,
+      paidStats,
+      cancelledStats,
+      byStatus,
+      byTier,
+      byPeriod
+    ] = await Promise.all([
+      Commission.countDocuments({ companyId, ...dateFilter }),
+      Commission.aggregate([
+        { $match: { companyId, ...dateFilter } },
+        { $group: { _id: null, total: { $sum: '$commission.calculatedAmount' } } }
+      ]),
+      Commission.aggregate([
+        { $match: { companyId, status: 'pending', ...dateFilter } },
+        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
+      ]),
+      Commission.aggregate([
+        { $match: { companyId, status: 'approved', ...dateFilter } },
+        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
+      ]),
+      Commission.aggregate([
+        { $match: { companyId, status: 'paid', ...dateFilter } },
+        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
+      ]),
+      Commission.aggregate([
+        { $match: { companyId, status: 'cancelled', ...dateFilter } },
+        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
+      ]),
+      Commission.aggregate([
+        { $match: { companyId, ...dateFilter } },
+        { $group: { _id: '$status', count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
+      ]),
+      Commission.aggregate([
+        { $match: { companyId, ...dateFilter } },
+        { $group: { _id: '$commission.partnerTier', count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
+      ]),
+      Commission.aggregate([
+        { $match: { companyId, ...dateFilter } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+            count: { $sum: 1 },
+            amount: { $sum: '$commission.calculatedAmount' },
+            paidAmount: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'paid'] }, '$commission.calculatedAmount', 0]
+              }
+            }
+          }
+        },
+        { $sort: { _id: -1 } },
+        { $limit: 12 }
+      ])
+    ]);
+
+    // Get top partners by commission with pagination
+    const totalPartners = await Commission.aggregate([
+      { $match: { companyId, ...dateFilter } },
+      { $group: { _id: '$partner' } },
+      { $count: 'total' }
+    ]);
+
+    const total = totalPartners[0]?.total || 0;
+    const totalPages = Math.ceil(total / parseInt(limit));
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const topPartners = await Commission.aggregate([
+      { $match: { companyId, ...dateFilter } },
+      {
+        $group: {
+          _id: '$partner',
+          totalCommissions: { $sum: '$commission.calculatedAmount' },
+          paidCommissions: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'paid'] }, '$commission.calculatedAmount', 0]
+            }
+          },
+          pendingCommissions: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'pending'] }, '$commission.calculatedAmount', 0]
+            }
+          },
+          commissionCount: { $sum: 1 }
+        }
+      },
+      { $sort: { totalCommissions: -1 } },
+      { $skip: skip },
+      { $limit: parseInt(limit) },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'partnerUser'
+        }
+      },
+      { $unwind: '$partnerUser' },
+      {
+        $lookup: {
+          from: 'partnercompanies',
+          localField: '_id',
+          foreignField: 'partnerId',
+          as: 'partnership'
+        }
+      },
+      { $unwind: { path: '$partnership', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          partnerId: '$_id',
+          partnerName: { $concat: ['$partnerUser.firstName', ' ', '$partnerUser.lastName'] },
+          tier: { $ifNull: ['$partnership.tier', 'bronze'] },
+          totalCommissions: 1,
+          paidCommissions: 1,
+          pendingCommissions: 1,
+          commissionCount: 1
+        }
+      }
+    ]);
+
+    // Format by status
+    const statusData = byStatus.map(item => ({
+      status: item._id,
+      count: item.count,
+      amount: item.amount || 0
+    }));
+
+    // Format by tier
+    const tierData = byTier.map(item => ({
+      tier: item._id || 'bronze',
+      count: item.count,
+      amount: item.amount || 0
+    }));
+
+    // Format by period
+    const periodData = byPeriod.map(item => ({
+      period: item._id,
+      count: item.count,
+      amount: item.amount || 0,
+      paidAmount: item.paidAmount || 0
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        summary: {
+          totalAmount: totalAmount[0]?.total || 0,
+          totalCount,
+          pendingAmount: pendingStats[0]?.amount || 0,
+          pendingCount: pendingStats[0]?.count || 0,
+          approvedAmount: approvedStats[0]?.amount || 0,
+          approvedCount: approvedStats[0]?.count || 0,
+          paidAmount: paidStats[0]?.amount || 0,
+          paidCount: paidStats[0]?.count || 0,
+          cancelledAmount: cancelledStats[0]?.amount || 0,
+          cancelledCount: cancelledStats[0]?.count || 0
+        },
+        byStatus: statusData,
+        byTier: tierData,
+        byPartner: topPartners,
+        byPeriod: periodData,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages: totalPages
+        }
+      }
     });
   } catch (error) {
     next(error);

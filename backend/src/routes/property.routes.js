@@ -14,6 +14,13 @@ import {
   getPropertiesForPartnership
 } from '../controllers/property.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
+import {
+  validateCreateProperty,
+  validateUpdateProperty,
+  validateGetProperty,
+  validateListProperties,
+  validateUpdatePropertyStatus
+} from '../validations/property.validation.js';
 
 const router = express.Router();
 
@@ -31,20 +38,20 @@ router.get('/stats', restrictTo('company_superadmin', 'partner_manager', 'proper
 
 // Property CRUD (company staff)
 // Note: Access control is handled within each controller
-router.post('/', createProperty);
-router.get('/', getProperties);
-router.get('/:id', getProperty);
-router.put('/:id', updateProperty);
-router.delete('/:id', deleteProperty);
+router.post('/', validateCreateProperty, createProperty);
+router.get('/', validateListProperties, getProperties);
+router.get('/:id', validateGetProperty, getProperty);
+router.put('/:id', validateUpdateProperty, updateProperty);
+router.delete('/:id', validateGetProperty, deleteProperty);
 
 // Property status
-router.put('/:id/status', updatePropertyStatus);
+router.put('/:id/status', validateUpdatePropertyStatus, updatePropertyStatus);
 
 // Property images
-router.post('/:id/images', uploadPropertyImages);
-router.delete('/:id/images/:imageId', deletePropertyImage);
+router.post('/:id/images', validateGetProperty, uploadPropertyImages);
+router.delete('/:id/images/:imageId', validateGetProperty, deletePropertyImage);
 
 // Property brochure
-router.post('/:id/brochure', uploadPropertyBrochure);
+router.post('/:id/brochure', validateGetProperty, uploadPropertyBrochure);
 
 export default router;

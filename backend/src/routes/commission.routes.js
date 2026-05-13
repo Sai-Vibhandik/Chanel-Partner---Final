@@ -10,6 +10,13 @@ import {
   getCommissionStats
 } from '../controllers/commission.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
+import {
+  validateCreateCommission,
+  validateUpdateCommission,
+  validateCommissionAction,
+  validateListCommissions,
+  validateGetCommission
+} from '../validations/commission.validation.js';
 
 const router = express.Router();
 
@@ -22,6 +29,7 @@ router.use(protect);
 router.post(
   '/',
   restrictTo('finance_manager', 'company_superadmin', 'partner_manager'),
+  validateCreateCommission,
   createCommission
 );
 
@@ -29,6 +37,7 @@ router.post(
 router.get(
   '/',
   restrictTo('finance_manager', 'company_superadmin', 'partner_manager'),
+  validateListCommissions,
   getCompanyCommissions
 );
 
@@ -45,18 +54,20 @@ router.get(
 router.get(
   '/my',
   restrictTo('partner'),
+  validateListCommissions,
   getPartnerCommissions
 );
 
 // ==================== PARAMETERIZED ROUTES ====================
 
 // Get single commission details
-router.get('/:id', getCommissionById);
+router.get('/:id', validateGetCommission, getCommissionById);
 
 // Approve commission (finance_manager, company_superadmin)
 router.put(
   '/:id/approve',
   restrictTo('finance_manager', 'company_superadmin'),
+  validateCommissionAction,
   approveCommission
 );
 
@@ -64,6 +75,7 @@ router.put(
 router.put(
   '/:id/pay',
   restrictTo('finance_manager', 'company_superadmin'),
+  validateCommissionAction,
   markAsPaid
 );
 
@@ -71,6 +83,7 @@ router.put(
 router.put(
   '/:id/cancel',
   restrictTo('finance_manager', 'company_superadmin'),
+  validateCommissionAction,
   cancelCommission
 );
 

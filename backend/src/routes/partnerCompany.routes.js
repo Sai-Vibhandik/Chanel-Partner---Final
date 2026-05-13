@@ -10,7 +10,9 @@ import {
   getKYCForPartnership,
   verifyKYCForPartnership,
   getKYCReviews,
-  leaveCompany
+  leaveCompany,
+  getPerformanceReport,
+  getCommissionReport
 } from '../controllers/partnerCompany.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
 
@@ -47,6 +49,22 @@ router.get(
   '/kyc-reviews',
   restrictTo('platform_admin', 'company_superadmin', 'partner_manager'),
   getKYCReviews
+);
+
+// ========== REPORTS ROUTES ==========
+
+// Get partner performance report
+router.get(
+  '/reports/performance',
+  restrictTo('platform_admin', 'company_superadmin', 'partner_manager', 'finance_manager', 'viewer'),
+  getPerformanceReport
+);
+
+// Get commission report
+router.get(
+  '/reports/commissions',
+  restrictTo('platform_admin', 'company_superadmin', 'partner_manager', 'finance_manager', 'viewer'),
+  getCommissionReport
 );
 
 // ========== PARTNERSHIP MANAGEMENT ==========

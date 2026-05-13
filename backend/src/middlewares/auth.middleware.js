@@ -1,29 +1,47 @@
 import User from '../models/User.js';
 import { verifyToken } from '../utils/token.js';
+import {
+  getTokensFromRequest,
+  verifyAccessToken,
+  isTokenBlacklisted
+} from '../utils/cookieTokens.js';
 import { ApiError } from './error.middleware.js';
 
 /**
  * Protect routes - require authentication
+ * Supports both cookie-based and header-based authentication
  */
 export const protect = async (req, res, next) => {
   try {
-    let token;
-
-    // Get token from header
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
+    // Get tokens from request (cookies or Authorization header)
+    const { accessToken } = getTokensFromRequest(req);
 
     // Check if token exists
-    if (!token) {
-      throw new ApiError(401, 'Not authorized to access this route');
+    if (!accessToken) {
+      throw new ApiError(401, 'Not authorized to access this route. Please log in.');
     }
 
-    // Verify token
-    const decoded = verifyToken(token);
+    // Check if token is blacklisted (logged out)
+    if (isTokenBlacklisted(accessToken)) {
+      throw new ApiError(401, 'Token has been invalidated. Please log in again.');
+    }
+
+    // Verify token - try both methods for backward compatibility
+    let decoded;
+    decoded = verifyAccessToken(accessToken);
+
+    // Fallback to original token verification for backward compatibility
+    if (!decoded) {
+      decoded = verifyToken(accessToken);
+    }
 
     if (!decoded) {
       throw new ApiError(401, 'Invalid token. Please log in again.');
+    }
+
+    // Ensure it's an access token, not a refresh token
+    if (decoded.type && decoded.type !== 'access') {
+      throw new ApiError(401, 'Invalid token type. Please log in again.');
     }
 
     // Get user from token
@@ -38,8 +56,9 @@ export const protect = async (req, res, next) => {
       throw new ApiError(401, 'Your account has been deactivated');
     }
 
-    // Add user to request
+    // Add user and token to request
     req.user = user;
+    req.accessToken = accessToken;
     next();
   } catch (error) {
     next(error);
@@ -48,27 +67,32 @@ export const protect = async (req, res, next) => {
 
 /**
  * Optional auth - attach user if token present
+ * Supports both cookie-based and header-based authentication
  */
 export const optionalAuth = async (req, res, next) => {
   try {
-    let token;
+    const { accessToken } = getTokensFromRequest(req);
 
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
+    if (accessToken && !isTokenBlacklisted(accessToken)) {
+      let decoded = verifyAccessToken(accessToken);
 
-    if (token) {
-      const decoded = verifyToken(token);
-      if (decoded) {
+      // Fallback for backward compatibility
+      if (!decoded) {
+        decoded = verifyToken(accessToken);
+      }
+
+      if (decoded && decoded.type !== 'refresh') {
         const user = await User.findById(decoded.userId);
         if (user && user.isActive) {
           req.user = user;
+          req.accessToken = accessToken;
         }
       }
     }
 
     next();
   } catch (error) {
+    // Don't throw error for optional auth
     next();
   }
 };
