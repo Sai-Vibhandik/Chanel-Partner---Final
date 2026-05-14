@@ -139,8 +139,14 @@ export const checkCompanyAccess = (req, res, next) => {
   }
 
   // For company users, check if they're accessing their own company's data
-  // Support both 'id' and 'companyId' as parameter names
-  const requestedCompanyId = req.params.id || req.params.companyId || req.body.companyId || req.query.companyId;
+  // Support different parameter names: 'companyId' (explicit) or 'id' (for routes like /companies/:id)
+  // Note: For routes like /company/:companyId/team/:id, we want companyId, not id (which is the team member id)
+  const requestedCompanyId = req.params.companyId || req.params.id || req.body.companyId || req.query.companyId;
+
+  // If user doesn't have a companyId assigned, deny access
+  if (!req.user.companyId) {
+    throw new ApiError(403, 'You do not have a company assigned to your account');
+  }
 
   if (requestedCompanyId && requestedCompanyId.toString() !== req.user.companyId?.toString()) {
     throw new ApiError(403, 'You do not have access to this company');

@@ -6,7 +6,6 @@ import {
   updateTeamMember,
   deleteTeamMember,
   toggleTeamMemberStatus,
-  resetTeamMemberPassword,
   resendInvite
 } from '../controllers/team.controller.js';
 import { protect, restrictTo, checkCompanyAccess } from '../middlewares/auth.middleware.js';
@@ -51,12 +50,6 @@ router.put(
   '/company/:companyId/team/:id/status',
   checkCompanyAccess,
   toggleTeamMemberStatus
-);
-
-router.post(
-  '/company/:companyId/team/:id/reset-password',
-  checkCompanyAccess,
-  resetTeamMemberPassword
 );
 
 router.post(

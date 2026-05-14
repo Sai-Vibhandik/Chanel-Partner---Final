@@ -11,6 +11,8 @@ const PartnerDashboard = () => {
   const config = sidebarConfig.partner;
   const [loading, setLoading] = useState(true);
   const [partnerships, setPartnerships] = useState([]);
+  const [upcomingVisits, setUpcomingVisits] = useState([]);
+  const [recentCommissions, setRecentCommissions] = useState([]);
   const [stats, setStats] = useState({
     properties: 0,
     visits: 0,
@@ -43,18 +45,24 @@ const PartnerDashboard = () => {
         }
       }
 
-      // Get visits stats
+      // Get visits stats and upcoming visits
       let totalVisits = 0;
       try {
         const visitsRes = await api.get('/visits/my');
         const visits = visitsRes.data.data?.visits || [];
         // Count upcoming visits (pending and scheduled)
         totalVisits = visits.filter(v => v.status === 'pending' || v.status === 'scheduled').length;
+        // Get upcoming visits (next 5)
+        const upcoming = visits
+          .filter(v => v.status === 'pending' || v.status === 'scheduled' || v.status === 'completed')
+          .sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate))
+          .slice(0, 5);
+        setUpcomingVisits(upcoming);
       } catch (err) {
         // Ignore
       }
 
-      // Get commissions stats
+      // Get commissions stats and recent commissions
       let pendingCommissions = 0;
       let totalEarnings = 0;
       try {
@@ -62,6 +70,13 @@ const PartnerDashboard = () => {
         const commissionStats = commissionsRes.data.data?.stats || {};
         pendingCommissions = (commissionStats.pending?.amount || 0) + (commissionStats.approved?.amount || 0);
         totalEarnings = commissionStats.paid?.amount || 0;
+
+        // Get recent commissions
+        const allCommissions = commissionsRes.data.data?.commissions || [];
+        const recent = allCommissions
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          .slice(0, 5);
+        setRecentCommissions(recent);
       } catch (err) {
         // Ignore
       }
@@ -282,14 +297,130 @@ const PartnerDashboard = () => {
       </div>
 
       {/* Recent Activity */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
-        <div className="text-center py-8 text-gray-500">
-          <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-          <p>No recent activity</p>
-          <p className="text-sm mt-1">Your activity will appear here</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Upcoming Visits */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Upcoming Visits</h3>
+            <button
+              onClick={() => navigate('/partner/visits')}
+              className="text-sm text-indigo-600 hover:text-indigo-700"
+            >
+              View All →
+            </button>
+          </div>
+          {upcomingVisits.length === 0 ? (
+            <div className="text-center py-6 text-gray-500">
+              <svg className="w-10 h-10 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-sm">No upcoming visits</p>
+              <button
+                onClick={() => navigate('/partner/visits')}
+                className="text-indigo-600 hover:text-indigo-700 text-sm font-medium mt-2"
+              >
+                Schedule a visit →
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {upcomingVisits.map((visit) => (
+                <div
+                  key={visit._id}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                  onClick={() => navigate(`/partner/visits/${visit._id}`)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">
+                      {visit.propertyId?.name || 'Property'}
+                    </p>
+                    <p className="text-sm text-gray-500 truncate">
+                      {visit.propertyId?.location?.city || ''} {visit.propertyId?.location?.state || ''}
+                    </p>
+                  </div>
+                  <div className="text-right ml-4">
+                    <p className="text-sm font-medium text-gray-900">
+                      {new Date(visit.scheduledDate).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short'
+                      })}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {visit.scheduledTime || visit.time || ''}
+                    </p>
+                    <span className={`inline-block px-2 py-0.5 text-xs rounded-full mt-1 ${
+                      visit.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
+                      visit.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      visit.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {visit.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent Commissions */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Commissions</h3>
+            <button
+              onClick={() => navigate('/partner/commissions')}
+              className="text-sm text-indigo-600 hover:text-indigo-700"
+            >
+              View All →
+            </button>
+          </div>
+          {recentCommissions.length === 0 ? (
+            <div className="text-center py-6 text-gray-500">
+              <svg className="w-10 h-10 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm">No commissions yet</p>
+              <p className="text-xs text-gray-400 mt-1">Complete visits to earn commissions</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentCommissions.map((commission) => (
+                <div
+                  key={commission._id}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                  onClick={() => navigate('/partner/commissions')}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">
+                      {commission.propertyId?.name || 'Property'}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {commission.visitId?.clientName || 'Client Visit'}
+                    </p>
+                  </div>
+                  <div className="text-right ml-4">
+                    <p className="font-semibold text-gray-900">
+                      ₹{(commission.amount || 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(commission.createdAt).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short'
+                      })}
+                    </p>
+                    <span className={`inline-block px-2 py-0.5 text-xs rounded-full mt-1 ${
+                      commission.status === 'paid' ? 'bg-green-100 text-green-800' :
+                      commission.status === 'approved' ? 'bg-blue-100 text-blue-800' :
+                      commission.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {commission.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>

@@ -67,8 +67,7 @@ const AgreementTemplates = () => {
     type: 'nda',
     content: PLACEHOLDER_CONTENT,
     description: '',
-    isRequired: true,
-    applicableRegions: []
+    isRequired: true
   });
   const [saving, setSaving] = useState(false);
 
@@ -90,21 +89,10 @@ const AgreementTemplates = () => {
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    if (name === 'applicableRegions') {
-      const checkedRegions = [...formData.applicableRegions];
-      if (checked) {
-        checkedRegions.push(value);
-      } else {
-        const index = checkedRegions.indexOf(value);
-        if (index > -1) checkedRegions.splice(index, 1);
-      }
-      setFormData(prev => ({ ...prev, applicableRegions: checkedRegions }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: type === 'checkbox' ? checked : value
-      }));
-    }
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
   const handleTypeChange = (e) => {
@@ -123,8 +111,7 @@ const AgreementTemplates = () => {
       type: 'nda',
       content: PLACEHOLDER_CONTENT,
       description: '',
-      isRequired: true,
-      applicableRegions: []
+      isRequired: true
     });
     setSelectedTemplate(null);
   };
@@ -141,8 +128,7 @@ const AgreementTemplates = () => {
       type: template.type,
       content: template.content,
       description: template.description || '',
-      isRequired: template.isRequired,
-      applicableRegions: template.applicableRegions || []
+      isRequired: template.isRequired
     });
     setShowModal(true);
   };
@@ -472,36 +458,6 @@ const AgreementTemplates = () => {
                 </label>
               </div>
 
-              {/* Applicable Regions */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Applicable Regions</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      name="applicableRegions"
-                      value="india"
-                      checked={formData.applicableRegions.includes('india')}
-                      onChange={handleInputChange}
-                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded"
-                    />
-                    <span className="text-gray-700">India</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      name="applicableRegions"
-                      value="dubai"
-                      checked={formData.applicableRegions.includes('dubai')}
-                      onChange={handleInputChange}
-                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded"
-                    />
-                    <span className="text-gray-700">Dubai</span>
-                  </label>
-                </div>
-                <p className="mt-1 text-sm text-gray-500">Leave empty to apply to all regions</p>
-              </div>
-
               {/* Actions */}
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                 <button
@@ -552,9 +508,6 @@ const AgreementTemplates = () => {
               <div className="mt-4 flex gap-4 text-sm text-gray-600">
                 <span>Status: <span className={selectedTemplate.isActive ? 'text-green-600' : 'text-gray-500'}>{selectedTemplate.isActive ? 'Active' : 'Inactive'}</span></span>
                 <span>Required: <span className={selectedTemplate.isRequired ? 'text-red-600' : 'text-gray-500'}>{selectedTemplate.isRequired ? 'Yes' : 'No'}</span></span>
-                {selectedTemplate.applicableRegions?.length > 0 && (
-                  <span>Regions: {selectedTemplate.applicableRegions.join(', ')}</span>
-                )}
               </div>
             </div>
           </div>

@@ -7,6 +7,7 @@ import Visit from '../models/Visit.js';
 import Commission from '../models/Commission.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { sendPartnershipApprovedEmail } from '../services/email.service.js';
+import { createNotification } from './notification.controller.js';
 
 /**
  * @desc    Partner applies to join a company
@@ -281,6 +282,38 @@ export const updatePartnershipStatus = async (req, res, next) => {
         console.error('Failed to send partnership approval email:', emailError);
         // Don't fail the request if email fails
       }
+
+      // Create notification for partner
+      createNotification({
+        recipientId: partnership.partnerId._id,
+        type: 'partnership_approved',
+        title: 'Partnership Approved',
+        message: `Your partnership with ${partnership.companyId?.name || 'the company'} has been approved! You can now access properties and book visits.`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner/my-companies'
+      }).catch(err => {
+        console.error('Failed to create partnership approval notification:', err.message);
+      });
+    }
+
+    // Create notification for partnership rejection/suspension
+    if (status === 'suspended' && previousStatus === 'active') {
+      createNotification({
+        recipientId: partnership.partnerId._id,
+        type: 'partnership_rejected',
+        title: 'Partnership Suspended',
+        message: `Your partnership with ${partnership.companyId?.name || 'the company'} has been suspended. ${reason ? `Reason: ${reason}` : ''}`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner/my-companies'
+      }).catch(err => {
+        console.error('Failed to create partnership suspension notification:', err.message);
+      });
     }
 
     res.status(200).json({
@@ -396,6 +429,48 @@ export const uploadKYCForPartnership = async (req, res, next) => {
 
     await partnership.save();
 
+    // Notify company admins about KYC document submission
+    try {
+      const companyAdmins = await User.find({
+        companyId: partnership.companyId,
+        role: { $in: ['company_superadmin', 'partner_manager'] },
+        isActive: true
+      });
+
+      const partner = await User.findById(partnership.partnerId).select('firstName lastName');
+      const partnerName = partner ? `${partner.firstName} ${partner.lastName}` : 'Partner';
+
+      const documentTypeNames = {
+        pan_card: 'PAN Card',
+        gst_certificate: 'GST Certificate',
+        rera_certificate: 'RERA Certificate',
+        address_proof: 'Address Proof',
+        cancelled_cheque: 'Cancelled Cheque',
+        trade_license: 'Trade License',
+        rera_registration_card: 'RERA Registration Card',
+        emirates_id: 'Emirates ID',
+        passport_copy: 'Passport Copy',
+        visa_copy: 'Visa Copy',
+        other: 'Other Document'
+      };
+
+      for (const admin of companyAdmins) {
+        createNotification({
+          recipientId: admin._id,
+          type: 'kyc_submitted',
+          title: 'KYC Document Submitted',
+          message: `${partnerName} has submitted ${documentTypeNames[type] || type} for verification.`,
+          data: {
+            partnershipId: partnership._id,
+            companyId: partnership.companyId
+          },
+          link: '/partner-manager/partners'
+        }).catch(err => console.error('Failed to create KYC submission notification:', err.message));
+      }
+    } catch (notifyError) {
+      console.error('Error sending KYC submission notifications:', notifyError.message);
+    }
+
     res.status(200).json({
       success: true,
       message: 'KYC document uploaded successfully',
@@ -497,9 +572,9 @@ export const getKYCForPartnership = async (req, res, next) => {
     // Build summary
     const summary = {
       kycStatus: partnership.kycStatus,
-      totalRequired: requiredDocs.filter(d => d.required).length,
+      totalRequired: requiredDocs.length, // Total documents (both required and optional)
       uploaded: uploadedDocs.length,
-      verified: verifiedRequiredDocs.length,
+      verified: uploadedDocs.filter(d => d.status === 'verified').length, // All verified docs
       pending: uploadedDocs.filter(d => d.status === 'pending').length,
       rejected: uploadedDocs.filter(d => d.status === 'rejected').length,
       requiredDocuments: requiredDocs.map(reqDoc => {
@@ -589,6 +664,41 @@ export const verifyKYCForPartnership = async (req, res, next) => {
     if (allRequiredVerified && partnership.kycStatus !== 'verified') {
       partnership.kycStatus = 'verified';
       partnership.kycVerifiedAt = new Date();
+
+      // Create notification for partner - KYC fully verified
+      createNotification({
+        recipientId: partnership.partnerId,
+        type: 'kyc_approved',
+        title: 'KYC Verification Complete',
+        message: `Your KYC documents have been fully verified. You can now access all features.`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner/my-companies'
+      }).catch(err => {
+        console.error('Failed to create KYC approval notification:', err.message);
+      });
+    }
+
+    // If document was rejected, notify the partner
+    if (status === 'rejected') {
+      const User = (await import('../models/User.js')).default;
+      const partner = await User.findById(partnership.partnerId);
+
+      createNotification({
+        recipientId: partnership.partnerId,
+        type: 'kyc_rejected',
+        title: 'KYC Document Rejected',
+        message: `Your ${document.type.replace(/_/g, ' ')} document was rejected. ${reason ? `Reason: ${reason}` : 'Please upload a new document.'}`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner/my-companies'
+      }).catch(err => {
+        console.error('Failed to create KYC rejection notification:', err.message);
+      });
     }
 
     await partnership.save();

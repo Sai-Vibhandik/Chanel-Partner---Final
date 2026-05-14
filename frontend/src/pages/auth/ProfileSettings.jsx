@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
+import { validatePhone, validateName, validatePassword, handlePhoneInput } from '../../utils/validation';
 
 const ProfileSettings = () => {
-  const { user, setUser } = useAuth();
+  const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
 
   // Profile form state
@@ -28,27 +31,85 @@ const ProfileSettings = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
     setProfileData(prev => ({ ...prev, [name]: value }));
+    // Clear field error when user starts typing
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handlePhoneChange = (e) => {
+    const value = handlePhoneInput(e, null, null);
+    setProfileData(prev => ({ ...prev, phone: value }));
+    if (fieldErrors.phone) {
+      setFieldErrors(prev => ({ ...prev, phone: '' }));
+    }
   };
 
   const handlePasswordChange = (e) => {
     const { name, value } = e.target;
     setPasswordData(prev => ({ ...prev, [name]: value }));
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const validateProfileForm = () => {
+    const errors = {};
+
+    const firstNameError = validateName(profileData.firstName, 'First name');
+    if (firstNameError) errors.firstName = firstNameError;
+
+    const lastNameError = validateName(profileData.lastName, 'Last name');
+    if (lastNameError) errors.lastName = lastNameError;
+
+    if (profileData.phone) {
+      const phoneError = validatePhone(profileData.phone);
+      if (phoneError) errors.phone = phoneError;
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validatePasswordForm = () => {
+    const errors = {};
+
+    if (!passwordData.currentPassword) {
+      errors.currentPassword = 'Current password is required';
+    }
+
+    const passwordError = validatePassword(passwordData.newPassword);
+    if (passwordError) errors.newPassword = passwordError;
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    if (!validateProfileForm()) {
+      return;
+    }
+
     setLoading(true);
 
     try {
       const response = await api.put('/auth/profile', profileData);
-      setUser(response.data.data.user);
+      updateUser(response.data.data.user);
       setSuccess('Profile updated successfully!');
+      setFieldErrors({});
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update profile');
     } finally {
@@ -61,13 +122,7 @@ const ProfileSettings = () => {
     setError('');
     setSuccess('');
 
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setError('New passwords do not match');
-      return;
-    }
-
-    if (passwordData.newPassword.length < 8) {
-      setError('New password must be at least 8 characters');
+    if (!validatePasswordForm()) {
       return;
     }
 
@@ -80,6 +135,7 @@ const ProfileSettings = () => {
       });
       setSuccess('Password changed successfully!');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setFieldErrors({});
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to change password');
     } finally {
@@ -105,7 +161,18 @@ const ProfileSettings = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+      {/* Back Button */}
+      <button
+        onClick={() => navigate(-1)}
+        className="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors group"
+      >
+        <svg className="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        <span className="font-medium">Back</span>
+      </button>
+
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex items-center gap-4">
@@ -189,8 +256,10 @@ const ProfileSettings = () => {
                     type="text"
                     value={profileData.firstName}
                     onChange={handleProfileChange}
-                    className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                    maxLength={50}
+                    className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.firstName ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
+                  {fieldErrors.firstName && <p className="text-sm text-red-600 mt-1">{fieldErrors.firstName}</p>}
                 </div>
                 <div>
                   <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
@@ -202,8 +271,10 @@ const ProfileSettings = () => {
                     type="text"
                     value={profileData.lastName}
                     onChange={handleProfileChange}
-                    className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                    maxLength={50}
+                    className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.lastName ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
+                  {fieldErrors.lastName && <p className="text-sm text-red-600 mt-1">{fieldErrors.lastName}</p>}
                 </div>
               </div>
 
@@ -231,10 +302,12 @@ const ProfileSettings = () => {
                   name="phone"
                   type="tel"
                   value={profileData.phone}
-                  onChange={handleProfileChange}
-                  className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                  onChange={handlePhoneChange}
+                  maxLength={16}
+                  className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.phone ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   placeholder="+91 9876543210"
                 />
+                {fieldErrors.phone && <p className="text-sm text-red-600 mt-1">{fieldErrors.phone}</p>}
               </div>
 
               <div className="flex justify-end">
@@ -266,7 +339,7 @@ const ProfileSettings = () => {
                     type={showCurrentPassword ? 'text' : 'password'}
                     value={passwordData.currentPassword}
                     onChange={handlePasswordChange}
-                    className="block w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                    className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.currentPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                     placeholder="Enter current password"
                   />
                   <button
@@ -286,6 +359,7 @@ const ProfileSettings = () => {
                     )}
                   </button>
                 </div>
+                {fieldErrors.currentPassword && <p className="text-sm text-red-600 mt-1">{fieldErrors.currentPassword}</p>}
               </div>
 
               <div>
@@ -299,7 +373,8 @@ const ProfileSettings = () => {
                     type={showNewPassword ? 'text' : 'password'}
                     value={passwordData.newPassword}
                     onChange={handlePasswordChange}
-                    className="block w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                    maxLength={128}
+                    className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.newPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                     placeholder="Enter new password"
                   />
                   <button
@@ -319,7 +394,8 @@ const ProfileSettings = () => {
                     )}
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">Must be at least 8 characters</p>
+                {fieldErrors.newPassword && <p className="text-sm text-red-600 mt-1">{fieldErrors.newPassword}</p>}
+                <p className="mt-1 text-xs text-gray-500">Must be at least 8 characters with uppercase, lowercase, and number</p>
               </div>
 
               <div>
@@ -333,7 +409,8 @@ const ProfileSettings = () => {
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={passwordData.confirmPassword}
                     onChange={handlePasswordChange}
-                    className="block w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                    maxLength={128}
+                    className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                     placeholder="Confirm new password"
                   />
                   <button
@@ -353,6 +430,7 @@ const ProfileSettings = () => {
                     )}
                   </button>
                 </div>
+                {fieldErrors.confirmPassword && <p className="text-sm text-red-600 mt-1">{fieldErrors.confirmPassword}</p>}
               </div>
 
               <div className="flex justify-end">

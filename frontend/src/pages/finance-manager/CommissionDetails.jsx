@@ -89,8 +89,10 @@ const CommissionDetails = () => {
 
   const handlePay = async (e) => {
     e.preventDefault();
-    if (!payForm.paymentReference) {
-      setError('Payment reference is required');
+
+    // Payment reference is required for non-cash payment methods
+    if (payForm.paymentMethod !== 'cash' && !payForm.paymentReference) {
+      setError('Payment reference is required for this payment method');
       return;
     }
 
@@ -215,21 +217,26 @@ const CommissionDetails = () => {
           <div className="flex items-center gap-3">
             {commission.status === 'pending' && (
               <>
-                <button
-                  onClick={() => setShowApproveModal(true)}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => setShowRejectModal(true)}
-                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  Reject
-                </button>
+                {/* Approve/Reject buttons only for finance_manager and company_superadmin */}
+                {user?.role !== 'partner_manager' && (
+                  <>
+                    <button
+                      onClick={() => setShowApproveModal(true)}
+                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => setShowRejectModal(true)}
+                      className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
               </>
             )}
-            {commission.status === 'approved' && (
+            {commission.status === 'approved' && user?.role !== 'partner_manager' && (
               <button
                 onClick={() => setShowPayModal(true)}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
@@ -503,15 +510,20 @@ const CommissionDetails = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Reference *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Reference {payForm.paymentMethod === 'cash' ? '(Optional)' : '*'}
+                </label>
                 <input
                   type="text"
                   value={payForm.paymentReference}
                   onChange={(e) => setPayForm({ ...payForm, paymentReference: e.target.value })}
-                  placeholder="Transaction ID / Cheque Number"
+                  placeholder={payForm.paymentMethod === 'cash' ? 'Optional - e.g., Receipt Number' : 'Transaction ID / Cheque Number'}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  required
+                  required={payForm.paymentMethod !== 'cash'}
                 />
+                {payForm.paymentMethod === 'cash' && (
+                  <p className="text-xs text-gray-500 mt-1">Payment reference is optional for cash payments</p>
+                )}
               </div>
 
               <div>

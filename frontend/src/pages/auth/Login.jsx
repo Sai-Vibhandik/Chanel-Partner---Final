@@ -7,6 +7,7 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
@@ -16,9 +17,25 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  // Helper to extract validation errors from API response
+  const getValidationErrors = (err) => {
+    const errors = err.response?.data?.errors;
+    if (errors && Array.isArray(errors) && errors.length > 0) {
+      const fieldErrs = {};
+      errors.forEach(e => {
+        if (e.field) {
+          fieldErrs[e.field] = e.message;
+        }
+      });
+      return { fieldErrors: fieldErrs, message: errors.map(e => e.message).join(', ') };
+    }
+    return { fieldErrors: {}, message: err.response?.data?.message || 'Login failed. Please try again.' };
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
     setLoading(true);
     setShowResendVerification(false);
 
@@ -38,11 +55,12 @@ const Login = () => {
 
       navigate(rolePaths[user.role] || '/login');
     } catch (err) {
-      const errorMessage = err.response?.data?.message || 'Login failed. Please try again.';
-      setError(errorMessage);
+      const { fieldErrors: errs, message } = getValidationErrors(err);
+      setFieldErrors(errs);
+      setError(message);
 
       // Check if error is about email verification
-      if (errorMessage.toLowerCase().includes('verify your email')) {
+      if (message.toLowerCase().includes('verify your email')) {
         setShowResendVerification(true);
       }
     } finally {
@@ -65,7 +83,8 @@ const Login = () => {
       setResendSuccess(response.data.message);
       setShowResendVerification(false);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to resend verification email.');
+      const { message } = getValidationErrors(err);
+      setError(message);
     } finally {
       setResending(false);
     }
@@ -193,11 +212,12 @@ const Login = () => {
                   autoComplete="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400"
+                  onChange={(e) => { setEmail(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.email; return n; }); }}
+                  className={`block w-full pl-10 pr-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                   placeholder="you@example.com"
                 />
               </div>
+              {fieldErrors.email && <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>}
             </div>
 
             <div>
@@ -217,8 +237,8 @@ const Login = () => {
                   autoComplete="current-password"
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400"
+                  onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.password; return n; }); }}
+                  className={`block w-full pl-10 pr-12 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                   placeholder="••••••••"
                 />
                 <button
@@ -238,6 +258,7 @@ const Login = () => {
                   )}
                 </button>
               </div>
+              {fieldErrors.password && <p className="mt-1 text-sm text-red-600">{fieldErrors.password}</p>}
             </div>
 
             <div className="flex items-center justify-between">

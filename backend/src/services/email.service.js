@@ -303,6 +303,180 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
         </body>
         </html>
       `
+    },
+
+    // Visit approved notification
+    visitApproved: {
+      subject: `Your Visit has been Approved - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Visit Approved</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">✅ Visit Approved</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.partnerName},</p>
+            <p>Great news! Your visit request has been <strong style="color: #10b981;">approved</strong>.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: ${primaryColor};">${data.propertyName}</h3>
+              <p><strong>Date:</strong> ${data.visitDate}</p>
+              <p><strong>Time:</strong> ${data.visitTime}</p>
+              <p><strong>Visit Type:</strong> ${data.visitType === 'virtual' ? 'Virtual Meeting' : 'Office Visit'}</p>
+              ${data.officeName ? `<p><strong>Office Location:</strong> ${data.officeName}</p>` : ''}
+              ${data.officeAddress ? `<p><strong>Address:</strong> ${data.officeAddress}</p>` : ''}
+              ${data.clientName ? `<p><strong>Client:</strong> ${data.clientName}</p>` : ''}
+              ${data.adminNotes ? `<p><strong>Notes:</strong> ${data.adminNotes}</p>` : ''}
+            </div>
+
+            ${data.visitType === 'office' && data.googleMapsUrl ? `
+            <div style="text-align: center; margin: 20px 0;">
+              <a href="${data.googleMapsUrl}" target="_blank"
+                 style="background: #4285f4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                📍 Get Directions
+              </a>
+            </div>
+            ` : ''}
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${baseUrl}/partner/visits"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                View My Visits
+              </a>
+            </div>
+
+            <p style="color: #6b7280; font-size: 14px;">
+              Please arrive 10 minutes early for your appointment. If you need to reschedule or cancel, please do so at least 24 hours in advance.
+            </p>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerText ? `<p>${footerText}</p>` : ''}
+            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+          </div>
+        </body>
+        </html>
+      `
+    },
+
+    // Visit rejected notification
+    visitRejected: {
+      subject: `Your Visit Request was not Approved - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Visit Request Update</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">Visit Request Update</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.partnerName},</p>
+            <p>We regret to inform you that your visit request could not be <strong style="color: #ef4444;">approved</strong> at this time.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: ${primaryColor};">${data.propertyName}</h3>
+              <p><strong>Requested Date:</strong> ${data.visitDate}</p>
+              <p><strong>Requested Time:</strong> ${data.visitTime}</p>
+            </div>
+
+            <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0;"><strong>Reason:</strong> ${data.rejectionReason || 'Unfortunately, we could not accommodate your visit request at this time.'}</p>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${baseUrl}/partner/properties"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                Browse Other Properties
+              </a>
+            </div>
+
+            <p style="color: #6b7280; font-size: 14px;">
+              You can try booking a visit for a different date or explore other properties. If you have questions, please contact our support team.
+            </p>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerText ? `<p>${footerText}</p>` : ''}
+            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+          </div>
+        </body>
+        </html>
+      `
+    },
+
+    // Team invitation email
+    teamInvite: {
+      subject: `You've been invited to join ${companyName} - Your Account Credentials`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Team Invitation</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">👋 Welcome to the Team!</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.userName},</p>
+            <p><strong>${data.inviterName}</strong> has invited you to join <strong>${companyName}</strong> as a <strong>${data.roleName}</strong>.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 25px; margin: 20px 0; border: 2px solid ${primaryColor};">
+              <h3 style="margin-top: 0; color: ${primaryColor}; text-align: center;">Your Login Credentials</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Email:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.email}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #6b7280;">Password:</td>
+                  <td style="padding: 10px;">
+                    <code style="background: #f3f4f6; padding: 5px 10px; border-radius: 4px; font-size: 14px; word-break: break-all;">${data.temporaryPassword}</code>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <p style="text-align: center; margin: 20px 0;">
+              <a href="${baseUrl}/login"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                Login Now
+              </a>
+            </p>
+
+            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0; font-size: 14px;"><strong>⚠️ Security Recommendation:</strong> Please change your password after your first login for account security.</p>
+            </div>
+
+            <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0; font-size: 14px;"><strong>Login URL:</strong> <a href="${baseUrl}/login" style="color: ${primaryColor};">${baseUrl}/login</a></p>
+            </div>
+
+            <p style="color: #6b7280; font-size: 14px;">
+              If you didn't expect this invitation, please contact your administrator or safely ignore this email.
+            </p>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerText ? `<p>${footerText}</p>` : ''}
+            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+          </div>
+        </body>
+        </html>
+      `
     }
   };
 
@@ -499,10 +673,123 @@ export const sendPartnershipApprovedEmail = async (partner, company, tier, commi
   });
 };
 
+/**
+ * Send visit approved email to partner
+ */
+export const sendVisitApprovedEmail = async (visit, partner, property, company, officeLocation = null) => {
+  const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  return sendEmail({
+    to: partner.email,
+    type: 'visitApproved',
+    companyId: company?._id || null,
+    userId: partner._id,
+    data: {
+      partnerName: partner.firstName,
+      propertyName: property.name,
+      visitDate: formatDate(visit.scheduledDate),
+      visitTime: formatTime(visit.scheduledTime),
+      visitType: visit.visitType || 'office',
+      officeName: officeLocation?.name || null,
+      officeAddress: officeLocation?.address || null,
+      googleMapsUrl: officeLocation?.googleMapsUrl || null,
+      clientName: visit.clientDetails?.name || null,
+      adminNotes: visit.adminNotes || null,
+      companyName: company?.name || 'Channel Partner Portal'
+    }
+  });
+};
+
+/**
+ * Send visit rejected email to partner
+ */
+export const sendVisitRejectedEmail = async (visit, partner, property, company, rejectionReason) => {
+  const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  return sendEmail({
+    to: partner.email,
+    type: 'visitRejected',
+    companyId: company?._id || null,
+    userId: partner._id,
+    data: {
+      partnerName: partner.firstName,
+      propertyName: property.name,
+      visitDate: formatDate(visit.scheduledDate),
+      visitTime: formatTime(visit.scheduledTime),
+      rejectionReason: rejectionReason || 'Unfortunately, we could not accommodate your visit request at this time.',
+      companyName: company?.name || 'Channel Partner Portal'
+    }
+  });
+};
+
+/**
+ * Send team invitation email
+ */
+export const sendTeamInviteEmail = async (user, temporaryPassword, company, inviter = null) => {
+  // Role display names
+  const roleNames = {
+    company_superadmin: 'Company Admin',
+    partner_manager: 'Partner Manager',
+    property_manager: 'Property Manager',
+    finance_manager: 'Finance Manager',
+    viewer: 'Viewer'
+  };
+
+  return sendEmail({
+    to: user.email,
+    type: 'teamInvite',
+    companyId: company?._id || null,
+    userId: user._id,
+    data: {
+      userName: user.firstName,
+      email: user.email,
+      temporaryPassword,
+      roleName: roleNames[user.role] || user.role,
+      inviterName: inviter ? `${inviter.firstName} ${inviter.lastName}` : 'The team',
+      companyName: company?.name || 'Channel Partner Portal'
+    }
+  });
+};
+
 export default {
   sendEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendNewPropertyEmail,
-  sendPartnershipApprovedEmail
+  sendPartnershipApprovedEmail,
+  sendVisitApprovedEmail,
+  sendVisitRejectedEmail,
+  sendTeamInviteEmail
 };

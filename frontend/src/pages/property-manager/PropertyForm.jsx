@@ -23,6 +23,7 @@ const PropertyForm = () => {
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [uploadingImage, setUploadingImage] = useState(false);
 
   // Check for fresh=true and clear draft once
@@ -47,7 +48,6 @@ const PropertyForm = () => {
       basePrice: '',
       pricePerSqFt: '',
       currency: 'INR',
-      priceOnRequest: false,
       bookingAmount: '',
       maintenanceCharges: '',
       otherCharges: ''
@@ -287,7 +287,11 @@ const PropertyForm = () => {
           showContact: property.visibility?.showContact ?? true,
           partnerIds: property.visibility?.partnerIds || []
         },
-        commission: property.commission || {}
+        commission: {
+          basePercentage: property.commission?.basePercentage || '',
+          fixedAmount: property.commission?.fixedAmount || '',
+          isFixed: property.commission?.isFixed || false
+        }
       });
       setImages(property.images || []);
       setVideos(property.videos || []);
@@ -353,12 +357,29 @@ const PropertyForm = () => {
       setError('');
 
       for (const file of files) {
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+          setError(`${file.name} is not a valid image file. Only JPEG, PNG, and WebP are allowed.`);
+          continue;
+        }
+
+        // Validate file size (5MB max)
+        if (file.size > 5 * 1024 * 1024) {
+          setError(`${file.name} is too large. Maximum size is 5MB.`);
+          continue;
+        }
+
         const formDataToSend = new FormData();
         formDataToSend.append('file', file);
         formDataToSend.append('folder', `properties/${id || 'new'}`);
 
+        console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
+
         const response = await api.post('/upload/image', formDataToSend);
         const { url, publicId } = response.data.data;
+
+        console.log('Upload successful:', { url, publicId });
 
         setImages(prev => [...prev, {
           url,
@@ -372,6 +393,7 @@ const PropertyForm = () => {
       e.target.value = '';
     } catch (err) {
       console.error('Upload error:', err);
+      console.error('Error response:', err.response?.data);
       setError(err.response?.data?.message || 'Failed to upload image. Please try again.');
     } finally {
       setUploadingImage(false);
@@ -404,9 +426,28 @@ const PropertyForm = () => {
   const handleSubmit = async (e, publishStatus = 'draft') => {
     e.preventDefault();
 
+    // Clear previous errors
+    setError('');
+    setFieldErrors({});
+
+    // Basic validation - only check required fields when publishing
+    if (publishStatus === 'active') {
+      const errors = {};
+      if (!formData.name.trim()) {
+        errors.name = 'Property name is required';
+      }
+      if (!formData.pricing.basePrice || formData.pricing.basePrice <= 0) {
+        errors.basePrice = 'Base price is required';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+    }
+
     try {
       setSaving(true);
-      setError('');
 
       const submitData = {
         ...formData,
@@ -414,32 +455,33 @@ const PropertyForm = () => {
         videos: videos.filter(v => v.url),
         brochure,
         floorPlans,
-        status: publishStatus // Add status to the submission
+        status: publishStatus
       };
+
+      console.log('Submitting property data:', {
+        imagesCount: images.length,
+        images: images,
+        videosCount: videos.length,
+        hasBrochure: !!brochure,
+        floorPlansCount: floorPlans.length
+      });
 
       // Ensure commission is properly formatted
       if (submitData.commission) {
+        const fixedAmount = parseFloat(submitData.commission.fixedAmount);
         submitData.commission = {
           basePercentage: parseFloat(submitData.commission.basePercentage) || 0,
-          fixedAmount: parseFloat(submitData.commission.fixedAmount) || null,
-          isFixed: submitData.commission.isFixed || false
+          fixedAmount: isNaN(fixedAmount) ? null : fixedAmount,
+          isFixed: Boolean(submitData.commission.isFixed)
         };
+        console.log('Commission data being sent:', submitData.commission);
       }
-
-      console.log('Submitting property data:', submitData);
-      console.log('Commission being sent:', submitData.commission);
-      console.log('Images:', images);
-      console.log('Videos:', videos);
-      console.log('Brochure:', brochure);
-      console.log('Floor Plans:', floorPlans);
-      console.log('Status:', publishStatus);
 
       if (isEdit) {
         await api.put(`/properties/${id}`, submitData);
         navigate(basePath);
       } else {
         await api.post('/properties', submitData);
-        // Clear draft after successful creation
         localStorage.removeItem(DRAFT_KEY);
         localStorage.removeItem(DRAFT_IMAGES_KEY);
         localStorage.removeItem(DRAFT_BROCHURE_KEY);
@@ -447,7 +489,19 @@ const PropertyForm = () => {
         navigate(basePath);
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save property');
+      const errorData = err.response?.data;
+      if (errorData?.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+        // Map backend errors to field names and show below fields
+        const fieldErrs = {};
+        errorData.errors.forEach(e => {
+          // Extract last part of field path (e.g., "location.mapUrl" -> "mapUrl")
+          const fieldName = e.field.split('.').pop();
+          fieldErrs[fieldName] = e.message;
+        });
+        setFieldErrors(fieldErrs);
+      } else {
+        setError(errorData?.message || 'Failed to save property');
+      }
     } finally {
       setSaving(false);
     }
@@ -474,7 +528,7 @@ const PropertyForm = () => {
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
       )}
 
-      {!isEdit && (
+      {/* {!isEdit && (
         <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-blue-700 text-sm">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -498,7 +552,7 @@ const PropertyForm = () => {
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
       <form onSubmit={(e) => { e.preventDefault(); handleSubmit(e, 'draft'); }} className="space-y-6">
         {/* Basic Information */}
@@ -514,9 +568,12 @@ const PropertyForm = () => {
                 value={formData.name}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.name ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="e.g., Sunrise Apartments"
               />
+              {fieldErrors.name && <p className="text-sm text-red-600 mt-1">{fieldErrors.name}</p>}
             </div>
 
             <div>
@@ -526,12 +583,15 @@ const PropertyForm = () => {
                 value={formData.type}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.type ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
               >
                 {propertyTypes.map(type => (
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
               </select>
+              {fieldErrors.type && <p className="text-sm text-red-600 mt-1">{fieldErrors.type}</p>}
             </div>
 
             <div>
@@ -541,20 +601,22 @@ const PropertyForm = () => {
                 value={formData.region}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.region ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
               >
                 <option value="india">🇮🇳 India</option>
                 <option value="dubai">🇦🇪 Dubai</option>
               </select>
+              {fieldErrors.region && <p className="text-sm text-red-600 mt-1">{fieldErrors.region}</p>}
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
               <textarea
                 name="description"
                 value={formData.description}
                 onChange={handleChange}
-                required
                 rows={4}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="Describe your property..."
@@ -569,26 +631,24 @@ const PropertyForm = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
               <input
                 type="text"
                 name="location.address"
                 value={formData.location.address}
                 onChange={handleChange}
-                required
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="Full address"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
               <input
                 type="text"
                 name="location.city"
                 value={formData.location.city}
                 onChange={handleChange}
-                required
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="City"
               />
@@ -596,12 +656,11 @@ const PropertyForm = () => {
 
             {formData.region === 'india' ? (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">State *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
                 <select
                   name="location.state"
                   value={formData.location.state}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="">Select State</option>
@@ -612,12 +671,11 @@ const PropertyForm = () => {
               </div>
             ) : (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Emirate *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Emirate</label>
                 <select
                   name="location.emirate"
                   value={formData.location.emirate}
                   onChange={handleChange}
-                  required
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="">Select Emirate</option>
@@ -661,7 +719,9 @@ const PropertyForm = () => {
                   name="location.mapUrl"
                   value={formData.location.mapUrl || ''}
                   onChange={handleChange}
-                  className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className={`flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                    fieldErrors.mapUrl ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                  }`}
                   placeholder="Paste Google Maps link for exact location"
                 />
                 {formData.location.mapUrl && (
@@ -678,6 +738,7 @@ const PropertyForm = () => {
                   </a>
                 )}
               </div>
+              {fieldErrors.mapUrl && <p className="text-sm text-red-600 mt-1">{fieldErrors.mapUrl}</p>}
               <p className="text-xs text-gray-500 mt-1">
                 Open Google Maps → Find location → Share → Copy link
               </p>
@@ -725,9 +786,13 @@ const PropertyForm = () => {
                 value={formData.pricing.basePrice}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                min="0"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.basePrice ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Enter price"
               />
+              {fieldErrors.basePrice && <p className="text-sm text-red-600 mt-1">{fieldErrors.basePrice}</p>}
             </div>
 
             <div>
@@ -739,9 +804,13 @@ const PropertyForm = () => {
                 name="pricing.pricePerSqFt"
                 value={formData.pricing.pricePerSqFt}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                min="0"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.pricePerSqFt ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Per sq ft/m price"
               />
+              {fieldErrors.pricePerSqFt && <p className="text-sm text-red-600 mt-1">{fieldErrors.pricePerSqFt}</p>}
             </div>
 
             <div>
@@ -753,9 +822,13 @@ const PropertyForm = () => {
                 name="pricing.bookingAmount"
                 value={formData.pricing.bookingAmount}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                min="0"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.bookingAmount ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Booking amount"
               />
+              {fieldErrors.bookingAmount && <p className="text-sm text-red-600 mt-1">{fieldErrors.bookingAmount}</p>}
             </div>
 
             <div>
@@ -767,9 +840,13 @@ const PropertyForm = () => {
                 name="pricing.maintenanceCharges"
                 value={formData.pricing.maintenanceCharges}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                min="0"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.maintenanceCharges ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Monthly maintenance"
               />
+              {fieldErrors.maintenanceCharges && <p className="text-sm text-red-600 mt-1">{fieldErrors.maintenanceCharges}</p>}
             </div>
 
             <div>
@@ -781,22 +858,13 @@ const PropertyForm = () => {
                 name="pricing.otherCharges"
                 value={formData.pricing.otherCharges}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                min="0"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.otherCharges ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Other charges"
               />
-            </div>
-
-            <div className="md:col-span-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="pricing.priceOnRequest"
-                  checked={formData.pricing.priceOnRequest}
-                  onChange={handleChange}
-                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <span className="text-sm text-gray-700">Price on Request (hide price from listing)</span>
-              </label>
+              {fieldErrors.otherCharges && <p className="text-sm text-red-600 mt-1">{fieldErrors.otherCharges}</p>}
             </div>
           </div>
         </div>
@@ -813,10 +881,13 @@ const PropertyForm = () => {
                 name="details.bedrooms"
                 value={formData.details.bedrooms}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.bedrooms ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="0"
                 min="0"
               />
+              {fieldErrors.bedrooms && <p className="text-sm text-red-600 mt-1">{fieldErrors.bedrooms}</p>}
             </div>
 
             <div>
@@ -826,10 +897,13 @@ const PropertyForm = () => {
                 name="details.bathrooms"
                 value={formData.details.bathrooms}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.bathrooms ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="0"
                 min="0"
               />
+              {fieldErrors.bathrooms && <p className="text-sm text-red-600 mt-1">{fieldErrors.bathrooms}</p>}
             </div>
 
             <div>
@@ -839,10 +913,13 @@ const PropertyForm = () => {
                 name="details.balconies"
                 value={formData.details.balconies}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.balconies ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="0"
                 min="0"
               />
+              {fieldErrors.balconies && <p className="text-sm text-red-600 mt-1">{fieldErrors.balconies}</p>}
             </div>
 
             <div>
@@ -852,10 +929,13 @@ const PropertyForm = () => {
                 name="details.totalFloors"
                 value={formData.details.totalFloors}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.totalFloors ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="0"
                 min="0"
               />
+              {fieldErrors.totalFloors && <p className="text-sm text-red-600 mt-1">{fieldErrors.totalFloors}</p>}
             </div>
 
             <div>
@@ -865,10 +945,13 @@ const PropertyForm = () => {
                 name="details.floorNumber"
                 value={formData.details.floorNumber}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.floorNumber ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="0"
                 min="0"
               />
+              {fieldErrors.floorNumber && <p className="text-sm text-red-600 mt-1">{fieldErrors.floorNumber}</p>}
             </div>
 
             <div>
@@ -878,9 +961,13 @@ const PropertyForm = () => {
                 name="details.builtUpArea"
                 value={formData.details.builtUpArea}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                min="0"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.builtUpArea ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Area"
               />
+              {fieldErrors.builtUpArea && <p className="text-sm text-red-600 mt-1">{fieldErrors.builtUpArea}</p>}
             </div>
 
             <div>
@@ -890,9 +977,13 @@ const PropertyForm = () => {
                 name="details.carpetArea"
                 value={formData.details.carpetArea}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                min="0"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.carpetArea ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Area"
               />
+              {fieldErrors.carpetArea && <p className="text-sm text-red-600 mt-1">{fieldErrors.carpetArea}</p>}
             </div>
 
             <div>
@@ -1099,6 +1190,7 @@ const PropertyForm = () => {
                   name="indiaDetails.possessionDate"
                   value={formData.indiaDetails.possessionDate || ''}
                   onChange={handleChange}
+                  min={new Date().toISOString().split('T')[0]}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
               </div>
@@ -1594,46 +1686,70 @@ const PropertyForm = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Commission</h3>
           <p className="text-sm text-gray-500 mb-4">
-            Set the base commission percentage for this property. Partner's actual commission = Base % × Tier %.
-            Example: 5% base × 50% (Gold tier) = 2.5% for the partner.
+            {formData.commission.isFixed
+              ? 'Set a fixed commission amount for this property. This amount will be paid directly to the partner.'
+              : 'Set the base commission percentage for this property. Partner\'s actual commission = Base % × Tier %. Example: 5% base × 50% (Gold tier) = 2.5% for the partner.'}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Base Commission (%)
-                <span className="text-red-500 ml-1">*</span>
+                {!formData.commission.isFixed && <span className="text-red-500 ml-1">*</span>}
               </label>
               <input
                 type="number"
                 name="commission.basePercentage"
                 value={formData.commission.basePercentage}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  formData.commission.isFixed
+                    ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : fieldErrors.basePercentage
+                    ? 'border-red-300 bg-red-50 focus:ring-red-500'
+                    : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="e.g., 5"
                 min="0"
                 max="100"
                 step="0.5"
+                disabled={formData.commission.isFixed}
               />
+              {fieldErrors.basePercentage && <p className="text-sm text-red-600 mt-1">{fieldErrors.basePercentage}</p>}
               <p className="text-xs text-gray-500 mt-1">
                 Partner gets this % × their tier share
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fixed Amount ({formData.pricing.currency})</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Fixed Amount ({formData.pricing.currency})
+                {formData.commission.isFixed && <span className="text-red-500 ml-1">*</span>}
+              </label>
               <input
                 type="number"
                 name="commission.fixedAmount"
                 value={formData.commission.fixedAmount}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                min="0"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  formData.commission.isFixed
+                    ? fieldErrors.fixedAmount
+                      ? 'border-red-300 bg-red-50 focus:ring-red-500'
+                      : 'border-gray-200 focus:ring-green-500'
+                    : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
                 placeholder="Fixed commission amount"
+                disabled={!formData.commission.isFixed}
               />
+              {fieldErrors.fixedAmount && <p className="text-sm text-red-600 mt-1">{fieldErrors.fixedAmount}</p>}
+              <p className="text-xs text-gray-500 mt-1">
+                Fixed amount paid to partner
+              </p>
             </div>
 
             <div className="flex items-end">
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   name="commission.isFixed"

@@ -307,12 +307,22 @@ const Properties = () => {
                   >
                     View
                   </button>
-                  <button
-                    onClick={() => navigate(`${basePath}/${property._id}/edit`)}
-                    className="flex-1 px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs sm:text-sm font-medium"
-                  >
-                    Edit
-                  </button>
+                  {property.status === 'sold_out' ? (
+                    <button
+                      disabled
+                      className="flex-1 px-3 sm:px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed text-xs sm:text-sm font-medium"
+                      title="Sold out properties cannot be edited"
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => navigate(`${basePath}/${property._id}/edit`)}
+                      className="flex-1 px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs sm:text-sm font-medium"
+                    >
+                      Edit
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

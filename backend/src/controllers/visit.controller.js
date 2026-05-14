@@ -4,6 +4,8 @@ import PartnerCompany from '../models/PartnerCompany.js';
 import Company from '../models/Company.js';
 import Commission from '../models/Commission.js';
 import { ApiError } from '../middlewares/error.middleware.js';
+import { sendVisitApprovedEmail, sendVisitRejectedEmail } from '../services/email.service.js';
+import { createNotification } from './notification.controller.js';
 
 // Default tier percentages (what % of property's base commission each tier gets)
 const DEFAULT_TIER_PERCENTAGES = {
@@ -168,7 +170,7 @@ export const bookVisit = async (req, res, next) => {
       property: propertyId,
       partner: req.user._id,
       partnershipId,
-      visitType: visitType || 'site',
+      visitType: visitType || 'office',
       officeLocation: visitType === 'office' ? officeLocation : undefined,
       timeSlot: visitType === 'office' ? timeSlot : undefined,
       scheduledDate: new Date(scheduledDate),
@@ -326,9 +328,10 @@ export const cancelVisit = async (req, res, next) => {
  */
 export const getCompanyVisits = async (req, res, next) => {
   try {
-    const { status, date, upcoming, partnerId, page = 1, limit = 10 } = req.query;
+    const { status, date, upcoming, partnerId, officeId, visitType, startDate, endDate, page = 1, limit = 10 } = req.query;
 
     console.log('getCompanyVisits called by user:', req.user._id, 'role:', req.user.role, 'companyId:', req.user.companyId);
+    console.log('Filters:', { status, officeId, visitType, startDate, endDate });
 
     // Check if user has companyId
     if (!req.user.companyId) {
@@ -347,13 +350,33 @@ export const getCompanyVisits = async (req, res, next) => {
 
     if (status) query.status = status;
     if (partnerId) query.partner = partnerId;
-    if (date) {
+    if (visitType) query.visitType = visitType;
+
+    // When filtering by office, include:
+    // 1. Visits with that specific office location
+    // 2. Virtual visits (which don't have an office location)
+    if (officeId) {
+      query.$or = [
+        { officeLocation: officeId },
+        { visitType: 'virtual' }
+      ];
+    }
+
+    // Handle date range filter
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.scheduledDate = { $gte: start, $lte: end };
+    } else if (date) {
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
       const end = new Date(date);
       end.setHours(23, 59, 59, 999);
       query.scheduledDate = { $gte: start, $lte: end };
     }
+
     if (upcoming === 'true') {
       query.scheduledDate = { $gte: new Date() };
       query.status = { $in: ['pending', 'approved'] };
@@ -365,6 +388,7 @@ export const getCompanyVisits = async (req, res, next) => {
     const visits = await Visit.find(query)
       .populate('property', 'name type region location pricing images')
       .populate('partner', 'firstName lastName email phone partnerProfile')
+      .populate('officeLocation', 'name address')
       .populate('handledBy', 'firstName lastName')
       .sort({ scheduledDate: 1, scheduledTime: 1 })
       .skip(skip)
@@ -458,7 +482,10 @@ export const approveVisit = async (req, res, next) => {
   try {
     const { adminNotes } = req.body || {};
 
-    const visit = await Visit.findById(req.params.id);
+    const visit = await Visit.findById(req.params.id)
+      .populate('property', 'name type location')
+      .populate('partner', 'firstName lastName email')
+      .populate('officeLocation', 'name address googleMapsUrl');
 
     if (!visit) {
       throw new ApiError(404, 'Visit not found');
@@ -477,6 +504,40 @@ export const approveVisit = async (req, res, next) => {
     visit.handledBy = req.user._id;
     if (adminNotes) visit.adminNotes = adminNotes;
     await visit.save();
+
+    // Fetch company for email
+    const company = await Company.findById(visit.companyId);
+
+    // Send approval email to partner (non-blocking)
+    if (visit.partner && visit.partner.email) {
+      sendVisitApprovedEmail(
+        visit,
+        visit.partner,
+        visit.property,
+        company,
+        visit.officeLocation
+      ).catch(err => {
+        console.error('Failed to send visit approval email:', err.message);
+      });
+    }
+
+    // Create notification for partner
+    if (visit.partner) {
+      createNotification({
+        recipientId: visit.partner._id,
+        type: 'visit_approved',
+        title: 'Visit Approved',
+        message: `Your visit to "${visit.property?.name || 'Property'}" on ${new Date(visit.scheduledDate).toLocaleDateString()} has been approved.`,
+        data: {
+          visitId: visit._id,
+          propertyId: visit.property?._id,
+          companyId: visit.companyId
+        },
+        link: '/partner/visits'
+      }).catch(err => {
+        console.error('Failed to create visit approval notification:', err.message);
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -501,7 +562,9 @@ export const rejectVisit = async (req, res, next) => {
       throw new ApiError(400, 'Rejection reason is required');
     }
 
-    const visit = await Visit.findById(req.params.id);
+    const visit = await Visit.findById(req.params.id)
+      .populate('property', 'name type location')
+      .populate('partner', 'firstName lastName email');
 
     if (!visit) {
       throw new ApiError(404, 'Visit not found');
@@ -520,6 +583,40 @@ export const rejectVisit = async (req, res, next) => {
     visit.rejectionReason = reason;
     visit.handledBy = req.user._id;
     await visit.save();
+
+    // Fetch company for email
+    const company = await Company.findById(visit.companyId);
+
+    // Send rejection email to partner (non-blocking)
+    if (visit.partner && visit.partner.email) {
+      sendVisitRejectedEmail(
+        visit,
+        visit.partner,
+        visit.property,
+        company,
+        reason
+      ).catch(err => {
+        console.error('Failed to send visit rejection email:', err.message);
+      });
+    }
+
+    // Create notification for partner
+    if (visit.partner) {
+      createNotification({
+        recipientId: visit.partner._id,
+        type: 'visit_rejected',
+        title: 'Visit Request Rejected',
+        message: `Your visit request to "${visit.property?.name || 'Property'}" was not approved. Reason: ${reason}`,
+        data: {
+          visitId: visit._id,
+          propertyId: visit.property?._id,
+          companyId: visit.companyId
+        },
+        link: '/partner/visits'
+      }).catch(err => {
+        console.error('Failed to create visit rejection notification:', err.message);
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -586,214 +683,6 @@ export const completeVisit = async (req, res, next) => {
 };
 
 /**
- * @desc    Mark visit as deal closed (creates commission automatically)
- * @route   PUT /api/visits/:id/deal-closed
- * @access  Private (Partner Manager, Company SuperAdmin)
- */
-export const markDealClosed = async (req, res, next) => {
-  try {
-    const { salePrice, saleDate, buyerName, buyerPhone, buyerEmail, notes } = req.body;
-
-    // Validate required fields
-    if (!salePrice || !buyerName || !buyerPhone) {
-      throw new ApiError(400, 'Sale price, buyer name, and buyer phone are required');
-    }
-
-    const visit = await Visit.findById(req.params.id)
-      .populate('property')
-      .populate('partnershipId');
-
-    if (!visit) {
-      throw new ApiError(404, 'Visit not found');
-    }
-
-    // Verify company access
-    if (visit.companyId.toString() !== req.user.companyId?.toString()) {
-      throw new ApiError(403, 'Access denied');
-    }
-
-    // Only completed or approved visits can be marked as deal closed
-    if (!['completed', 'approved'].includes(visit.status)) {
-      throw new ApiError(400, 'Only completed or approved visits can be marked as deal closed');
-    }
-
-    // Get property's base commission percentage and currency
-    const propertyBasePercentage = visit.property?.commission?.basePercentage || 0;
-    const currency = visit.property?.pricing?.currency || 'INR';
-
-    // Calculate commission using new formula
-    const commissionData = await calculateCommission(
-      salePrice,
-      visit.partnershipId.tier,
-      visit.companyId,
-      propertyBasePercentage,
-      currency
-    );
-
-    // Create commission entry
-    const commission = await Commission.create({
-      companyId: visit.companyId,
-      partnershipId: visit.partnershipId._id,
-      partner: visit.partner,
-      property: visit.property._id,
-      visit: visit._id,
-      saleDetails: {
-        salePrice,
-        saleDate: saleDate ? new Date(saleDate) : new Date(),
-        buyerName,
-        buyerPhone,
-        buyerEmail
-      },
-      commission: commissionData,
-      notes,
-      createdBy: req.user._id
-    });
-
-    // Update visit status
-    visit.status = 'deal_closed';
-    visit.dealDetails = {
-      salePrice,
-      saleDate: saleDate ? new Date(saleDate) : new Date(),
-      buyerName,
-      buyerPhone,
-      buyerEmail,
-      notes,
-      closedBy: req.user._id,
-      closedAt: new Date(),
-      commissionId: commission._id
-    };
-    await visit.save();
-
-    // Update partner's deal count
-    await PartnerCompany.findByIdAndUpdate(visit.partnershipId._id, {
-      $inc: { 'stats.totalDeals': 1 }
-    });
-
-    // Populate for response
-    await commission.populate([
-      { path: 'partner', select: 'firstName lastName email phone' },
-      { path: 'property', select: 'name type location pricing' },
-      { path: 'partnershipId', select: 'tier status' }
-    ]);
-
-    res.status(200).json({
-      success: true,
-      message: 'Deal marked as closed. Commission entry created and sent for Legal review.',
-      data: {
-        visit,
-        commission
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Partner marks their visit as deal closed
- * @route   PUT /api/visits/:id/partner-deal-closed
- * @access  Private (Partner)
- */
-export const partnerMarkDealClosed = async (req, res, next) => {
-  try {
-    const { salePrice, saleDate, buyerName, buyerPhone, buyerEmail, notes, documents } = req.body;
-
-    // Validate required fields
-    if (!salePrice || !buyerName || !buyerPhone) {
-      throw new ApiError(400, 'Sale price, buyer name, and buyer phone are required');
-    }
-
-    const visit = await Visit.findById(req.params.id)
-      .populate('property')
-      .populate('partnershipId');
-
-    if (!visit) {
-      throw new ApiError(404, 'Visit not found');
-    }
-
-    // Verify partner owns this visit
-    if (visit.partner.toString() !== req.user._id.toString()) {
-      throw new ApiError(403, 'Access denied');
-    }
-
-    // Only completed or approved visits can be marked as deal closed
-    if (!['completed', 'approved'].includes(visit.status)) {
-      throw new ApiError(400, 'Only completed or approved visits can be marked as deal closed');
-    }
-
-    // Get property's base commission percentage and currency
-    const propertyBasePercentage = visit.property?.commission?.basePercentage || 0;
-    const currency = visit.property?.pricing?.currency || 'INR';
-
-    // Calculate commission using new formula
-    const commissionData = await calculateCommission(
-      salePrice,
-      visit.partnershipId.tier,
-      visit.companyId,
-      propertyBasePercentage,
-      currency
-    );
-
-    // Create commission entry
-    const commission = await Commission.create({
-      companyId: visit.companyId,
-      partnershipId: visit.partnershipId._id,
-      partner: visit.partner,
-      property: visit.property._id,
-      visit: visit._id,
-      saleDetails: {
-        salePrice,
-        saleDate: saleDate ? new Date(saleDate) : new Date(),
-        buyerName,
-        buyerPhone,
-        buyerEmail
-      },
-      commission: commissionData,
-      notes,
-      createdBy: req.user._id
-    });
-
-    // Update visit status
-    visit.status = 'deal_closed';
-    visit.dealDetails = {
-      salePrice,
-      saleDate: saleDate ? new Date(saleDate) : new Date(),
-      buyerName,
-      buyerPhone,
-      buyerEmail,
-      notes,
-      closedBy: req.user._id,
-      closedAt: new Date(),
-      commissionId: commission._id
-    };
-    await visit.save();
-
-    // Update partner's deal count
-    await PartnerCompany.findByIdAndUpdate(visit.partnershipId._id, {
-      $inc: { 'stats.totalDeals': 1 }
-    });
-
-    // Populate for response
-    await commission.populate([
-      { path: 'partner', select: 'firstName lastName email phone' },
-      { path: 'property', select: 'name type location pricing' },
-      { path: 'partnershipId', select: 'tier status' }
-    ]);
-
-    res.status(200).json({
-      success: true,
-      message: 'Deal marked as closed. Commission entry created successfully.',
-      data: {
-        visit,
-        commission
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
  * @desc    Get visit statistics
  * @route   GET /api/visits/stats
  * @access  Private (Partner Manager, Company SuperAdmin)
@@ -807,7 +696,7 @@ export const getVisitStats = async (req, res, next) => {
       return res.status(200).json({
         success: true,
         data: {
-          statusCounts: { pending: 0, approved: 0, rejected: 0, completed: 0, deal_closed: 0, cancelled: 0 },
+          statusCounts: { pending: 0, approved: 0, rejected: 0, completed: 0, cancelled: 0 },
           todayVisits: 0,
           upcomingVisits: 0,
           pendingApprovals: 0,
@@ -854,7 +743,6 @@ export const getVisitStats = async (req, res, next) => {
       approved: 0,
       rejected: 0,
       completed: 0,
-      deal_closed: 0,
       cancelled: 0
     };
 

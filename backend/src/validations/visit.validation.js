@@ -7,7 +7,7 @@ import { handleValidationErrors } from '../middlewares/validation.middleware.js'
 
 // Book Visit Validation
 export const validateBookVisit = [
-  body('property')
+  body('propertyId')
     .notEmpty().withMessage('Property ID is required')
     .isMongoId().withMessage('Invalid property ID'),
 
@@ -36,31 +36,63 @@ export const validateBookVisit = [
     .optional()
     .isMongoId().withMessage('Invalid office location ID'),
 
-  body('clientName')
+  body('purpose')
     .optional()
     .trim()
-    .isLength({ max: 100 }).withMessage('Client name cannot exceed 100 characters'),
+    .isLength({ max: 500 }).withMessage('Purpose cannot exceed 500 characters'),
 
-  body('clientPhone')
+  body('hasClient')
+    .optional()
+    .isBoolean().withMessage('hasClient must be a boolean'),
+
+  // Client details - only validate if hasClient is true
+  body('clientDetails.name')
+    .custom((value, { req }) => {
+      if (req.body.hasClient && (!value || value.trim() === '')) {
+        throw new Error('Client name is required when bringing a client');
+      }
+      if (value && value.length > 100) {
+        throw new Error('Client name cannot exceed 100 characters');
+      }
+      return true;
+    }),
+
+  body('clientDetails.phone')
+    .custom((value, { req }) => {
+      if (req.body.hasClient && (!value || value.trim() === '')) {
+        throw new Error('Client phone is required when bringing a client');
+      }
+      if (value && value.trim() !== '') {
+        const phoneRegex = /^[6-9]\d{9}$|^\+[1-9]\d{9,14}$/;
+        if (!phoneRegex.test(value.trim())) {
+          throw new Error('Please enter a valid phone number');
+        }
+      }
+      return true;
+    }),
+
+  body('clientDetails.email')
     .optional()
     .trim()
-    .matches(/^[6-9]\d{9}$|^\+[1-9]\d{9,14}$/).withMessage('Please enter a valid phone number'),
+    .custom((value) => {
+      if (value && value.trim() !== '') {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(value.trim())) {
+          throw new Error('Please enter a valid email address');
+        }
+      }
+      return true;
+    }),
 
-  body('clientEmail')
+  body('clientDetails.notes')
     .optional()
     .trim()
-    .isEmail().withMessage('Please enter a valid email address')
-    .normalizeEmail(),
+    .isLength({ max: 500 }).withMessage('Client notes cannot exceed 500 characters'),
 
-  body('notes')
+  body('partnerNotes')
     .optional()
     .trim()
     .isLength({ max: 1000 }).withMessage('Notes cannot exceed 1000 characters'),
-
-  body('source')
-    .optional()
-    .isIn(['website', 'referral', 'social', 'direct', 'other'])
-    .withMessage('Invalid source'),
 
   handleValidationErrors
 ];

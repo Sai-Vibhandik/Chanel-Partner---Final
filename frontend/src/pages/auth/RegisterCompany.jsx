@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { validateEmail, validatePhone, validateName, validatePassword, handlePhoneInput } from '../../utils/validation';
 
 const RegisterCompany = () => {
   const [formData, setFormData] = useState({
@@ -16,6 +17,7 @@ const RegisterCompany = () => {
     confirmPassword: ''
   });
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
@@ -24,8 +26,31 @@ const RegisterCompany = () => {
   const { registerCompany } = useAuth();
   const navigate = useNavigate();
 
+  // Helper to extract validation errors from API response
+  const getValidationErrors = (err) => {
+    const errors = err.response?.data?.errors;
+    if (errors && Array.isArray(errors) && errors.length > 0) {
+      const fieldErrs = {};
+      errors.forEach(e => {
+        if (e.field) {
+          fieldErrs[e.field] = e.message;
+        }
+      });
+      return { fieldErrors: fieldErrs, message: errors.map(e => e.message).join(', ') };
+    }
+    return { fieldErrors: {}, message: err.response?.data?.message || 'Registration failed. Please try again.' };
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    // Clear field error when user starts typing
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
     if (type === 'checkbox') {
       setFormData((prev) => ({
         ...prev,
@@ -38,26 +63,75 @@ const RegisterCompany = () => {
     }
   };
 
+  const handlePhoneChange = (e) => {
+    const value = handlePhoneInput(e, null, null);
+    setFormData(prev => ({ ...prev, phone: value }));
+    if (fieldErrors.phone) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.phone;
+        return newErrors;
+      });
+    }
+  };
+
+  const validateStep1 = () => {
+    const errors = {};
+
+    if (!formData.companyName.trim()) {
+      errors.companyName = 'Company name is required';
+    }
+
+    const emailError = validateEmail(formData.email);
+    if (emailError) errors.email = emailError;
+
+    if (formData.phone) {
+      const phoneError = validatePhone(formData.phone);
+      if (phoneError) errors.phone = phoneError;
+    }
+
+    if (!formData.regions.length) {
+      errors.regions = 'Please select at least one region';
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateStep2 = () => {
+    const errors = {};
+
+    const firstNameError = validateName(formData.firstName, 'First name');
+    if (firstNameError) errors.firstName = firstNameError;
+
+    const lastNameError = validateName(formData.lastName, 'Last name');
+    if (lastNameError) errors.lastName = lastNameError;
+
+    const passwordError = validatePassword(formData.password);
+    if (passwordError) errors.password = passwordError;
+
+    if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
 
     if (step === 1) {
-      if (!formData.regions.length) {
-        setError('Please select at least one region');
+      if (!validateStep1()) {
         return;
       }
       setStep(2);
       return;
     }
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!validateStep2()) {
       return;
     }
 
@@ -77,7 +151,9 @@ const RegisterCompany = () => {
       });
       setRegistrationSuccess(true);
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+      const { fieldErrors: errs, message } = getValidationErrors(err);
+      setFieldErrors(errs);
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -240,11 +316,21 @@ const RegisterCompany = () => {
           {/* Error Message */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p className="text-sm text-red-700">{error}</p>
+                <div className="text-sm text-red-700">
+                  {Object.keys(fieldErrors).length > 0 ? (
+                    <ul className="list-disc list-inside space-y-1">
+                      {Object.entries(fieldErrors).map(([field, msg]) => (
+                        <li key={field}>{msg}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>{error}</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -264,9 +350,11 @@ const RegisterCompany = () => {
                     required
                     value={formData.companyName}
                     onChange={handleChange}
-                    className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400"
+                    maxLength={100}
+                    className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.companyName ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                     placeholder="ABC Developers"
                   />
+                  {fieldErrors.companyName && <p className="mt-1 text-sm text-red-600">{fieldErrors.companyName}</p>}
                 </div>
 
                 <div>
@@ -280,9 +368,11 @@ const RegisterCompany = () => {
                     required
                     value={formData.email}
                     onChange={handleChange}
-                    className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400"
+                    maxLength={100}
+                    className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                     placeholder="info@company.com"
                   />
+                  {fieldErrors.email && <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -295,10 +385,12 @@ const RegisterCompany = () => {
                       name="phone"
                       type="tel"
                       value={formData.phone}
-                      onChange={handleChange}
-                      className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400"
-                      placeholder="+91 9876543210"
+                      onChange={handlePhoneChange}
+                      maxLength={16}
+                      className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                      placeholder="10-digit mobile number"
                     />
+                    {fieldErrors.phone && <p className="mt-1 text-sm text-red-600">{fieldErrors.phone}</p>}
                   </div>
                   <div>
                     <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-2">
@@ -310,9 +402,11 @@ const RegisterCompany = () => {
                       type="url"
                       value={formData.website}
                       onChange={handleChange}
-                      className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400"
+                      maxLength={200}
+                      className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.website ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                       placeholder="https://..."
                     />
+                    {fieldErrors.website && <p className="mt-1 text-sm text-red-600">{fieldErrors.website}</p>}
                   </div>
                 </div>
 
@@ -344,6 +438,7 @@ const RegisterCompany = () => {
                       <span className="ml-3 text-sm text-gray-700">Dubai/UAE (AED, DLD Compliance)</span>
                     </label>
                   </div>
+                  {fieldErrors.regions && <p className="mt-1 text-sm text-red-600">{fieldErrors.regions}</p>}
                 </div>
 
                 <div>
@@ -389,9 +484,11 @@ const RegisterCompany = () => {
                       required
                       value={formData.firstName}
                       onChange={handleChange}
-                      className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400"
+                      maxLength={50}
+                      className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.firstName ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                       placeholder="John"
                     />
+                    {fieldErrors.firstName && <p className="mt-1 text-sm text-red-600">{fieldErrors.firstName}</p>}
                   </div>
                   <div>
                     <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
@@ -404,9 +501,11 @@ const RegisterCompany = () => {
                       required
                       value={formData.lastName}
                       onChange={handleChange}
-                      className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400"
+                      maxLength={50}
+                      className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.lastName ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                       placeholder="Doe"
                     />
+                    {fieldErrors.lastName && <p className="mt-1 text-sm text-red-600">{fieldErrors.lastName}</p>}
                   </div>
                 </div>
 
@@ -422,8 +521,9 @@ const RegisterCompany = () => {
                       required
                       value={formData.password}
                       onChange={handleChange}
-                      className="block w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400"
-                      placeholder="Min 8 characters"
+                      maxLength={128}
+                      className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                      placeholder="Min 8 chars, uppercase, lowercase, number"
                     />
                     <button
                       type="button"
@@ -442,6 +542,7 @@ const RegisterCompany = () => {
                       )}
                     </button>
                   </div>
+                  {fieldErrors.password && <p className="mt-1 text-sm text-red-600">{fieldErrors.password}</p>}
                 </div>
 
                 <div>
@@ -455,9 +556,11 @@ const RegisterCompany = () => {
                     required
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400"
+                    maxLength={128}
+                    className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                     placeholder="Confirm password"
                   />
+                  {fieldErrors.confirmPassword && <p className="mt-1 text-sm text-red-600">{fieldErrors.confirmPassword}</p>}
                 </div>
 
                 <div className="flex space-x-4 pt-2">

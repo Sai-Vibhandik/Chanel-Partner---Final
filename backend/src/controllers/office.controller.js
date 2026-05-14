@@ -405,7 +405,7 @@ export const getAvailableSlots = async (req, res, next) => {
           scheduledDate: { $gte: startOfDay, $lte: endOfDay },
           scheduledTime: slot.startTime,
           ...(officeId && { "officeLocation._id": officeId }),
-          status: { $in: ["pending", "approved"] },
+          status: 'approved', // Only count approved visits, not pending
         });
 
         return {

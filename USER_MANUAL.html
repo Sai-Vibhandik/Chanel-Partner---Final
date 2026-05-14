@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Channel Partner Portal - User Manual</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+            color: #000;
+        }
+        h1 {
+            font-size: 24px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            margin-top: 30px;
+        }
+        h2 {
+            font-size: 18px;
+            margin-top: 25px;
+            font-weight: bold;
+        }
+        h3 {
+            font-size: 16px;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        h4 {
+            font-size: 14px;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #000;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+        .note {
+            border-left: 3px solid #000;
+            padding: 10px 15px;
+            margin: 15px 0;
+            background-color: #f9f9f9;
+        }
+        .step {
+            margin: 10px 0;
+            padding-left: 30px;
+            position: relative;
+        }
+        .step:before {
+            content: counter(step) ". ";
+            counter-increment: step;
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+        ol.steps {
+            counter-reset: step;
+            list-style: none;
+            padding-left: 0;
+        }
+        ul, ol {
+            margin: 10px 0;
+            padding-left: 25px;
+        }
+        li {
+            margin: 5px 0;
+        }
+        .toc {
+            border: 1px solid #000;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .cover {
+            text-align: center;
+            padding: 60px 0;
+            border-bottom: 2px solid #000;
+            margin-bottom: 30px;
+        }
+        .cover h1 {
+            font-size: 28px;
+            border: none;
+            margin-bottom: 10px;
+        }
+        .cover p {
+            font-size: 16px;
+            color: #333;
+        }
+        @media print {
+            .page-break {
+                page-break-before: always;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- COVER PAGE -->
+    <div class="cover">
+        <h1>Channel Partner Portal</h1>
+        <p>User Manual & Demo Guide</p>
+        <p style="margin-top: 30px; font-size: 14px;">
+            Version 1.0 | May 2026
+        </p>
+    </div>
+
+    <!-- TABLE OF CONTENTS -->
+    <div class="toc">
+        <h2 style="margin-top: 0;">Table of Contents</h2>
+        <ol>
+            <li>Introduction</li>
+            <li>Getting Started
+                <ul style="list-style-type: disc;">
+                    <li>Registration</li>
+                    <li>Login</li>
+                    <li>Password Recovery</li>
+                </ul>
+            </li>
+            <li>User Roles Overview</li>
+            <li>Company Admin Guide</li>
+            <li>Partner Manager Guide</li>
+            <li>Property Manager Guide</li>
+            <li>Finance Manager Guide</li>
+            <li>Channel Partner Guide</li>
+            <li>Common Features</li>
+            <li>Troubleshooting & FAQs</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 1: INTRODUCTION -->
+    <h1>1. Introduction</h1>
+
+    <h2>Welcome to Channel Partner Portal</h2>
+    <p>
+        The Channel Partner Portal is a comprehensive platform designed for Real Estate Development Companies
+        to manage their channel partners, properties, site visits, commissions, and legal agreements efficiently.
+    </p>
+
+    <h3>What This Portal Offers</h3>
+    <ul>
+        <li><strong>Partner Management</strong> - Onboard, verify, and manage channel partners with ease</li>
+        <li><strong>Property Listings</strong> - Showcase properties to partners for client visits</li>
+        <li><strong>Visit Scheduling</strong> - Book and manage site visits, office visits, and virtual tours</li>
+        <li><strong>Commission Tracking</strong> - Track and process partner commissions transparently</li>
+        <li><strong>Agreement Management</strong> - Create, assign, and collect digital signatures on agreements</li>
+        <li><strong>Real-time Communication</strong> - Chat and notification system for seamless communication</li>
+    </ul>
+
+    <h3>Who Can Use This Portal</h3>
+    <table>
+        <tr>
+            <th>User Type</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Real Estate Companies</td>
+            <td>Property developers who want to manage their channel partner network</td>
+        </tr>
+        <tr>
+            <td>Channel Partners</td>
+            <td>Real estate agents/agencies who bring clients to properties</td>
+        </tr>
+        <tr>
+            <td>Company Staff</td>
+            <td>Employees managing partners, properties, finances, etc.</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 2: GETTING STARTED -->
+    <h1>2. Getting Started</h1>
+
+    <h2 id="registration">2.1 Registration</h2>
+    <p>Before you can access the portal, you need to register your account. Choose the appropriate registration path:</p>
+
+    <h3>Option A: Register as a Company</h3>
+    <p>Use this option if you are a Real Estate Development Company wanting to use the platform.</p>
+
+    <ol class="steps">
+        <li class="step"><strong>Navigate to Registration Page</strong> - Go to the portal URL and click on "Register Company" button on the login page.</li>
+        <li class="step"><strong>Fill Company Details</strong> - Enter the following information:
+            <ul>
+                <li>Company Name</li>
+                <li>Company Email (This will be the admin email)</li>
+                <li>Phone Number</li>
+                <li>Password (Minimum 8 characters with uppercase, lowercase, number, and special character)</li>
+                <li>Company Website (Optional)</li>
+                <li>Company Address</li>
+            </ul>
+        </li>
+        <li class="step"><strong>Verify Your Email</strong> - After submitting, you will receive a verification email. Click the verification link to activate your account.</li>
+        <li class="step"><strong>Complete Profile</strong> - After verification, log in and complete your company profile by adding logo and additional details.</li>
+    </ol>
+
+    <div class="note">
+        <strong>Note:</strong> The email used during company registration becomes the Company Super Admin account. This account has full access to all company features.
+    </div>
+
+    <h3>Option B: Register as a Partner</h3>
+    <p>Use this option if you are a Real Estate Agent or Agency wanting to partner with companies.</p>
+
+    <ol class="steps">
+        <li class="step"><strong>Navigate to Registration Page</strong> - Go to the portal URL and click on "Register Partner" button on the login page.</li>
+        <li class="step"><strong>Fill Personal Details</strong> - Enter the following information:
+            <ul>
+                <li>Full Name</li>
+                <li>Email Address</li>
+                <li>Phone Number</li>
+                <li>Password</li>
+            </ul>
+        </li>
+        <li class="step"><strong>Verify Your Email</strong> - Click the verification link sent to your email to activate your account.</li>
+        <li class="step"><strong>Complete KYC (Know Your Customer)</strong> - Upload required KYC documents to verify your identity. This may include:
+            <ul>
+                <li>Government ID (PAN Card / Aadhaar Card)</li>
+                <li>Address Proof</li>
+                <li>Business Registration (if applicable)</li>
+            </ul>
+        </li>
+        <li class="step"><strong>Apply to Companies</strong> - After registration, browse and apply to partner with real estate companies on the platform.</li>
+    </ol>
+
+    <h2>2.2 Login</h2>
+
+    <ol class="steps">
+        <li class="step"><strong>Go to Login Page</strong> - Navigate to the portal URL. You will see the login form.</li>
+        <li class="step"><strong>Enter Credentials</strong> - Enter your registered email address and password.</li>
+        <li class="step"><strong>Access Your Dashboard</strong> - After successful login, you will be redirected to your role-specific dashboard.</li>
+    </ol>
+
+    <table>
+        <tr>
+            <th>Your Role</th>
+            <th>Dashboard You Will See</th>
+        </tr>
+        <tr>
+            <td>Company Super Admin</td>
+            <td>Company Dashboard</td>
+        </tr>
+        <tr>
+            <td>Partner Manager</td>
+            <td>Partner Manager Dashboard</td>
+        </tr>
+        <tr>
+            <td>Property Manager</td>
+            <td>Property Manager Dashboard</td>
+        </tr>
+        <tr>
+            <td>Finance Manager</td>
+            <td>Finance Manager Dashboard</td>
+        </tr>
+        <tr>
+            <td>Channel Partner</td>
+            <td>Partner Dashboard</td>
+        </tr>
+    </table>
+
+    <h2>2.3 Password Recovery</h2>
+    <p>If you forget your password, follow these steps:</p>
+
+    <ol class="steps">
+        <li class="step"><strong>Click "Forgot Password"</strong> - On the login page, click the "Forgot Password" link below the login form.</li>
+        <li class="step"><strong>Enter Your Email</strong> - Enter the email address associated with your account.</li>
+        <li class="step"><strong>Check Your Email</strong> - You will receive a password reset link. Click the link in the email.</li>
+        <li class="step"><strong>Create New Password</strong> - Enter your new password and confirm it. The link expires after a limited time.</li>
+    </ol>
+
+    <div class="note">
+        <strong>Security Tip:</strong> Choose a strong password with at least 8 characters including uppercase, lowercase, numbers, and special characters. Never share your password with anyone.
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 3: USER ROLES -->
+    <h1>3. User Roles Overview</h1>
+
+    <p>The portal supports multiple user roles, each with specific permissions and access levels.</p>
+
+    <h2>3.1 Role Descriptions</h2>
+
+    <table>
+        <tr>
+            <th>Role</th>
+            <th>Who Uses It</th>
+            <th>Key Permissions</th>
+        </tr>
+        <tr>
+            <td>Platform Admin</td>
+            <td>Portal administrators</td>
+            <td>Full access to all companies and platform settings</td>
+        </tr>
+        <tr>
+            <td>Company Super Admin</td>
+            <td>Company owners/directors</td>
+            <td>Full access to company settings, staff management, all reports</td>
+        </tr>
+        <tr>
+            <td>Partner Manager</td>
+            <td>Staff managing partners</td>
+            <td>Approve partners, manage visits, view partner performance</td>
+        </tr>
+        <tr>
+            <td>Property Manager</td>
+            <td>Staff managing properties</td>
+            <td>Create/edit properties, upload images, manage property details</td>
+        </tr>
+        <tr>
+            <td>Finance Manager</td>
+            <td>Finance department staff</td>
+            <td>Manage commissions, approve payments, financial reports</td>
+        </tr>
+        <tr>
+            <td>Viewer</td>
+            <td>Read-only users</td>
+            <td>View data without editing permissions</td>
+        </tr>
+        <tr>
+            <td>Channel Partner</td>
+            <td>Real estate agents/agencies</td>
+            <td>Book visits, view assigned properties, track commissions</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 4: COMPANY ADMIN GUIDE -->
+    <h1>4. Company Admin Guide</h1>
+
+    <p>As a Company Super Admin, you have full control over your company's presence on the platform.</p>
+
+    <h2>4.1 Dashboard Overview</h2>
+    <p>The Company Admin Dashboard displays:</p>
+    <ul>
+        <li><strong>Total Partners:</strong> Count of active partners</li>
+        <li><strong>Active Properties:</strong> Number of listed properties</li>
+        <li><strong>Pending Visits:</strong> Visits awaiting approval</li>
+        <li><strong>Pending Commissions:</strong> Commissions awaiting approval</li>
+        <li><strong>Recent Activity:</strong> Latest actions on the platform</li>
+    </ul>
+
+    <h2>4.2 Managing Company Profile</h2>
+
+    <h3>To Update Company Profile:</h3>
+    <ol class="steps">
+        <li class="step">Click on <strong>Settings</strong> in the sidebar</li>
+        <li class="step">Update company details (name, description, address, contact info)</li>
+        <li class="step">Upload company logo</li>
+        <li class="step">Click <strong>Save Changes</strong></li>
+    </ol>
+
+    <h2>4.3 Managing Team Members</h2>
+
+    <h3>To Add Team Members:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Team</strong> from the sidebar</li>
+        <li class="step">Click <strong>Add Team Member</strong> button</li>
+        <li class="step">Enter member details:
+            <ul>
+                <li>Full Name</li>
+                <li>Email Address</li>
+                <li>Phone Number</li>
+                <li>Role (Partner Manager, Property Manager, Finance Manager, or Viewer)</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Send Invitation</strong></li>
+    </ol>
+
+    <div class="note">
+        <strong>Note:</strong> The invited member will receive an email with login instructions. They must verify their email before accessing the platform.
+    </div>
+
+    <h3>To Edit Team Member:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Team</strong> page</li>
+        <li class="step">Find the member and click <strong>Edit</strong></li>
+        <li class="step">Update role or details</li>
+        <li class="step">Click <strong>Save</strong></li>
+    </ol>
+
+    <h3>To Deactivate Team Member:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Team</strong> page</li>
+        <li class="step">Find the member and click <strong>Deactivate</strong></li>
+    </ol>
+
+    <h2>4.4 Managing Partners</h2>
+
+    <h3>To View Partner Applications:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Partners</strong> from the sidebar</li>
+        <li class="step">Filter by status: Pending, Active, Rejected, Suspended</li>
+    </ol>
+
+    <h3>To Approve/Reject Partner Application:</h3>
+    <ol class="steps">
+        <li class="step">Click on a pending partner application</li>
+        <li class="step">Review KYC documents uploaded by the partner</li>
+        <li class="step">Click <strong>Approve</strong> or <strong>Reject</strong></li>
+        <li class="step">If approving, set the commission rate for this partner</li>
+    </ol>
+
+    <h3>To Assign Properties to Partner:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Partners</strong> and click on partner name</li>
+        <li class="step">In partner details, find <strong>Assigned Properties</strong> section</li>
+        <li class="step">Click <strong>Edit</strong> and select properties to assign</li>
+        <li class="step">Click <strong>Save</strong></li>
+    </ol>
+
+    <h2>4.5 Managing Office Locations</h2>
+    <p>Office locations are used for scheduling office visits with partners.</p>
+
+    <h3>To Add Office Location:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Office Management</strong> from sidebar</li>
+        <li class="step">Click <strong>Add Office</strong></li>
+        <li class="step">Enter office details:
+            <ul>
+                <li>Office Name</li>
+                <li>Address (Street, City, State, Pincode)</li>
+                <li>Contact Number</li>
+                <li>Working Hours (Start Time, End Time)</li>
+                <li>Capacity (Max concurrent visits)</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Save</strong></li>
+    </ol>
+
+    <h2>4.6 Managing Agreements</h2>
+
+    <h3>To Create Agreement Template:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Agreements</strong> from sidebar</li>
+        <li class="step">Click <strong>Create Agreement</strong></li>
+        <li class="step">Enter agreement details:
+            <ul>
+                <li>Agreement Title</li>
+                <li>Agreement Type (Partnership, NDA, Commission, etc.)</li>
+                <li>Content (Use the text editor)</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Save as Draft</strong> or <strong>Publish</strong></li>
+    </ol>
+
+    <h3>To Assign Agreement to Partners:</h3>
+    <ol class="steps">
+        <li class="step">Open the agreement</li>
+        <li class="step">Click <strong>Assign to Partners</strong></li>
+        <li class="step">Select partners from the list</li>
+        <li class="step">Click <strong>Send for Signature</strong></li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 5: PARTNER MANAGER GUIDE -->
+    <h1>5. Partner Manager Guide</h1>
+
+    <p>As a Partner Manager, you are responsible for managing channel partners and their visit requests.</p>
+
+    <h2>5.1 Dashboard Overview</h2>
+    <ul>
+        <li><strong>Total Partners:</strong> Count of partners under management</li>
+        <li><strong>Pending Applications:</strong> New partner applications to review</li>
+        <li><strong>Today's Visits:</strong> Visits scheduled for today</li>
+        <li><strong>Pending Approvals:</strong> Visit requests awaiting action</li>
+    </ul>
+
+    <h2>5.2 Managing Partner Applications</h2>
+
+    <h3>To Review Partner Application:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Partners</strong> page</li>
+        <li class="step">Click on <strong>Pending</strong> tab or filter by "Pending" status</li>
+        <li class="step">Click on partner name to view details</li>
+        <li class="step">Review KYC documents:
+            <ul>
+                <li>PAN Card</li>
+                <li>Aadhaar Card</li>
+                <li>Business Registration (if applicable)</li>
+                <li>Other documents</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Approve</strong> or <strong>Reject</strong> with reason</li>
+    </ol>
+
+    <h2>5.3 Managing Visits</h2>
+
+    <h3>To View Visit Requests:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Visits</strong> from sidebar</li>
+        <li class="step">View all visit requests with status filters:
+            <ul>
+                <li>Pending</li>
+                <li>Approved</li>
+                <li>Rejected</li>
+                <li>Completed</li>
+                <li>Deal Closed</li>
+                <li>Cancelled</li>
+            </ul>
+        </li>
+    </ol>
+
+    <h3>To Approve/Reject Visit Request:</h3>
+    <ol class="steps">
+        <li class="step">Click on a visit request to view details</li>
+        <li class="step">Review:
+            <ul>
+                <li>Partner information</li>
+                <li>Property details</li>
+                <li>Client details</li>
+                <li>Requested date and time</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Approve</strong> or <strong>Reject</strong></li>
+        <li class="step">Add notes if needed</li>
+    </ol>
+
+    <h3>To Mark Visit as Completed:</h3>
+    <ol class="steps">
+        <li class="step">Open an approved visit</li>
+        <li class="step">Click <strong>Mark as Completed</strong> or <strong>Mark as Deal Closed</strong></li>
+        <li class="step">Add visit notes and feedback</li>
+    </ol>
+
+    <h2>5.4 Assigning Properties to Partners</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Partners</strong> and click on partner name</li>
+        <li class="step">In <strong>Assigned Properties</strong> section, click Edit</li>
+        <li class="step">Select properties from the dropdown</li>
+        <li class="step">Click <strong>Save</strong></li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 6: PROPERTY MANAGER GUIDE -->
+    <h1>6. Property Manager Guide</h1>
+
+    <p>As a Property Manager, you manage all property listings for your company.</p>
+
+    <h2>6.1 Dashboard Overview</h2>
+    <ul>
+        <li><strong>Total Properties:</strong> Count of all listed properties</li>
+        <li><strong>Active Properties:</strong> Currently available properties</li>
+        <li><strong>Sold Out:</strong> Properties no longer available</li>
+        <li><strong>Recent Properties:</strong> Latest additions</li>
+    </ul>
+
+    <h2>6.2 Adding New Property</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Properties</strong> from sidebar</li>
+        <li class="step">Click <strong>Add Property</strong> button</li>
+        <li class="step">Fill in property details:</li>
+    </ol>
+
+    <table>
+        <tr>
+            <th>Field</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+        <tr>
+            <td>Property Name</td>
+            <td>Name of the project/property</td>
+            <td>Yes</td>
+        </tr>
+        <tr>
+            <td>Property Type</td>
+            <td>Residential, Commercial, Plot, etc.</td>
+            <td>Yes</td>
+        </tr>
+        <tr>
+            <td>Status</td>
+            <td>Under Construction, Ready to Move, etc.</td>
+            <td>Yes</td>
+        </tr>
+        <tr>
+            <td>Location</td>
+            <td>Address, City, State, Pincode</td>
+            <td>Yes</td>
+        </tr>
+        <tr>
+            <td>Price Range</td>
+            <td>Starting from price</td>
+            <td>Yes</td>
+        </tr>
+        <tr>
+            <td>Configuration</td>
+            <td>1BHK, 2BHK, 3BHK, etc.</td>
+            <td>No</td>
+        </tr>
+        <tr>
+            <td>Total Units</td>
+            <td>Number of units available</td>
+            <td>No</td>
+        </tr>
+        <tr>
+            <td>Description</td>
+            <td>Detailed description</td>
+            <td>Yes</td>
+        </tr>
+        <tr>
+            <td>Amenities</td>
+            <td>List of amenities</td>
+            <td>No</td>
+        </tr>
+        <tr>
+            <td>Images</td>
+            <td>Property photos</td>
+            <td>Yes</td>
+        </tr>
+        <tr>
+            <td>Documents</td>
+            <td>Brochures, floor plans, etc.</td>
+            <td>No</td>
+        </tr>
+    </table>
+
+    <ol class="steps" start="4">
+        <li class="step">Upload property images (multiple allowed)</li>
+        <li class="step">Upload documents (brochure, floor plans, legal documents)</li>
+        <li class="step">Click <strong>Create Property</strong></li>
+    </ol>
+
+    <h2>6.3 Editing Property</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Properties</strong> page</li>
+        <li class="step">Find the property and click <strong>Edit</strong></li>
+        <li class="step">Update the required fields</li>
+        <li class="step">Click <strong>Save Changes</strong></li>
+    </ol>
+
+    <h2>6.4 Managing Property Status</h2>
+
+    <table>
+        <tr>
+            <th>Status</th>
+            <th>Meaning</th>
+        </tr>
+        <tr>
+            <td>Available</td>
+            <td>Property is open for booking visits</td>
+        </tr>
+        <tr>
+            <td>Under Construction</td>
+            <td>Property is being built, visits possible</td>
+        </tr>
+        <tr>
+            <td>Sold Out</td>
+            <td>All units sold, no visits accepted</td>
+        </tr>
+        <tr>
+            <td>On Hold</td>
+            <td>Temporarily not accepting visits</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 7: FINANCE MANAGER GUIDE -->
+    <h1>7. Finance Manager Guide</h1>
+
+    <p>As a Finance Manager, you manage commissions and payment tracking for partners.</p>
+
+    <h2>7.1 Dashboard Overview</h2>
+    <ul>
+        <li><strong>Total Commissions:</strong> All-time commission amount</li>
+        <li><strong>Pending Amount:</strong> Commissions awaiting approval</li>
+        <li><strong>Paid Amount:</strong> Completed payments</li>
+        <li><strong>Due This Month:</strong> Upcoming payments</li>
+    </ul>
+
+    <h2>7.2 Creating Commission</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Commissions</strong> from sidebar</li>
+        <li class="step">Click <strong>Add Commission</strong></li>
+        <li class="step">Select the visit (must be marked as "Deal Closed")</li>
+        <li class="step">Enter commission details:
+            <ul>
+                <li>Deal Value</li>
+                <li>Commission Percentage (or override default rate)</li>
+                <li>Commission Amount (auto-calculated)</li>
+                <li>Notes/Remarks</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Create Commission</strong></li>
+    </ol>
+
+    <div class="note">
+        <strong>Note:</strong> Commissions can only be created for visits with status "Deal Closed". The system automatically calculates commission based on the partner's assigned rate.
+    </div>
+
+    <h2>7.3 Approving Commissions</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Commissions</strong> and filter by "Pending"</li>
+        <li class="step">Click on a commission to view details</li>
+        <li class="step">Review:
+            <ul>
+                <li>Partner details</li>
+                <li>Property and deal value</li>
+                <li>Commission calculation</li>
+                <li>Visit notes</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Approve</strong> or <strong>Reject</strong></li>
+    </ol>
+
+    <h2>7.4 Marking Commission as Paid</h2>
+
+    <ol class="steps">
+        <li class="step">Open an approved commission</li>
+        <li class="step">Click <strong>Mark as Paid</strong></li>
+        <li class="step">Enter payment details:
+            <ul>
+                <li>Payment Date</li>
+                <li>Payment Reference/Transaction ID</li>
+                <li>Payment Mode</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Confirm Payment</strong></li>
+    </ol>
+
+    <h2>7.5 Commission Status Flow</h2>
+
+    <table>
+        <tr>
+            <th>Status</th>
+            <th>Description</th>
+            <th>Next Action</th>
+        </tr>
+        <tr>
+            <td>Pending</td>
+            <td>Commission created, awaiting approval</td>
+            <td>Approve or Reject</td>
+        </tr>
+        <tr>
+            <td>Approved</td>
+            <td>Commission approved, payment pending</td>
+            <td>Mark as Paid</td>
+        </tr>
+        <tr>
+            <td>Paid</td>
+            <td>Payment completed</td>
+            <td>No further action</td>
+        </tr>
+        <tr>
+            <td>Rejected</td>
+            <td>Commission rejected</td>
+            <td>Can be re-created if needed</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 8: CHANNEL PARTNER GUIDE -->
+    <h1>8. Channel Partner Guide</h1>
+
+    <p>As a Channel Partner, you can apply to companies, book visits for your clients, and track your commissions.</p>
+
+    <h2>8.1 Dashboard Overview</h2>
+    <ul>
+        <li><strong>Active Partnerships:</strong> Companies you are partnered with</li>
+        <li><strong>Total Visits:</strong> All your booked visits</li>
+        <li><strong>Pending Visits:</strong> Visits awaiting approval</li>
+        <li><strong>Total Earnings:</strong> Your commission earnings</li>
+    </ul>
+
+    <h2>8.2 Applying for Partnership</h2>
+
+    <ol class="steps">
+        <li class="step">Complete your profile and KYC verification</li>
+        <li class="step">Go to <strong>My Companies</strong> from sidebar</li>
+        <li class="step">Click <strong>Apply to Company</strong></li>
+        <li class="step">Select the company you want to partner with</li>
+        <li class="step">Upload required documents:
+            <ul>
+                <li>PAN Card</li>
+                <li>Aadhaar Card</li>
+                <li>Business Registration (if applicable)</li>
+                <li>Any other documents requested</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Submit Application</strong></li>
+    </ol>
+
+    <div class="note">
+        <strong>Note:</strong> Your application will be reviewed by the company. You will be notified via email once approved.
+    </div>
+
+    <h2>8.3 Browsing Properties</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Properties</strong> from sidebar</li>
+        <li class="step">View properties assigned to you by partnered companies</li>
+        <li class="step">Filter by:
+            <ul>
+                <li>Company</li>
+                <li>Property Type</li>
+                <li>Location</li>
+                <li>Status</li>
+            </ul>
+        </li>
+        <li class="step">Click on property to view details, amenities, images, and documents</li>
+    </ol>
+
+    <h2>8.4 Booking a Visit</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Visits</strong> from sidebar</li>
+        <li class="step">Click <strong>Book New Visit</strong></li>
+        <li class="step">Select Company (from your active partnerships)</li>
+        <li class="step">Select Property (from company's assigned properties)</li>
+        <li class="step">Choose Visit Type:
+            <ul>
+                <li><strong>Site Visit:</strong> Visit at the property location</li>
+                <li><strong>Office Visit:</strong> Meeting at company office</li>
+                <li><strong>Virtual Tour:</strong> Online video tour</li>
+            </ul>
+        </li>
+        <li class="step">Enter the purpose of visit</li>
+        <li class="step"><strong>Optional:</strong> Check "I'm bringing a client with me" and fill client details:
+            <ul>
+                <li>Client Name</li>
+                <li>Client Phone Number</li>
+                <li>Client Email (Optional)</li>
+            </ul>
+        </li>
+        <li class="step">For Office Visits: Select office location and available time slot</li>
+        <li class="step">Select Date (for Site/Virtual visits, also select time)</li>
+        <li class="step">Add any notes for the company</li>
+        <li class="step">Click <strong>Book Visit</strong></li>
+    </ol>
+
+    <div class="note">
+        <strong>Success:</strong> Your visit request has been submitted. You will be notified once the company approves or rejects your request.
+    </div>
+
+    <h2>8.5 Managing Your Visits</h2>
+
+    <h3>To View Your Visits:</h3>
+    <ol class="steps">
+        <li class="step">Go to <strong>Visits</strong> page</li>
+        <li class="step">View all your visits with status filters</li>
+    </ol>
+
+    <h3>To Cancel a Visit:</h3>
+    <ol class="steps">
+        <li class="step">Find the visit (must be in Pending or Approved status)</li>
+        <li class="step">Click <strong>Cancel</strong></li>
+        <li class="step">Confirm cancellation</li>
+    </ol>
+
+    <h2>8.6 Tracking Commissions</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Commissions</strong> from sidebar</li>
+        <li class="step">View all your commissions:
+            <ul>
+                <li>Pending commissions</li>
+                <li>Approved commissions awaiting payment</li>
+                <li>Paid commissions</li>
+            </ul>
+        </li>
+    </ol>
+
+    <h2>8.7 Signing Agreements</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Agreements</strong> from sidebar</li>
+        <li class="step">View agreements assigned to you</li>
+        <li class="step">Click on agreement to view details</li>
+        <li class="step">Read the agreement content carefully</li>
+        <li class="step">Click <strong>Sign Agreement</strong></li>
+        <li class="step">Follow the e-signature process</li>
+        <li class="step">Confirm your signature</li>
+    </ol>
+
+    <h2>8.8 Communicating with Company</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Chat</strong> from sidebar</li>
+        <li class="step">Select the company you want to message</li>
+        <li class="step">Type your message and send</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 9: COMMON FEATURES -->
+    <h1>9. Common Features</h1>
+
+    <h2>9.1 Profile Settings</h2>
+    <p>All users can update their profile information.</p>
+
+    <ol class="steps">
+        <li class="step">Click on your profile icon (top right corner)</li>
+        <li class="step">Select <strong>Profile Settings</strong></li>
+        <li class="step">Update your information:
+            <ul>
+                <li>Profile Photo</li>
+                <li>Name</li>
+                <li>Phone Number</li>
+                <li>Email (requires verification)</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Save Changes</strong></li>
+    </ol>
+
+    <h2>9.2 Changing Password</h2>
+
+    <ol class="steps">
+        <li class="step">Go to <strong>Profile Settings</strong></li>
+        <li class="step">Click on <strong>Change Password</strong> tab</li>
+        <li class="step">Enter:
+            <ul>
+                <li>Current Password</li>
+                <li>New Password</li>
+                <li>Confirm New Password</li>
+            </ul>
+        </li>
+        <li class="step">Click <strong>Update Password</strong></li>
+    </ol>
+
+    <h2>9.3 Notifications</h2>
+    <p>View all your notifications by clicking the bell icon in the header.</p>
+
+    <table>
+        <tr>
+            <th>Notification Type</th>
+            <th>When You Receive It</th>
+        </tr>
+        <tr>
+            <td>Visit Approved</td>
+            <td>When company approves your visit request</td>
+        </tr>
+        <tr>
+            <td>Visit Rejected</td>
+            <td>When company rejects your visit request</td>
+        </tr>
+        <tr>
+            <td>Partnership Approved</td>
+            <td>When company approves your partnership</td>
+        </tr>
+        <tr>
+            <td>Commission Created</td>
+            <td>When a new commission is created for you</td>
+        </tr>
+        <tr>
+            <td>Commission Paid</td>
+            <td>When your commission is paid</td>
+        </tr>
+        <tr>
+            <td>New Agreement</td>
+            <td>When an agreement is assigned to you</td>
+        </tr>
+        <tr>
+            <td>New Message</td>
+            <td>When you receive a chat message</td>
+        </tr>
+    </table>
+
+    <h2>9.4 Exporting Data</h2>
+    <p>Many pages have an Export button to download data as CSV or Excel.</p>
+
+    <ol class="steps">
+        <li class="step">Go to any list page (Visits, Properties, Commissions, etc.)</li>
+        <li class="step">Apply any filters if needed</li>
+        <li class="step">Click <strong>Export</strong> button</li>
+        <li class="step">Choose format (CSV or Excel)</li>
+        <li class="step">File will download automatically</li>
+    </ol>
+
+    <h2>9.5 Logging Out</h2>
+
+    <ol class="steps">
+        <li class="step">Click on your profile icon (top right)</li>
+        <li class="step">Click <strong>Logout</strong></li>
+    </ol>
+
+    <div class="note">
+        <strong>Security Tip:</strong> Always log out when using shared or public computers.
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- SECTION 10: TROUBLESHOOTING -->
+    <h1>10. Troubleshooting & FAQs</h1>
+
+    <h2>10.1 Frequently Asked Questions</h2>
+
+    <p><strong>Q: I did not receive the verification email. What should I do?</strong></p>
+    <p>A: Check your spam/junk folder. If still not found, go to login page and click "Resend Verification Email". Enter your registered email address.</p>
+
+    <p><strong>Q: My account is locked. How do I unlock it?</strong></p>
+    <p>A: After multiple failed login attempts, accounts are temporarily locked. Wait 15 minutes and try again, or use the "Forgot Password" option to reset your password.</p>
+
+    <p><strong>Q: I cannot see any properties to book visits.</strong></p>
+    <p>A: Properties are assigned by companies. Make sure:</p>
+    <ul>
+        <li>You have an approved partnership with the company</li>
+        <li>The company has assigned properties to your partnership</li>
+        <li>Properties are marked as "Available"</li>
+    </ul>
+
+    <p><strong>Q: Why was my visit request rejected?</strong></p>
+    <p>A: Common reasons include:</p>
+    <ul>
+        <li>Property not available on requested date</li>
+        <li>Time slot already booked</li>
+        <li>Missing or incorrect client information</li>
+        <li>Property status changed to unavailable</li>
+    </ul>
+    <p>Contact the company for specific reasons.</p>
+
+    <p><strong>Q: How is my commission calculated?</strong></p>
+    <p>A: Commission = Deal Value x Commission Rate. The commission rate is set by the company when approving your partnership. This can be viewed in your partnership details.</p>
+
+    <p><strong>Q: Can I partner with multiple companies?</strong></p>
+    <p>A: Yes, you can apply to and partner with multiple companies. Each partnership is managed separately.</p>
+
+    <p><strong>Q: How do I update my KYC documents?</strong></p>
+    <p>A: Go to Profile Settings, then KYC Documents section. Upload updated documents. The company will need to re-verify them.</p>
+
+    <p><strong>Q: I accidentally cancelled a visit. Can I restore it?</strong></p>
+    <p>A: No, cancelled visits cannot be restored. You will need to book a new visit request.</p>
+
+    <p><strong>Q: Can I change the commission rate?</strong></p>
+    <p>A: Commission rates are set by the company. If you need a different rate, please discuss with the company directly through chat or contact them.</p>
+
+    <h2>10.2 Common Error Messages</h2>
+
+    <table>
+        <tr>
+            <th>Error Message</th>
+            <th>Meaning</th>
+            <th>Solution</th>
+        </tr>
+        <tr>
+            <td>"Invalid credentials"</td>
+            <td>Email or password is incorrect</td>
+            <td>Check your email and password. Use "Forgot Password" if needed.</td>
+        </tr>
+        <tr>
+            <td>"Email not verified"</td>
+            <td>You have not clicked the verification link</td>
+            <td>Check your email for verification link or request a new one.</td>
+        </tr>
+        <tr>
+            <td>"Session expired"</td>
+            <td>Your login session has timed out</td>
+            <td>Log in again. Your work should be auto-saved.</td>
+        </tr>
+        <tr>
+            <td>"Access denied"</td>
+            <td>You do not have permission for this action</td>
+            <td>Contact your company admin for access.</td>
+        </tr>
+        <tr>
+            <td>"No available slots"</td>
+            <td>All time slots are booked for selected date</td>
+            <td>Choose a different date or office location.</td>
+        </tr>
+        <tr>
+            <td>"File too large"</td>
+            <td>Uploaded file exceeds size limit</td>
+            <td>Reduce file size. Maximum allowed: 5MB for images, 10MB for documents.</td>
+        </tr>
+    </table>
+
+    <h2>10.3 Browser Requirements</h2>
+    <p>For the best experience, use one of the following browsers:</p>
+    <ul>
+        <li>Google Chrome (recommended) - Version 90 or higher</li>
+        <li>Mozilla Firefox - Version 88 or higher</li>
+        <li>Microsoft Edge - Version 90 or higher</li>
+        <li>Safari - Version 14 or higher</li>
+    </ul>
+
+    <div class="note">
+        <strong>Important:</strong> Internet Explorer is not supported. Please use a modern browser.
+    </div>
+
+    <h2>10.4 Getting Help</h2>
+    <p>If you need further assistance:</p>
+    <ul>
+        <li>Check this user manual for guidance</li>
+        <li>Contact your company administrator</li>
+        <li>Use the in-app chat feature to message support</li>
+        <li>Email support at the address provided by your company</li>
+    </ul>
+
+    <div style="margin-top: 50px; padding: 20px; border-top: 2px solid #000; text-align: center;">
+        <p style="margin: 0; font-size: 14px;">
+            <strong>Channel Partner Portal</strong><br>
+            User Manual Version 1.0<br>
+            Last Updated: May 2026
+        </p>
+    </div>
+
+</body>
+</html>

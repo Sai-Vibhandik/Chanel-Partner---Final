@@ -137,12 +137,22 @@ const PropertyDetails = () => {
         >
           ← Back to Properties
         </button>
-        <button
-          onClick={() => navigate(`${basePath}/${id}/edit`)}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-        >
-          Edit Property
-        </button>
+        {property.status === 'sold_out' ? (
+          <button
+            disabled
+            className="px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed"
+            title="Sold out properties cannot be edited"
+          >
+            Edit Property
+          </button>
+        ) : (
+          <button
+            onClick={() => navigate(`${basePath}/${id}/edit`)}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          >
+            Edit Property
+          </button>
+        )}
       </div>
 
       {/* Main Info Card */}
@@ -550,7 +560,9 @@ const PropertyDetails = () => {
           <div>
             <p className="text-sm text-gray-500">Commission</p>
             <p className="font-medium">
-              {property.commission?.basePercentage ? `${property.commission.basePercentage}%` : 'Not set'}
+              {property.commission?.isFixed
+                ? (property.commission.fixedAmount ? `${property.pricing?.currency === 'AED' ? 'د.إ' : '₹'}${property.commission.fixedAmount}` : 'Not set')
+                : (property.commission?.basePercentage ? `${property.commission.basePercentage}%` : 'Not set')}
             </p>
           </div>
         </div>

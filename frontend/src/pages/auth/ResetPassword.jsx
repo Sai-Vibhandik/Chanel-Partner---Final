@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../utils/api';
+import { validatePassword } from '../../utils/validation';
 
 const ResetPassword = () => {
   const { token } = useParams();
@@ -11,6 +12,7 @@ const ResetPassword = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [validToken, setValidToken] = useState(true);
@@ -26,14 +28,17 @@ const ResetPassword = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    // Validate password
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setFieldErrors({ password: passwordError });
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setFieldErrors({ confirmPassword: 'Passwords do not match' });
       return;
     }
 
@@ -148,6 +153,24 @@ const ResetPassword = () => {
                 At least 8 characters
               </li>
               <li className="flex items-center gap-2">
+                <svg className={`w-4 h-4 ${/[A-Z]/.test(password) ? 'text-green-300' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={/[A-Z]/.test(password) ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} />
+                </svg>
+                At least one uppercase letter
+              </li>
+              <li className="flex items-center gap-2">
+                <svg className={`w-4 h-4 ${/[a-z]/.test(password) ? 'text-green-300' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={/[a-z]/.test(password) ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} />
+                </svg>
+                At least one lowercase letter
+              </li>
+              <li className="flex items-center gap-2">
+                <svg className={`w-4 h-4 ${/[0-9]/.test(password) ? 'text-green-300' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={/[0-9]/.test(password) ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} />
+                </svg>
+                At least one number
+              </li>
+              <li className="flex items-center gap-2">
                 <svg className={`w-4 h-4 ${password === confirmPassword && password.length > 0 ? 'text-green-300' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={password === confirmPassword && password.length > 0 ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} />
                 </svg>
@@ -204,8 +227,9 @@ const ResetPassword = () => {
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400"
+                  onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => ({ ...prev, password: '' })); }}
+                  maxLength={128}
+                  className={`block w-full pl-10 pr-12 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   placeholder="Enter new password"
                 />
                 <button
@@ -225,6 +249,7 @@ const ResetPassword = () => {
                   )}
                 </button>
               </div>
+              {fieldErrors.password && <p className="text-sm text-red-600 mt-1">{fieldErrors.password}</p>}
             </div>
 
             <div>
@@ -243,8 +268,9 @@ const ResetPassword = () => {
                   type={showConfirmPassword ? 'text' : 'password'}
                   required
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="block w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400"
+                  onChange={(e) => { setConfirmPassword(e.target.value); setFieldErrors(prev => ({ ...prev, confirmPassword: '' })); }}
+                  maxLength={128}
+                  className={`block w-full pl-10 pr-12 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   placeholder="Confirm new password"
                 />
                 <button
@@ -264,6 +290,7 @@ const ResetPassword = () => {
                   )}
                 </button>
               </div>
+              {fieldErrors.confirmPassword && <p className="text-sm text-red-600 mt-1">{fieldErrors.confirmPassword}</p>}
             </div>
 
             <button

@@ -5,6 +5,7 @@ import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
 import Modal, { ModalContent, ModalFooter, ModalButton } from '../../components/common/Modal';
 import { FormField, Input, Select, Checkbox, FormRow, FormActions, Button } from '../../components/common/FormFields';
+import { validateEmail, validatePhone, validateName, validateMinLength, handlePhoneInput } from '../../utils/validation';
 
 const Team = () => {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ const Team = () => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -80,11 +82,51 @@ const Team = () => {
     }
   };
 
+  const validateForm = () => {
+    const errors = {};
+
+    const firstNameError = validateName(formData.firstName, 'First name');
+    if (firstNameError) errors.firstName = firstNameError;
+
+    const lastNameError = validateName(formData.lastName, 'Last name');
+    if (lastNameError) errors.lastName = lastNameError;
+
+    const emailError = validateEmail(formData.email);
+    if (emailError) errors.email = emailError;
+
+    if (formData.phone) {
+      const phoneError = validatePhone(formData.phone);
+      if (phoneError) errors.phone = phoneError;
+    }
+
+    if (formData.password && formData.password.length > 0) {
+      const passwordError = validateMinLength(formData.password, 8, 'Password');
+      if (passwordError) errors.password = passwordError;
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handlePhoneChange = (e) => {
+    const value = handlePhoneInput(e, null, null);
+    setFormData(prev => ({ ...prev, phone: value }));
+    if (fieldErrors.phone) {
+      setFieldErrors(prev => ({ ...prev, phone: '' }));
+    }
+  };
+
   const handleAddMember = async (e) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
     try {
       setSaving(true);
       setError('');
+      setFieldErrors({});
 
       await api.post(`/company/${user.companyId}/team`, formData);
 
@@ -101,9 +143,15 @@ const Team = () => {
 
   const handleEditMember = async (e) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
     try {
       setSaving(true);
       setError('');
+      setFieldErrors({});
 
       await api.put(`/company/${user.companyId}/team/${selectedMember._id}`, {
         firstName: formData.firstName,
@@ -152,15 +200,6 @@ const Team = () => {
     }
   };
 
-  const handleResetPassword = async (member) => {
-    try {
-      await api.post(`/company/${user.companyId}/team/${member._id}/reset-password`);
-      setSuccess('Password reset link sent to the team member');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send reset link');
-    }
-  };
-
   const handleResendInvite = async (member) => {
     try {
       await api.post(`/company/${user.companyId}/team/${member._id}/resend-invite`);
@@ -200,6 +239,7 @@ const Team = () => {
       sendInvite: true
     });
     setSelectedMember(null);
+    setFieldErrors({});
   };
 
   const filteredTeam = team.filter(member => {
@@ -226,8 +266,8 @@ const Team = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Team" subtitle="Manage your team members" color={config.color}>
-      {/* Messages */}
-      {error && (
+      {/* Messages - Only show when no modals are open */}
+      {error && !showAddModal && !showEditModal && !showDeleteModal && (
         <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
       )}
       {success && (
@@ -390,14 +430,6 @@ const Team = () => {
                             Resend
                           </button>
                         )}
-                        {member.isEmailVerified && (
-                          <button
-                            onClick={() => handleResetPassword(member)}
-                            className="px-3 py-1 text-sm text-purple-600 hover:text-purple-700 font-medium"
-                          >
-                            Reset
-                          </button>
-                        )}
                         {member._id !== user._id && (
                           <button
                             onClick={() => openDeleteModal(member)}
@@ -490,38 +522,52 @@ const Team = () => {
       </div>
 
       {/* Add Team Member Modal */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Team Member" size="md">
+      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setError(''); setFieldErrors({}); }} title="Add Team Member" size="md">
         <form onSubmit={handleAddMember}>
           <ModalContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {error}
+              </div>
+            )}
             <FormRow cols={2}>
-              <FormField label="First Name" required>
+              <FormField label="First Name" required error={fieldErrors.firstName}>
                 <Input
                   value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  onChange={(e) => { setFormData({ ...formData, firstName: e.target.value }); if (fieldErrors.firstName) setFieldErrors(prev => ({ ...prev, firstName: '' })); }}
+                  maxLength={50}
                   required
+                  error={fieldErrors.firstName}
                 />
               </FormField>
-              <FormField label="Last Name" required>
+              <FormField label="Last Name" required error={fieldErrors.lastName}>
                 <Input
                   value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  onChange={(e) => { setFormData({ ...formData, lastName: e.target.value }); if (fieldErrors.lastName) setFieldErrors(prev => ({ ...prev, lastName: '' })); }}
+                  maxLength={50}
                   required
+                  error={fieldErrors.lastName}
                 />
               </FormField>
             </FormRow>
-            <FormField label="Email" required className="mt-4">
+            <FormField label="Email" required className="mt-4" error={fieldErrors.email}>
               <Input
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) => { setFormData({ ...formData, email: e.target.value }); if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' })); }}
+                maxLength={100}
                 required
+                error={fieldErrors.email}
               />
             </FormField>
-            <FormField label="Phone" className="mt-4">
+            <FormField label="Phone" className="mt-4" error={fieldErrors.phone}>
               <Input
                 type="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={handlePhoneChange}
+                maxLength={16}
+                placeholder="10-digit mobile number"
+                error={fieldErrors.phone}
               />
             </FormField>
             <FormField label="Role" required className="mt-4">
@@ -535,12 +581,14 @@ const Team = () => {
                 {roleOptions.find(o => o.value === formData.role)?.description}
               </p>
             </FormField>
-            <FormField label="Password (optional)" className="mt-4">
+            <FormField label="Password (optional)" className="mt-4" error={fieldErrors.password}>
               <Input
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Leave empty to auto-generate"
+                onChange={(e) => { setFormData({ ...formData, password: e.target.value }); if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: '' })); }}
+                maxLength={128}
+                placeholder="Leave empty to auto-generate (min 8 chars)"
+                error={fieldErrors.password}
               />
             </FormField>
             <div className="mt-4">
@@ -553,7 +601,7 @@ const Team = () => {
             </div>
           </ModalContent>
           <ModalFooter>
-            <ModalButton variant="secondary" onClick={() => setShowAddModal(false)}>
+            <ModalButton variant="secondary" onClick={() => { setShowAddModal(false); setFieldErrors({}); }}>
               Cancel
             </ModalButton>
             <ModalButton variant="primary" loading={saving}>
@@ -564,38 +612,52 @@ const Team = () => {
       </Modal>
 
       {/* Edit Team Member Modal */}
-      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Team Member" size="md">
+      <Modal isOpen={showEditModal} onClose={() => { setShowEditModal(false); setError(''); setFieldErrors({}); }} title="Edit Team Member" size="md">
         <form onSubmit={handleEditMember}>
           <ModalContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {error}
+              </div>
+            )}
             <FormRow cols={2}>
-              <FormField label="First Name" required>
+              <FormField label="First Name" required error={fieldErrors.firstName}>
                 <Input
                   value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  onChange={(e) => { setFormData({ ...formData, firstName: e.target.value }); if (fieldErrors.firstName) setFieldErrors(prev => ({ ...prev, firstName: '' })); }}
+                  maxLength={50}
                   required
+                  error={fieldErrors.firstName}
                 />
               </FormField>
-              <FormField label="Last Name" required>
+              <FormField label="Last Name" required error={fieldErrors.lastName}>
                 <Input
                   value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  onChange={(e) => { setFormData({ ...formData, lastName: e.target.value }); if (fieldErrors.lastName) setFieldErrors(prev => ({ ...prev, lastName: '' })); }}
+                  maxLength={50}
                   required
+                  error={fieldErrors.lastName}
                 />
               </FormField>
             </FormRow>
-            <FormField label="Email" required className="mt-4">
+            <FormField label="Email" required className="mt-4" error={fieldErrors.email}>
               <Input
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) => { setFormData({ ...formData, email: e.target.value }); if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' })); }}
+                maxLength={100}
                 required
+                error={fieldErrors.email}
               />
             </FormField>
-            <FormField label="Phone" className="mt-4">
+            <FormField label="Phone" className="mt-4" error={fieldErrors.phone}>
               <Input
                 type="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={handlePhoneChange}
+                maxLength={16}
+                placeholder="10-digit mobile number"
+                error={fieldErrors.phone}
               />
             </FormField>
             <FormField label="Role" required className="mt-4">
@@ -612,7 +674,7 @@ const Team = () => {
             </FormField>
           </ModalContent>
           <ModalFooter>
-            <ModalButton variant="secondary" onClick={() => setShowEditModal(false)}>
+            <ModalButton variant="secondary" onClick={() => { setShowEditModal(false); setFieldErrors({}); }}>
               Cancel
             </ModalButton>
             <ModalButton variant="primary" loading={saving}>
@@ -623,24 +685,32 @@ const Team = () => {
       </Modal>
 
       {/* Delete Confirmation Modal */}
-      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} size="sm">
+      <Modal isOpen={showDeleteModal} onClose={() => { setShowDeleteModal(false); setError(''); }} size="sm">
         <ModalContent>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
           <div className="text-center">
             <svg className="w-14 h-14 sm:w-16 sm:h-16 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Remove Team Member?</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Permanently Delete Team Member?</h3>
             <p className="text-gray-600 text-sm sm:text-base">
-              Are you sure you want to remove <strong>{selectedMember?.firstName} {selectedMember?.lastName}</strong>? This will deactivate their account.
+              Are you sure you want to permanently delete <strong>{selectedMember?.firstName} {selectedMember?.lastName}</strong>? This action cannot be undone. All their data will be removed.
+            </p>
+            <p className="text-yellow-600 text-xs sm:text-sm mt-2">
+              To temporarily disable access, use the "Deactivate" button instead.
             </p>
           </div>
         </ModalContent>
         <ModalFooter>
-          <ModalButton variant="secondary" onClick={() => setShowDeleteModal(false)}>
+          <ModalButton variant="secondary" onClick={() => { setShowDeleteModal(false); setError(''); }}>
             Cancel
           </ModalButton>
           <ModalButton variant="danger" loading={saving} onClick={handleDeleteMember}>
-            {saving ? 'Removing...' : 'Remove Member'}
+            {saving ? 'Deleting...' : 'Permanently Delete'}
           </ModalButton>
         </ModalFooter>
       </Modal>

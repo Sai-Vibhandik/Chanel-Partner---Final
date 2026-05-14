@@ -20,6 +20,13 @@ router.get(
   getAvailableSlotsForOffice
 );
 
+// Get availability for a specific office (read-only for partners)
+router.get(
+  '/offices/:officeId/availability',
+  protect,
+  getAvailability
+);
+
 // ==================== ADMIN ROUTES (Company SuperAdmin, Partner Manager) ====================
 
 // Get all availabilities for company's offices
@@ -28,14 +35,6 @@ router.get(
   protect,
   restrictTo('company_superadmin', 'partner_manager'),
   getAllAvailabilities
-);
-
-// Get availability for a specific office
-router.get(
-  '/offices/:officeId/availability',
-  protect,
-  restrictTo('company_superadmin', 'partner_manager'),
-  getAvailability
 );
 
 // Create or update availability for a specific office

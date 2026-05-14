@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { validateEmail, validatePhone, validateName, validatePassword, handlePhoneInput } from '../../utils/validation';
 
 const RegisterPartner = () => {
   const [formData, setFormData] = useState({
@@ -15,6 +16,7 @@ const RegisterPartner = () => {
     operatingRegion: 'india'
   });
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
@@ -22,22 +24,78 @@ const RegisterPartner = () => {
   const { registerPartner } = useAuth();
   const navigate = useNavigate();
 
+  // Helper to extract validation errors from API response
+  const getValidationErrors = (err) => {
+    const errors = err.response?.data?.errors;
+    if (errors && Array.isArray(errors) && errors.length > 0) {
+      const fieldErrs = {};
+      errors.forEach(e => {
+        if (e.field) {
+          fieldErrs[e.field] = e.message;
+        }
+      });
+      return { fieldErrors: fieldErrs, message: errors.map(e => e.message).join(', ') };
+    }
+    return { fieldErrors: {}, message: err.response?.data?.message || 'Registration failed. Please try again.' };
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
+    // Clear field error when user starts typing
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handlePhoneChange = (e) => {
+    const value = handlePhoneInput(e, null, null);
+    setFormData(prev => ({ ...prev, phone: value }));
+    if (fieldErrors.phone) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.phone;
+        return newErrors;
+      });
+    }
+  };
+
+  const validateForm = () => {
+    const errors = {};
+
+    const firstNameError = validateName(formData.firstName, 'First name');
+    if (firstNameError) errors.firstName = firstNameError;
+
+    const lastNameError = validateName(formData.lastName, 'Last name');
+    if (lastNameError) errors.lastName = lastNameError;
+
+    const emailError = validateEmail(formData.email);
+    if (emailError) errors.email = emailError;
+
+    const phoneError = validatePhone(formData.phone);
+    if (phoneError) errors.phone = phoneError;
+
+    const passwordError = validatePassword(formData.password);
+    if (passwordError) errors.password = passwordError;
+
+    if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!validateForm()) {
       return;
     }
 
@@ -47,7 +105,9 @@ const RegisterPartner = () => {
       const response = await registerPartner(formData);
       setRegistrationSuccess(true);
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+      const { fieldErrors: errs, message } = getValidationErrors(err);
+      setFieldErrors(errs);
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -203,11 +263,21 @@ const RegisterPartner = () => {
           {/* Error Message */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p className="text-sm text-red-700">{error}</p>
+                <div className="text-sm text-red-700">
+                  {Object.keys(fieldErrors).length > 0 ? (
+                    <ul className="list-disc list-inside space-y-1">
+                      {Object.entries(fieldErrors).map(([field, msg]) => (
+                        <li key={field}>{msg}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>{error}</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -226,9 +296,11 @@ const RegisterPartner = () => {
                   required
                   value={formData.firstName}
                   onChange={handleChange}
-                  className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400"
+                  maxLength={50}
+                  className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.firstName ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                   placeholder="John"
                 />
+                {fieldErrors.firstName && <p className="mt-1 text-sm text-red-600">{fieldErrors.firstName}</p>}
               </div>
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
@@ -241,9 +313,11 @@ const RegisterPartner = () => {
                   required
                   value={formData.lastName}
                   onChange={handleChange}
-                  className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400"
+                  maxLength={50}
+                  className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.lastName ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                   placeholder="Doe"
                 />
+                {fieldErrors.lastName && <p className="mt-1 text-sm text-red-600">{fieldErrors.lastName}</p>}
               </div>
             </div>
 
@@ -258,9 +332,11 @@ const RegisterPartner = () => {
                 required
                 value={formData.email}
                 onChange={handleChange}
-                className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400"
+                maxLength={100}
+                className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                 placeholder="partner@email.com"
               />
+              {fieldErrors.email && <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>}
             </div>
 
             <div>
@@ -273,10 +349,12 @@ const RegisterPartner = () => {
                 type="tel"
                 required
                 value={formData.phone}
-                onChange={handleChange}
-                className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400"
-                placeholder="+91 9876543210"
+                onChange={handlePhoneChange}
+                maxLength={16}
+                className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                placeholder="10-digit mobile number"
               />
+              {fieldErrors.phone && <p className="mt-1 text-sm text-red-600">{fieldErrors.phone}</p>}
             </div>
 
             {/* Business Information */}
@@ -294,6 +372,7 @@ const RegisterPartner = () => {
                 type="text"
                 value={formData.companyName}
                 onChange={handleChange}
+                maxLength={100}
                 className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400"
                 placeholder="XYZ Properties"
               />
@@ -354,8 +433,9 @@ const RegisterPartner = () => {
                   required
                   value={formData.password}
                   onChange={handleChange}
-                  className="block w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400"
-                  placeholder="Min 8 characters"
+                  maxLength={128}
+                  className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="Min 8 chars, uppercase, lowercase, number"
                 />
                 <button
                   type="button"
@@ -374,6 +454,7 @@ const RegisterPartner = () => {
                   )}
                 </button>
               </div>
+              {fieldErrors.password && <p className="mt-1 text-sm text-red-600">{fieldErrors.password}</p>}
             </div>
 
             <div>
@@ -387,9 +468,11 @@ const RegisterPartner = () => {
                 required
                 value={formData.confirmPassword}
                 onChange={handleChange}
-                className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400"
+                maxLength={128}
+                className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                 placeholder="Confirm password"
               />
+              {fieldErrors.confirmPassword && <p className="mt-1 text-sm text-red-600">{fieldErrors.confirmPassword}</p>}
             </div>
 
             <button

@@ -4,6 +4,7 @@ import PartnerCompany from '../models/PartnerCompany.js';
 import Company from '../models/Company.js';
 import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
+import { createNotification } from './notification.controller.js';
 
 // Default tier percentages (what % of property's base commission each tier gets)
 // Example: If property has 5% base commission, Gold tier (50%) gets 2.5%
@@ -497,14 +498,15 @@ export const markAsPaid = async (req, res, next) => {
       throw new ApiError(400, 'Only approved commissions can be marked as paid');
     }
 
-    if (!paymentReference) {
-      throw new ApiError(400, 'Payment reference is required');
+    // Payment reference is required for non-cash payment methods
+    if (paymentMethod !== 'cash' && !paymentReference) {
+      throw new ApiError(400, 'Payment reference is required for this payment method');
     }
 
     commission.status = 'paid';
     commission.payout = {
       paidAt: new Date(),
-      paymentReference,
+      paymentReference: paymentReference || `CASH-${Date.now()}`, // Generate reference for cash payments
       paymentMethod: paymentMethod || 'bank_transfer',
       notes,
       paidBy: req.user._id
@@ -524,6 +526,28 @@ export const markAsPaid = async (req, res, next) => {
       { path: 'partnershipId', select: 'tier status' },
       { path: 'payout.paidBy', select: 'firstName lastName' }
     ]);
+
+    // Create notification for partner
+    if (commission.partner) {
+      const formattedAmount = commission.commission?.calculatedAmount
+        ? `${commission.commission.currency === 'INR' ? '₹' : 'AED '}${commission.commission.calculatedAmount.toLocaleString()}`
+        : 'Commission';
+
+      createNotification({
+        recipientId: commission.partner._id,
+        type: 'commission_paid',
+        title: 'Commission Paid',
+        message: `Your commission of ${formattedAmount} for "${commission.property?.name || 'Property'}" has been paid.`,
+        data: {
+          commissionId: commission._id,
+          propertyId: commission.property?._id,
+          companyId: commission.companyId
+        },
+        link: '/partner/commissions'
+      }).catch(err => {
+        console.error('Failed to create commission paid notification:', err.message);
+      });
+    }
 
     res.status(200).json({
       success: true,

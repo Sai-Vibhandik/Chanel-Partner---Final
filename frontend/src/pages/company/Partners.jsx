@@ -18,6 +18,7 @@ const Partners = () => {
   const [tierFilter, setTierFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
+  const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
 
   useEffect(() => {
     fetchPartners();
@@ -142,8 +143,37 @@ const Partners = () => {
         </form>
       </div>
 
-      {/* Partners Table */}
+      {/* Partners Table/Cards */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* View Toggle Header */}
+        {!loading && !error && partners.length > 0 && (
+          <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200">
+            <p className="text-sm text-gray-500">
+              Total Partners: <span className="font-semibold text-gray-900">{pagination.total}</span>
+            </p>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('card')}
+                className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                title="Card View"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                title="List View"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center min-h-48 sm:min-h-64">
             <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-indigo-600"></div>
@@ -157,7 +187,63 @@ const Partners = () => {
             </svg>
             <p className="text-gray-500 mb-4">No partners found</p>
           </div>
+        ) : viewMode === 'card' ? (
+          /* Card View */
+          <div className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              {partners.map((partnership) => (
+                <div
+                  key={partnership._id}
+                  onClick={() => navigate(`/company/partners/${partnership._id}`)}
+                  className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
+                        {partnership.partnerId?.firstName?.charAt(0)}{partnership.partnerId?.lastName?.charAt(0)}
+                      </div>
+                      <div className="ml-3">
+                        <p className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
+                          {partnership.partnerId?.firstName} {partnership.partnerId?.lastName}
+                        </p>
+                        <p className="text-sm text-gray-500 truncate max-w-[180px]">{partnership.partnerId?.email}</p>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusBadge(partnership.status)}`}>
+                      {partnership.status}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">Company</span>
+                      <span className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                        {partnership.partnerId?.partnerProfile?.companyName || '-'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">Tier</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getTierBadge(partnership.tier)}`}>
+                        {partnership.tier}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">Joined</span>
+                      <span className="text-sm text-gray-900">{new Date(partnership.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <button className="w-full py-2 text-center text-indigo-600 hover:text-indigo-700 font-medium text-sm">
+                      View Details →
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
+          /* List View (Table) */
           <>
             {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
@@ -216,7 +302,7 @@ const Partners = () => {
               </table>
             </div>
 
-            {/* Mobile Card View */}
+            {/* Mobile Card View (keeps original mobile view) */}
             <div className="md:hidden divide-y divide-gray-100">
               {partners.map((partnership) => (
                 <div

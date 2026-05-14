@@ -2,8 +2,9 @@ import AgreementTemplate from '../models/AgreementTemplate.js';
 import AgreementSignature from '../models/AgreementSignature.js';
 import PartnerCompany from '../models/PartnerCompany.js';
 import Company from '../models/Company.js';
+import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
-import { createNotificationsForRecipients } from './notification.controller.js';
+import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
 
 // ==================== ADMIN ROUTES ====================
 
@@ -90,7 +91,7 @@ export const getAgreementTemplate = async (req, res, next) => {
  */
 export const createAgreementTemplate = async (req, res, next) => {
   try {
-    const { name, type, content, isRequired, displayOrder, applicableRegions, description } = req.body;
+    const { name, type, content, isRequired, displayOrder, description } = req.body;
 
     // Check if type already exists for this company
     const existing = await AgreementTemplate.findOne({
@@ -116,7 +117,6 @@ export const createAgreementTemplate = async (req, res, next) => {
       content,
       isRequired: isRequired ?? true,
       displayOrder: order,
-      applicableRegions,
       description,
       createdBy: req.user._id
     });
@@ -140,7 +140,7 @@ export const createAgreementTemplate = async (req, res, next) => {
  */
 export const updateAgreementTemplate = async (req, res, next) => {
   try {
-    const { name, content, isRequired, displayOrder, applicableRegions, description, isActive } = req.body;
+    const { name, content, isRequired, displayOrder, description, isActive } = req.body;
 
     const template = await AgreementTemplate.findById(req.params.id);
 
@@ -159,7 +159,6 @@ export const updateAgreementTemplate = async (req, res, next) => {
     if (content !== undefined) template.content = content;
     if (isRequired !== undefined) template.isRequired = isRequired;
     if (displayOrder !== undefined) template.displayOrder = displayOrder;
-    if (applicableRegions !== undefined) template.applicableRegions = applicableRegions;
     if (description !== undefined) template.description = description;
     if (isActive !== undefined) template.isActive = isActive;
 
@@ -212,7 +211,6 @@ export const createNewVersion = async (req, res, next) => {
       version: newVersion,
       isRequired: oldTemplate.isRequired,
       displayOrder: oldTemplate.displayOrder,
-      applicableRegions: oldTemplate.applicableRegions,
       description: oldTemplate.description,
       createdBy: req.user._id
     });
@@ -613,6 +611,36 @@ export const signAgreement = async (req, res, next) => {
     });
 
     const allSigned = signedCount >= requiredTemplates;
+
+    // Notify company admins about the signed agreement
+    try {
+      const companyAdmins = await User.find({
+        companyId: partnership.companyId,
+        role: { $in: ['company_superadmin', 'partner_manager'] },
+        isActive: true
+      });
+
+      const partner = await User.findById(req.user._id).select('firstName lastName');
+      const partnerName = `${partner.firstName} ${partner.lastName}`;
+
+      for (const admin of companyAdmins) {
+        createNotification({
+          recipientId: admin._id,
+          type: 'agreement_signed',
+          title: 'Agreement Signed',
+          message: `${partnerName} has signed the "${template.name}" agreement.`,
+          data: {
+            agreementId: template._id,
+            partnershipId: partnership._id,
+            companyId: partnership.companyId,
+            signatureId: signature._id
+          },
+          link: '/partner-manager/partners'
+        }).catch(err => console.error('Failed to create agreement signed notification:', err.message));
+      }
+    } catch (notifyError) {
+      console.error('Error sending agreement signed notifications:', notifyError.message);
+    }
 
     res.status(200).json({
       success: true,

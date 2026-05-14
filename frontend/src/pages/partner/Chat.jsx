@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import ChatWindow from '../../components/chat/ChatWindow';
@@ -13,10 +14,140 @@ const PartnerChat = () => {
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { onNewMessage, decrementUnreadCount, socket } = useSocket();
+
+  const fetchConversations = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/chat/my-conversations');
+      setConversations(res.data.data.conversations || []);
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchConversations();
-  }, []);
+  }, [fetchConversations]);
+
+  // Listen for new messages to update conversation list
+  useEffect(() => {
+    const unsubscribe = onNewMessage?.((data) => {
+      // Check if the current user sent this message
+      const isOwnMessage = data.message?.sender?.userId?._id === user?._id ||
+                          data.message?.sender?.userId === user?._id;
+
+      // Only update if not currently viewing this conversation
+      const isViewingConversation = selectedConversation?.partnership?._id === data.message?.partnershipId &&
+                                    selectedConversation?.adminType === data.message?.adminType;
+
+      if (!isViewingConversation) {
+        // Update the conversation list to show new message
+        setConversations(prev => {
+          const updatedConversations = prev.map(conv => {
+            if (conv.partnership?._id === data.message?.partnershipId && conv.adminType === data.message?.adminType) {
+              return {
+                ...conv,
+                lastMessage: data.message,
+                // Only increment unread if message is from someone else
+                unreadCount: isOwnMessage ? conv.unreadCount : (conv.unreadCount || 0) + 1
+              };
+            }
+            return conv;
+          });
+          // Sort by last message date (most recent first)
+          return updatedConversations.sort((a, b) => {
+            const aDate = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(0);
+            const bDate = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : new Date(0);
+            return bDate - aDate;
+          });
+        });
+      } else {
+        // Update the conversation list with new message but don't increment unread
+        setConversations(prev => {
+          const updatedConversations = prev.map(conv => {
+            if (conv.partnership?._id === data.message?.partnershipId && conv.adminType === data.message?.adminType) {
+              return {
+                ...conv,
+                lastMessage: data.message
+              };
+            }
+            return conv;
+          });
+          return updatedConversations.sort((a, b) => {
+            const aDate = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(0);
+            const bDate = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : new Date(0);
+            return bDate - aDate;
+          });
+        });
+      }
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [onNewMessage, selectedConversation, user?._id]);
+
+  // Listen for chat notifications (when not in the conversation)
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleChatNotification = (data) => {
+      // chat-notification is only sent to the OTHER party, so we don't need to check isOwnMessage
+      // But we should still check if we're currently viewing this conversation
+      const isViewingConversation = selectedConversation?.partnership?._id === data.partnershipId &&
+                                    selectedConversation?.adminType === data.adminType;
+
+      if (!isViewingConversation) {
+        // Update the conversation list to show new message and increment unread
+        setConversations(prev => {
+          const updatedConversations = prev.map(conv => {
+            if (conv.partnership?._id === data.partnershipId && conv.adminType === data.adminType) {
+              return {
+                ...conv,
+                lastMessage: data.message,
+                unreadCount: (conv.unreadCount || 0) + 1
+              };
+            }
+            return conv;
+          });
+          // Sort by last message date (most recent first)
+          return updatedConversations.sort((a, b) => {
+            const aDate = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(0);
+            const bDate = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : new Date(0);
+            return bDate - aDate;
+          });
+        });
+      }
+    };
+
+    socket.on('chat-notification', handleChatNotification);
+    return () => {
+      socket.off('chat-notification', handleChatNotification);
+    };
+  }, [socket, selectedConversation]);
+
+  // Handle selecting a conversation - clear unread count immediately
+  const handleSelectConversation = useCallback((conv) => {
+    // Get unread count before clearing
+    const unreadCount = conv.unreadCount || 0;
+
+    // Immediately clear unread in the conversation list
+    setConversations(prev => prev.map(c => {
+      if (c.partnership?._id === conv.partnership?._id && c.adminType === conv.adminType) {
+        return { ...c, unreadCount: 0 };
+      }
+      return c;
+    }));
+
+    // Decrement the total unread count in sidebar
+    if (unreadCount > 0) {
+      decrementUnreadCount(unreadCount);
+    }
+
+    setSelectedConversation(conv);
+  }, [decrementUnreadCount]);
 
   // Handle query params for direct navigation
   useEffect(() => {
@@ -35,22 +166,6 @@ const PartnerChat = () => {
       }
     }
   }, [searchParams, conversations]);
-
-  const fetchConversations = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get('/chat/my-conversations');
-      setConversations(res.data.data.conversations || []);
-    } catch (error) {
-      console.error('Error fetching conversations:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectConversation = (conv) => {
-    setSelectedConversation(conv);
-  };
 
   const handleBackToList = () => {
     setSelectedConversation(null);

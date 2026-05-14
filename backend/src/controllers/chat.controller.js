@@ -218,7 +218,7 @@ export const sendMessage = async (req, res, next) => {
     const senderType = await validateConversationAccess(req.user, partnershipId, adminType);
 
     // Get company ID
-    const partnership = await PartnerCompany.findById(partnershipId);
+    const partnership = await PartnerCompany.findById(partnershipId).populate('partnerId', 'firstName lastName');
     if (!partnership) {
       throw new ApiError(404, 'Partnership not found');
     }
@@ -242,6 +242,29 @@ export const sendMessage = async (req, res, next) => {
     const io = getIO();
     const roomId = `chat:${partnershipId}:${adminType}`;
     io.to(roomId).emit('new-message', { message: chatMessage });
+
+    // Send notification to the other party (if not in the conversation room)
+    if (senderType === 'partner') {
+      // Notify admin
+      const adminRoom = `company:${partnership.companyId}:${adminType}`;
+      console.log(`[REST API] Sending chat-notification to room: ${adminRoom}`);
+      io.to(adminRoom).emit('chat-notification', {
+        partnershipId,
+        adminType,
+        message: chatMessage,
+        partnerName: `${partnership.partnerId.firstName} ${partnership.partnerId.lastName}`
+      });
+    } else {
+      // Notify partner
+      const partnerRoom = `user:${partnership.partnerId._id}`;
+      console.log(`[REST API] Sending chat-notification to room: ${partnerRoom}`);
+      io.to(partnerRoom).emit('chat-notification', {
+        partnershipId,
+        adminType,
+        message: chatMessage,
+        adminName: `${req.user.firstName} ${req.user.lastName}`
+      });
+    }
 
     res.status(201).json({
       success: true,

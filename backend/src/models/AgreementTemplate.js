@@ -62,12 +62,6 @@ const agreementTemplateSchema = new mongoose.Schema(
       default: 0
     },
 
-    // Region-specific (optional)
-    applicableRegions: [{
-      type: String,
-      enum: ['india', 'dubai']
-    }],
-
     // Description shown to partner before signing
     description: {
       type: String,

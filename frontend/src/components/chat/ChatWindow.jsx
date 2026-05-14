@@ -27,6 +27,15 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
     onStopTyping
   } = useSocket();
 
+  // Mark messages as read via REST API (more reliable than socket)
+  const markMessagesAsRead = useCallback(async () => {
+    try {
+      await api.put(`/chat/conversations/${partnershipId}/${adminType}/read`);
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
+  }, [partnershipId, adminType]);
+
   // Fetch messages
   const fetchMessages = useCallback(async () => {
     if (!partnershipId || !adminType) {
@@ -74,13 +83,16 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
     if (partnershipId && adminType) {
       // Join the conversation room (socket will queue if not connected)
       joinConversation(partnershipId, adminType);
+      // Mark messages as read via socket (for real-time)
       markAsRead(partnershipId, adminType);
+      // Also mark via REST API (for reliability)
+      markMessagesAsRead();
 
       return () => {
         leaveConversation(partnershipId, adminType);
       };
     }
-  }, [partnershipId, adminType, joinConversation, leaveConversation, markAsRead]);
+  }, [partnershipId, adminType, joinConversation, leaveConversation, markAsRead, markMessagesAsRead]);
 
   // Fetch messages when partnershipId or adminType changes
   useEffect(() => {
@@ -108,7 +120,9 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
           }
           return [...prev, data.message];
         });
+        // Mark messages as read when receiving in open conversation
         markAsRead(partnershipId, adminType);
+        markMessagesAsRead();
       }
     });
     if (typeof unsubMsg === 'function') unsubscribeNewMessage = unsubMsg;
@@ -135,7 +149,7 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
       if (unsubscribeTyping) unsubscribeTyping();
       if (unsubscribeStopTyping) unsubscribeStopTyping();
     };
-  }, [partnershipId, adminType, onNewMessage, onTyping, onStopTyping, markAsRead]);
+  }, [partnershipId, adminType, onNewMessage, onTyping, onStopTyping, markAsRead, markMessagesAsRead]);
 
   // Scroll to bottom on new messages
   useEffect(() => {

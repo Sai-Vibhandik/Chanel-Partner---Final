@@ -14,7 +14,7 @@ export const SocketProvider = ({ children }) => {
   const [toastNotification, setToastNotification] = useState(null);
   const { user } = useAuth();
 
-  // Fetch initial unread count from API
+  // Fetch unread count from API
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
 
@@ -46,19 +46,20 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    console.log('Initializing socket for user:', user.role, 'companyId:', user.companyId);
 
+    // Token is stored in httpOnly cookies, so we don't need to pass it explicitly
+    // The server will read it from cookies automatically
     const newSocket = io(SOCKET_URL, {
-      auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnectionDelay: 1000,
+      withCredentials: true // Important: allows cookies to be sent with socket requests
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected');
+      console.log('Socket connected, user:', user?.role, 'companyId:', user?.companyId);
       setIsConnected(true);
       // Fetch initial unread count when connected
       fetchUnreadCount();
@@ -74,10 +75,20 @@ export const SocketProvider = ({ children }) => {
       setIsConnected(false);
     });
 
+    // Debug: log all events received
+    newSocket.onAny((eventName, ...args) => {
+      console.log('Socket event received:', eventName, args);
+    });
+
     // Handle incoming chat notifications
     newSocket.on('chat-notification', (data) => {
-      console.log('New chat notification:', data);
-      setUnreadCount(prev => prev + 1);
+      console.log('Received chat-notification:', data);
+      console.log('Current unread count before increment:', unreadCount);
+      // Instant update - increment unread count immediately
+      setUnreadCount(prev => {
+        console.log('Incrementing unread count from', prev, 'to', prev + 1);
+        return prev + 1;
+      });
 
       // Show toast notification
       const senderName = data.adminName || data.partnerName || 'Someone';
@@ -99,6 +110,17 @@ export const SocketProvider = ({ children }) => {
       }
     });
 
+    // Handle unread count updates from server
+    newSocket.on('unread-count-updated', (data) => {
+      console.log('Unread count updated:', data);
+      if (data.unreadCount === 'refresh') {
+        // Server signaled to refresh from API
+        fetchUnreadCount();
+      } else if (typeof data.unreadCount === 'number') {
+        setUnreadCount(data.unreadCount);
+      }
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -107,7 +129,6 @@ export const SocketProvider = ({ children }) => {
   }, [user, fetchUnreadCount]);
 
   // Join a conversation room
-  // Note: Socket.IO will queue events if not connected yet
   const joinConversation = useCallback((partnershipId, adminType) => {
     if (socket) {
       socket.emit('join-conversation', { partnershipId, adminType });
@@ -128,12 +149,12 @@ export const SocketProvider = ({ children }) => {
     }
   }, [socket]);
 
-  // Mark messages as read
+  // Mark messages as read - emits event to server
   const markAsRead = useCallback((partnershipId, adminType) => {
-    if (socket) {
+    if (socket && isConnected) {
       socket.emit('mark-read', { partnershipId, adminType });
     }
-  }, [socket]);
+  }, [socket, isConnected]);
 
   // Start typing indicator
   const startTyping = useCallback((partnershipId, adminType) => {
@@ -172,7 +193,7 @@ export const SocketProvider = ({ children }) => {
     }
   }, [socket]);
 
-  // Subscribe to messages read event
+  // Subscribe to messages read event (when OTHER user reads your messages)
   const onMessagesRead = useCallback((callback) => {
     if (socket) {
       socket.on('messages-read', callback);
@@ -180,10 +201,21 @@ export const SocketProvider = ({ children }) => {
     }
   }, [socket]);
 
-  // Reset unread count (when opening chat)
-  const resetUnreadCount = useCallback(() => {
-    setUnreadCount(0);
-  }, []);
+  // Subscribe to messages read confirmation (when YOU mark messages as read)
+  const onMessagesReadConfirmed = useCallback((callback) => {
+    if (socket) {
+      socket.on('messages-read-confirmed', callback);
+      return () => socket.off('messages-read-confirmed', callback);
+    }
+  }, [socket]);
+
+  // Subscribe to conversation list updates
+  const onConversationUpdate = useCallback((callback) => {
+    if (socket) {
+      socket.on('conversation-updated', callback);
+      return () => socket.off('conversation-updated', callback);
+    }
+  }, [socket]);
 
   // Dismiss toast notification
   const dismissToast = useCallback(() => {
@@ -194,6 +226,11 @@ export const SocketProvider = ({ children }) => {
   const refreshUnreadCount = useCallback(() => {
     fetchUnreadCount();
   }, [fetchUnreadCount]);
+
+  // Decrement unread count locally (for optimistic updates)
+  const decrementUnreadCount = useCallback((amount = 1) => {
+    setUnreadCount(prev => Math.max(0, prev - amount));
+  }, []);
 
   const value = {
     socket,
@@ -210,9 +247,11 @@ export const SocketProvider = ({ children }) => {
     onTyping,
     onStopTyping,
     onMessagesRead,
-    resetUnreadCount,
+    onMessagesReadConfirmed,
+    onConversationUpdate,
     dismissToast,
-    refreshUnreadCount
+    refreshUnreadCount,
+    decrementUnreadCount
   };
 
   return (

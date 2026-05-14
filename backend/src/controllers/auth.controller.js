@@ -162,10 +162,68 @@ Date: _________________________`
     },
     {
       companyId,
+      type: 'nca',
+      name: 'Non-Compete Agreement (NCA)',
+      isRequired: true,
+      displayOrder: 2,
+      createdBy: userId,
+      content: `NON-COMPETE AGREEMENT
+
+This Non-Compete Agreement ("Agreement") is entered into as of {{date}} by and between:
+
+COMPANY:
+{{companyName}}
+("Company")
+
+PARTNER:
+{{partnerName}}
+("Partner")
+
+WHEREAS, the Company is engaged in the business of real estate development and marketing;
+
+WHEREAS, the Partner will have access to confidential information, trade secrets, and business relationships of the Company;
+
+NOW, THEREFORE, in consideration of the mutual covenants contained herein, the parties agree as follows:
+
+1. NON-COMPETE COVENANT
+During the term of this Agreement and for a period of one (1) year following termination, the Partner shall not:
+a) Directly or indirectly engage in any business that competes with the Company within the designated territory
+b) Solicit or attempt to solicit any client, customer, or prospect of the Company
+c) Divert or attempt to divert any business away from the Company
+
+2. NON-SOLICITATION
+The Partner shall not, during the term of this Agreement and for one (1) year thereafter:
+a) Solicit, recruit, or hire any employee of the Company
+b) Encourage any client or customer to terminate their relationship with the Company
+
+3. TERRITORY
+The restrictions set forth herein shall apply to all areas where the Company conducts business or has active marketing efforts.
+
+4. REASONABLENESS
+The Partner acknowledges that the restrictions contained herein are reasonable and necessary to protect the Company's legitimate business interests.
+
+5. DURATION
+This Agreement shall remain in effect during the term of the business relationship and for one (1) year following its termination.
+
+6. REMEDIES
+In the event of a breach, the Company shall be entitled to injunctive relief and any other remedies available at law or equity.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.
+
+Company: {{companyName}}
+Signature: _________________________
+Date: _________________________
+
+Partner: {{partnerName}}
+Signature: _________________________
+Date: _________________________`
+    },
+    {
+      companyId,
       type: 'cpa',
       name: 'Channel Partner Agreement',
       isRequired: true,
-      displayOrder: 2,
+      displayOrder: 3,
       createdBy: userId,
       content: `CHANNEL PARTNER AGREEMENT
 
@@ -215,6 +273,152 @@ Signature: _________________________
 Date: _________________________
 
 Partner: {{partnerName}}
+Signature: _________________________
+Date: _________________________`
+    },
+    {
+      companyId,
+      type: 'code_of_conduct',
+      name: 'Code of Conduct',
+      isRequired: true,
+      displayOrder: 4,
+      createdBy: userId,
+      content: `CODE OF CONDUCT
+
+This Code of Conduct establishes the standards of behavior expected from all Channel Partners associated with {{companyName}}.
+
+PARTNER:
+{{partnerName}}
+
+Effective Date: {{date}}
+
+1. PROFESSIONAL CONDUCT
+The Partner shall:
+a) Conduct all business activities with integrity, honesty, and professionalism
+b) Represent the Company and its properties accurately and fairly
+c) Comply with all applicable laws, regulations, and industry standards
+d) Maintain appropriate licensing and certifications required for real estate activities
+
+2. ANTI-BRIBERY AND CORRUPTION
+The Partner shall NOT:
+a) Offer, give, or accept bribes or improper payments
+b) Engage in any form of corruption or unethical business practice
+c) Make false or misleading statements to customers or authorities
+
+3. CONFLICT OF INTEREST
+The Partner shall:
+a) Disclose any potential conflicts of interest to the Company
+b) Avoid situations that could compromise their objectivity or loyalty
+c) Not engage in competing activities without prior written consent
+
+4. CUSTOMER RELATIONS
+The Partner shall:
+a) Treat all customers fairly and with respect
+b) Provide accurate and complete information about properties
+c) Not engage in discriminatory practices
+d) Promptly address customer complaints and concerns
+
+5. CONFIDENTIAL INFORMATION
+The Partner shall protect all confidential and proprietary information of the Company, its customers, and business partners.
+
+6. DATA PROTECTION
+The Partner shall comply with all applicable data protection and privacy laws when handling personal information.
+
+7. REPORTING VIOLATIONS
+The Partner shall promptly report any known or suspected violations of this Code to the Company.
+
+8. CONSEQUENCES OF VIOLATIONS
+Violations of this Code may result in:
+a) Termination of the partnership agreement
+b) Forfeiture of commissions
+c) Legal action, if applicable
+
+ACKNOWLEDGMENT
+
+I, {{partnerName}}, acknowledge that I have read and understood this Code of Conduct and agree to abide by its terms.
+
+Partner Signature: _________________________
+Date: _________________________
+
+Company Representative: {{companyName}}
+Signature: _________________________
+Date: _________________________`
+    },
+    {
+      companyId,
+      type: 'gdpr_consent',
+      name: 'GDPR Consent Form',
+      isRequired: true,
+      displayOrder: 5,
+      createdBy: userId,
+      content: `GDPR CONSENT AND DATA PROCESSING AGREEMENT
+
+This GDPR Consent Form ("Form") is entered into as of {{date}} by and between:
+
+DATA CONTROLLER:
+{{companyName}}
+("Company")
+
+DATA SUBJECT:
+{{partnerName}}
+("Partner")
+
+1. PURPOSE OF DATA COLLECTION
+The Company collects and processes the Partner's personal data for the following purposes:
+a) Managing the channel partnership relationship
+b) Processing commissions and payments
+c) Communicating about properties and business opportunities
+d) Compliance with legal and regulatory requirements
+e) Providing support and training
+
+2. TYPES OF DATA COLLECTED
+The Company may collect the following types of personal data:
+a) Identity data (name, email, phone number, address)
+b) Financial data (bank details for commission payments)
+c) Professional data (qualifications, experience)
+d) KYC documents (government ID, proof of address)
+e) Communication records
+
+3. LEGAL BASIS FOR PROCESSING
+The Company processes personal data based on:
+a) Performance of the contract (partnership agreement)
+b) Legitimate business interests
+c) Legal obligations
+d) Explicit consent where required
+
+4. DATA SHARING
+Personal data may be shared with:
+a) Property developers and third-party service providers
+b) Regulatory authorities as required by law
+c) Professional advisors (accountants, lawyers)
+
+5. DATA RETENTION
+Personal data will be retained for:
+a) Duration of the partnership plus 7 years
+b) As required by applicable laws and regulations
+
+6. PARTNER'S RIGHTS
+The Partner has the right to:
+a) Access their personal data
+b) Correct inaccurate data
+c) Request deletion of data (subject to legal requirements)
+d) Object to certain processing activities
+e) Data portability
+
+7. CONTACT FOR DATA PROTECTION
+For any questions or concerns about data processing, contact:
+{{companyName}}
+Email: [Company Email]
+
+CONSENT DECLARATION
+
+I, {{partnerName}}, hereby consent to the collection and processing of my personal data as described above. I understand my rights regarding my personal data and how to exercise them.
+
+Partner Name: {{partnerName}}
+Partner Signature: _________________________
+Date: _________________________
+
+Company Representative: {{companyName}}
 Signature: _________________________
 Date: _________________________`
     }
@@ -866,18 +1070,22 @@ export const updateProfile = async (req, res, next) => {
   try {
     const { firstName, lastName, phone } = req.body;
 
-    const user = await User.findById(req.user._id);
+    // Build update object with only provided fields
+    const updateData = {};
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (phone !== undefined) updateData.phone = phone;
+
+    // Use findByIdAndUpdate to avoid validation issues with password field
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
 
     if (!user) {
       throw new ApiError(404, 'User not found');
     }
-
-    // Update fields
-    if (firstName) user.firstName = firstName;
-    if (lastName) user.lastName = lastName;
-    if (phone) user.phone = phone;
-
-    await user.save();
 
     res.status(200).json({
       success: true,

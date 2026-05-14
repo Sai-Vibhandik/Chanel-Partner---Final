@@ -29,20 +29,132 @@ const PartnerManagerVisits = () => {
 
   // Filters
   const [filters, setFilters] = useState({
-    visitType: '', // office, site, virtual
+    visitType: '', // office, virtual
     officeId: ''
   });
 
   const [offices, setOffices] = useState([]);
   const [partners, setPartners] = useState([]);
   const [selectedVisit, setSelectedVisit] = useState(null);
+  const [officeAvailability, setOfficeAvailability] = useState({}); // Store full availability per office
 
-  // Time slots from 9 AM to 6 PM
-  const timeSlots = [
-    '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-    '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
-    '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'
-  ];
+  // Default working hours if no availability set
+  const getDefaultWorkingHours = () => ({
+    monday: { start: '09:00', end: '18:00', isActive: true },
+    tuesday: { start: '09:00', end: '18:00', isActive: true },
+    wednesday: { start: '09:00', end: '18:00', isActive: true },
+    thursday: { start: '09:00', end: '18:00', isActive: true },
+    friday: { start: '09:00', end: '18:00', isActive: true },
+    saturday: { start: '09:00', end: '14:00', isActive: false },
+    sunday: { start: '09:00', end: '14:00', isActive: false }
+  });
+
+  // Get availability for selected office (or default)
+  const getCurrentAvailability = () => {
+    console.log('getCurrentAvailability called - filters.officeId:', filters.officeId);
+    console.log('officeAvailability keys:', Object.keys(officeAvailability));
+
+    if (filters.officeId && officeAvailability[filters.officeId]) {
+      console.log('Returning availability for office:', filters.officeId);
+      return officeAvailability[filters.officeId];
+    }
+
+    // Return default if no office selected or no availability set
+    console.log('Returning default availability (no office selected or no availability found)');
+    return {
+      workingHours: getDefaultWorkingHours(),
+      slotDuration: 30,
+      bufferTime: 0,
+      maxVisitsPerSlot: 3,
+      blockedDates: []
+    };
+  };
+
+  // Generate time slots based on office availability
+  const timeSlots = useMemo(() => {
+    const availability = getCurrentAvailability();
+    const slots = [];
+    const slotDuration = availability.slotDuration || 30;
+
+    // Find the earliest start and latest end time across all active days
+    let minStart = 24 * 60; // Start with max
+    let maxEnd = 0;
+
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    days.forEach(day => {
+      const wh = availability.workingHours?.[day];
+      if (wh?.isActive) {
+        const [startH, startM] = wh.start.split(':').map(Number);
+        const [endH, endM] = wh.end.split(':').map(Number);
+        minStart = Math.min(minStart, startH * 60 + startM);
+        maxEnd = Math.max(maxEnd, endH * 60 + endM);
+      }
+    });
+
+    // If no active days found, use default 9-6
+    if (minStart === 24 * 60) minStart = 9 * 60;
+    if (maxEnd === 0) maxEnd = 18 * 60;
+
+    const buffer = availability.bufferTime || 0;
+    let currentMinutes = minStart;
+    while (currentMinutes < maxEnd) {
+      const hours = Math.floor(currentMinutes / 60);
+      const mins = currentMinutes % 60;
+      slots.push(`${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`);
+      currentMinutes += slotDuration + buffer;
+    }
+
+    return slots;
+  }, [filters.officeId, officeAvailability]);
+
+  // Get blocked dates for selected office
+  const getBlockedDates = () => {
+    if (filters.officeId && officeAvailability[filters.officeId]) {
+      return officeAvailability[filters.officeId].blockedDates || [];
+    }
+    // If no office selected, combine all blocked dates
+    const allBlocked = [];
+    Object.values(officeAvailability).forEach(avail => {
+      if (avail.blockedDates) {
+        avail.blockedDates.forEach(b => {
+          if (!allBlocked.some(ab => ab.date === b.date)) {
+            allBlocked.push(b);
+          }
+        });
+      }
+    });
+    return allBlocked;
+  };
+
+  // Check if a date is blocked
+  const isDateBlocked = (date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    const blockedDates = getBlockedDates();
+    return blockedDates.some(b => b.date === dateStr);
+  };
+
+  // Get blocked info for a date
+  const getBlockedInfo = (date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    const blockedDates = getBlockedDates();
+    return blockedDates.find(b => b.date === dateStr) || null;
+  };
+
+  // Check if a day is a working day for the selected office
+  const isWorkingDay = (date) => {
+    const availability = getCurrentAvailability();
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[date.getDay()];
+    return availability.workingHours?.[dayName]?.isActive ?? false;
+  };
+
+  // Get working hours for a specific day
+  const getWorkingHoursForDay = (date) => {
+    const availability = getCurrentAvailability();
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[date.getDay()];
+    return availability.workingHours?.[dayName] || { start: '09:00', end: '18:00', isActive: false };
+  };
 
   // Export columns configuration
   const exportColumns = [
@@ -66,6 +178,20 @@ const PartnerManagerVisits = () => {
     fetchPartners();
   }, [currentWeekStart, filters]);
 
+  // Set default office when offices are loaded
+  useEffect(() => {
+    if (offices.length > 0 && !filters.officeId) {
+      setFilters(prev => ({ ...prev, officeId: offices[0]._id }));
+    }
+  }, [offices]);
+
+  // Fetch office availability when offices are loaded
+  useEffect(() => {
+    if (offices.length > 0) {
+      fetchOfficeAvailability();
+    }
+  }, [offices]);
+
   const fetchVisits = async () => {
     try {
       setLoading(true);
@@ -80,7 +206,10 @@ const PartnerManagerVisits = () => {
       if (filters.visitType) params.append('visitType', filters.visitType);
       if (filters.officeId) params.append('officeId', filters.officeId);
 
+      console.log('Fetching visits with filters:', { officeId: filters.officeId, visitType: filters.visitType, startDate: params.get('startDate'), endDate: params.get('endDate') });
+
       const response = await api.get(`/visits/company?${params.toString()}`);
+      console.log('Visits fetched:', response.data.data.visits?.length || 0, 'visits');
       setVisits(response.data.data.visits || []);
     } catch (err) {
       console.error('Failed to load visits:', err.response?.data || err.message);
@@ -114,6 +243,46 @@ const PartnerManagerVisits = () => {
       setPartners(response.data.data.partners || []);
     } catch (err) {
       console.error('Failed to load partners');
+    }
+  };
+
+  // Fetch office availability settings for all offices
+  const fetchOfficeAvailability = async () => {
+    try {
+      const response = await api.get('/offices/availabilities');
+      const availabilities = response.data.data || [];
+
+      // Create a map of officeId to availability settings
+      const availabilityMap = {};
+      availabilities.forEach(item => {
+        const officeId = item.office?._id;
+        if (officeId) {
+          availabilityMap[officeId] = {
+            workingHours: item.availability?.workingHours || getDefaultWorkingHours(),
+            slotDuration: item.availability?.slotDuration || 30,
+            bufferTime: item.availability?.bufferTime || 0,
+            maxVisitsPerSlot: item.availability?.maxVisitsPerSlot || 3,
+            blockedDates: (item.availability?.blockedDates || []).map(b => {
+              let dateStr = '';
+              try {
+                if (b.date) {
+                  const d = b.date instanceof Date ? b.date : new Date(b.date);
+                  if (!isNaN(d.getTime())) {
+                    dateStr = d.toISOString().split('T')[0];
+                  }
+                }
+              } catch (e) {
+                console.error('Date parse error:', e);
+              }
+              return { date: dateStr, reason: b.reason || 'Blocked' };
+            }).filter(b => b.date)
+          };
+        }
+      });
+      console.log('Office availability loaded:', availabilityMap);
+      setOfficeAvailability(availabilityMap);
+    } catch (err) {
+      console.error('Failed to load office availability:', err);
     }
   };
 
@@ -162,14 +331,21 @@ const PartnerManagerVisits = () => {
     }
   };
 
-  // Get days for the current week
+  // Get all 7 days for the current week (always show Monday-Sunday)
+  // Non-working days will display as "Closed" in the calendar
   const weekDays = useMemo(() => {
     const days = [];
-    for (let i = 0; i < 5; i++) { // Monday to Friday
-      const day = new Date(currentWeekStart);
+
+    // Get the Monday of the current week
+    const monday = new Date(currentWeekStart);
+
+    // Generate all 7 days from Monday to Sunday
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(monday);
       day.setDate(day.getDate() + i);
       days.push(day);
     }
+
     return days;
   }, [currentWeekStart]);
 
@@ -224,8 +400,7 @@ const PartnerManagerVisits = () => {
       approved: 'bg-blue-400',
       rejected: 'bg-red-400',
       completed: 'bg-green-400',
-      cancelled: 'bg-gray-400',
-      deal_closed: 'bg-purple-400'
+      cancelled: 'bg-gray-400'
     };
     return colors[status] || 'bg-gray-400';
   };
@@ -236,8 +411,7 @@ const PartnerManagerVisits = () => {
       approved: 'bg-blue-100 text-blue-800',
       rejected: 'bg-red-100 text-red-800',
       completed: 'bg-green-100 text-green-800',
-      cancelled: 'bg-gray-100 text-gray-800',
-      deal_closed: 'bg-purple-100 text-purple-800'
+      cancelled: 'bg-gray-100 text-gray-800'
     };
     return styles[status] || 'bg-gray-100 text-gray-800';
   };
@@ -248,8 +422,7 @@ const PartnerManagerVisits = () => {
       approved: 'Approved',
       rejected: 'Rejected',
       completed: 'Completed',
-      cancelled: 'Cancelled',
-      deal_closed: 'Deal Closed'
+      cancelled: 'Cancelled'
     };
     return texts[status] || status;
   };
@@ -276,7 +449,7 @@ const PartnerManagerVisits = () => {
   // Week range display
   const getWeekRange = () => {
     const start = weekDays[0];
-    const end = weekDays[4];
+    const end = weekDays[6]; // Now includes Sunday (7th day)
     const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const endStr = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     return `${startStr} - ${endStr}`;
@@ -325,10 +498,6 @@ const PartnerManagerVisits = () => {
             <p className="text-xs sm:text-sm text-gray-500">Completed</p>
             <p className="text-lg sm:text-2xl font-bold text-purple-600 mt-1">{stats.statusCounts?.completed || 0}</p>
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
-            <p className="text-xs sm:text-sm text-gray-500">Deals</p>
-            <p className="text-lg sm:text-2xl font-bold text-indigo-600 mt-1">{stats.statusCounts?.deal_closed || 0}</p>
-          </div>
         </div>
       )}
 
@@ -343,7 +512,6 @@ const PartnerManagerVisits = () => {
             >
               <option value="">All Types</option>
               <option value="office">Office Visit</option>
-              <option value="site">Site Visit</option>
               <option value="virtual">Virtual Visit</option>
             </select>
             <select
@@ -351,7 +519,6 @@ const PartnerManagerVisits = () => {
               onChange={(e) => setFilters({ ...filters, officeId: e.target.value })}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             >
-              <option value="">All Offices</option>
               {offices.map(office => (
                 <option key={office._id} value={office._id}>{office.name}</option>
               ))}
@@ -397,103 +564,151 @@ const PartnerManagerVisits = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto -mx-4 sm:mx-0">
           <div className="min-w-[800px] sm:min-w-full">
-            {/* Header Row with Days */}
-            <div className="grid grid-cols-6 border-b border-gray-200 bg-gray-50">
-          <div className="p-3 text-center text-sm font-medium text-gray-500 border-r border-gray-200">
-            Time
-          </div>
-          {weekDays.map((day, idx) => (
-            <div
-              key={idx}
-              className={`p-3 text-center border-r border-gray-200 last:border-r-0 ${
-                isToday(day) ? 'bg-indigo-50' : ''
-              }`}
-            >
-              <div className={`text-sm font-medium ${isToday(day) ? 'text-indigo-600' : 'text-gray-900'}`}>
-                {formatDayHeader(day)}
+            {/* Header Row with Days - Dynamic columns based on number of days */}
+            <div className="grid border-b border-gray-200 bg-gray-50" style={{ gridTemplateColumns: `80px repeat(${weekDays.length}, 1fr)` }}>
+              <div className="p-3 text-center text-sm font-medium text-gray-500 border-r border-gray-200">
+                Time
               </div>
-              <div className={`text-xs ${isToday(day) ? 'text-indigo-500' : 'text-gray-500'}`}>
-                {isToday(day) ? 'Today' : ''}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Time Slots Grid */}
-        <div className="max-h-[600px] overflow-y-auto">
-          {timeSlots.map((time, timeIdx) => (
-            <div key={time} className="grid grid-cols-6 border-b border-gray-100 last:border-b-0">
-              {/* Time Label */}
-              <div className="p-2 text-center text-xs text-gray-500 border-r border-gray-100 bg-gray-50">
-                {formatTimeDisplay(time)}
-              </div>
-
-              {/* Slots for each day */}
-              {weekDays.map((day, dayIdx) => {
-                const slotVisits = getVisitsForSlot(day, time);
-
+              {weekDays.map((day, idx) => {
+                const blockedInfo = getBlockedInfo(day);
+                const isBlocked = !!blockedInfo;
+                const workingHours = getWorkingHoursForDay(day);
+                const isNonWorkingDay = !workingHours.isActive;
+                const isClosed = isBlocked || isNonWorkingDay;
                 return (
                   <div
-                    key={dayIdx}
-                    className={`min-h-[60px] p-1 border-r border-gray-100 last:border-r-0 ${
-                      isToday(day) ? 'bg-indigo-50/30' : ''
-                    }`}
+                    key={idx}
+                    className={`p-3 text-center border-r border-gray-200 last:border-r-0 ${
+                      isToday(day) ? 'bg-indigo-50' : ''
+                    } ${isClosed ? 'bg-gray-100' : ''}`}
+                    title={blockedInfo ? blockedInfo.reason : isNonWorkingDay ? 'Non-working day' : ''}
                   >
-                    {slotVisits.length > 0 ? (
-                      slotVisits.map((visit) => (
-                        <div
-                          key={visit._id}
-                          onClick={() => setSelectedVisit(visit)}
-                          className="p-2 rounded-lg cursor-pointer hover:shadow-md transition-shadow mb-1 last:mb-0"
-                          style={{ backgroundColor: visit.status === 'pending' ? '#fef3c7' : visit.status === 'approved' ? '#dbeafe' : visit.status === 'completed' ? '#dcfce7' : visit.status === 'deal_closed' ? '#f3e8ff' : '#f3f4f6' }}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <div className={`w-2 h-2 rounded-full ${getStatusColor(visit.status)}`}></div>
-                            <span className="text-xs font-medium text-gray-900 truncate">
-                              {visit.partner?.firstName} {visit.partner?.lastName?.charAt(0)}.
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-600 truncate mt-0.5">
-                            {visit.property?.name?.substring(0, 20)}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="w-full border-t border-dashed border-gray-200"></div>
-                      </div>
-                    )}
+                    <div className={`text-sm font-medium ${isToday(day) ? 'text-indigo-600' : isClosed ? 'text-gray-500' : 'text-gray-900'}`}>
+                      {formatDayHeader(day)}
+                    </div>
+                    <div className={`text-xs ${isToday(day) ? 'text-indigo-500' : ''}`}>
+                      {isToday(day) ? 'Today' : isClosed ? (
+                        <span className="text-gray-500">Closed</span>
+                      ) : ''}
+                    </div>
                   </div>
                 );
               })}
             </div>
-          ))}
-        </div>
 
-        {/* Legend */}
-        <div className="flex items-center gap-4 sm:gap-6 p-3 sm:p-4 border-t border-gray-200 bg-gray-50 overflow-x-auto">
-          <span className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">Legend:</span>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
-            <span className="text-xs text-gray-600">Pending</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-            <span className="text-xs text-gray-600">Approved</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-green-400"></div>
-            <span className="text-xs text-gray-600">Completed</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-purple-400"></div>
-            <span className="text-xs text-gray-600">Deal Closed</span>
-          </div>
-          <div className="flex items-center gap-1 ml-2 sm:ml-4">
-            <div className="w-8 border-t border-dashed border-gray-300"></div>
-            <span className="text-xs text-gray-600">Available</span>
-          </div>
-        </div>
+            {/* Time Slots Grid */}
+            <div className="max-h-[600px] overflow-y-auto">
+              {timeSlots.map((time, timeIdx) => (
+                <div key={time} className="grid border-b border-gray-100 last:border-b-0" style={{ gridTemplateColumns: `80px repeat(${weekDays.length}, 1fr)` }}>
+                  {/* Time Label */}
+                  <div className="p-2 text-center text-xs text-gray-500 border-r border-gray-100 bg-gray-50">
+                    {formatTimeDisplay(time)}
+                  </div>
+
+                  {/* Slots for each day */}
+                  {weekDays.map((day, dayIdx) => {
+                    const slotVisits = getVisitsForSlot(day, time);
+                    const blockedInfo = getBlockedInfo(day);
+                    const isBlocked = !!blockedInfo;
+                    const workingHours = getWorkingHoursForDay(day);
+                    const isNonWorkingDay = !workingHours.isActive;
+                    const isClosed = isBlocked || isNonWorkingDay;
+
+                    // Check if this time slot is within working hours
+                    const [slotHour, slotMin] = time.split(':').map(Number);
+                    const slotMinutes = slotHour * 60 + slotMin;
+                    const [startHour, startMin] = (workingHours.start || '09:00').split(':').map(Number);
+                    const [endHour, endMin] = (workingHours.end || '18:00').split(':').map(Number);
+                    const startMinutes = startHour * 60 + startMin;
+                    const endMinutes = endHour * 60 + endMin;
+                    const isWithinWorkingHours = slotMinutes >= startMinutes && slotMinutes < endMinutes;
+
+                    return (
+                      <div
+                        key={dayIdx}
+                        className={`min-h-[60px] p-1 border-r border-gray-100 last:border-r-0 relative ${
+                          isToday(day) ? 'bg-indigo-50/30' : ''
+                        } ${isClosed ? 'bg-gray-50' : ''}`}
+                        title={blockedInfo ? blockedInfo.reason : isNonWorkingDay ? 'Non-working day' : ''}
+                      >
+                        {isClosed && slotVisits.length === 0 ? (
+                          <div className="h-full flex items-center justify-center bg-gray-100/50 rounded">
+                            <span className="text-xs text-gray-400">Closed</span>
+                          </div>
+                        ) : !isWithinWorkingHours && slotVisits.length === 0 ? (
+                          <div className="h-full flex items-center justify-center">
+                            <div className="w-full border-t border-dashed border-gray-200"></div>
+                          </div>
+                        ) : slotVisits.length > 0 ? (
+                          slotVisits.map((visit) => (
+                            <div
+                              key={visit._id}
+                              onClick={() => setSelectedVisit(visit)}
+                              className={`p-2 rounded-lg cursor-pointer hover:shadow-md transition-shadow mb-1 last:mb-0 border-l-2 ${
+                                visit.visitType === 'virtual'
+                                  ? 'border-l-purple-400 bg-purple-50'
+                                  : 'border-l-blue-400'
+                              }`}
+                              style={{ backgroundColor: visit.status === 'pending' ? '#fef3c7' : visit.status === 'approved' ? '#dbeafe' : visit.status === 'completed' ? '#dcfce7' : '#f3f4f6' }}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-2 h-2 rounded-full ${getStatusColor(visit.status)}`}></div>
+                                <span className="text-xs font-medium text-gray-900 truncate">
+                                  {visit.partner?.firstName} {visit.partner?.lastName?.charAt(0)}.
+                                </span>
+                                {visit.visitType === 'virtual' && (
+                                  <span className="text-[10px] px-1 py-0.5 bg-purple-100 text-purple-700 rounded">Virtual</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-600 truncate mt-0.5">
+                                {visit.property?.name?.substring(0, 20)}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="h-full flex items-center justify-center">
+                            <div className="w-full border-t border-dashed border-gray-200"></div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-4 sm:gap-6 p-3 sm:p-4 border-t border-gray-200 bg-gray-50 overflow-x-auto">
+              <span className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">Legend:</span>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                <span className="text-xs text-gray-600">Pending</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-blue-400"></div>
+                <span className="text-xs text-gray-600">Approved</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-green-400"></div>
+                <span className="text-xs text-gray-600">Completed</span>
+              </div>
+              <div className="flex items-center gap-1 ml-2 sm:ml-4">
+                <div className="w-8 border-t border-dashed border-gray-300"></div>
+                <span className="text-xs text-gray-600">Available</span>
+              </div>
+              <div className="flex items-center gap-1 ml-2 sm:ml-4">
+                <div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
+                <span className="text-xs text-gray-600">Closed</span>
+              </div>
+              <div className="flex items-center gap-1 ml-2 sm:ml-4">
+                <div className="w-4 h-4 border-l-2 border-l-blue-400 bg-blue-50 rounded"></div>
+                <span className="text-xs text-gray-600">Office</span>
+              </div>
+              <div className="flex items-center gap-1 ml-2 sm:ml-4">
+                <div className="w-4 h-4 border-l-2 border-l-purple-400 bg-purple-50 rounded"></div>
+                <span className="text-xs text-gray-600">Virtual</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -556,7 +771,7 @@ const PartnerManagerVisits = () => {
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Office</p>
-                    <p className="font-medium text-gray-900">{selectedVisit.office?.name || 'N/A'}</p>
+                    <p className="font-medium text-gray-900">{selectedVisit.officeLocation?.name || 'N/A'}</p>
                   </div>
                 </div>
 

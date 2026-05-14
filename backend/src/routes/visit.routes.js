@@ -10,8 +10,6 @@ import {
   approveVisit,
   rejectVisit,
   completeVisit,
-  markDealClosed,
-  partnerMarkDealClosed,
   getVisitStats
 } from '../controllers/visit.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
@@ -45,10 +43,8 @@ router.get('/stats', restrictTo('company_superadmin', 'partner_manager', 'viewer
 router.get('/:id', validateGetVisit, getVisit);
 router.put('/:id', restrictTo('partner'), validateUpdateVisit, updateVisit);
 router.put('/:id/cancel', restrictTo('partner'), validateCancelVisit, cancelVisit);
-router.put('/:id/deal-closed/partner', restrictTo('partner'), validateVisitAction, partnerMarkDealClosed);
 router.put('/:id/approve', restrictTo('company_superadmin', 'partner_manager'), validateVisitAction, approveVisit);
 router.put('/:id/reject', restrictTo('company_superadmin', 'partner_manager'), validateVisitAction, rejectVisit);
 router.put('/:id/complete', restrictTo('company_superadmin', 'partner_manager'), validateCompleteVisit, completeVisit);
-router.put('/:id/deal-closed', restrictTo('company_superadmin', 'partner_manager'), validateVisitAction, markDealClosed);
 
 export default router;

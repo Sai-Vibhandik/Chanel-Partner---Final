@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../../utils/api';
+import { useSocket } from '../../context/SocketContext';
+import { useAuth } from '../../context/AuthContext';
 
 const ConversationList = ({ onSelectConversation, selectedPartnershipId, adminType }) => {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const { onNewMessage, decrementUnreadCount, socket } = useSocket();
+  const { user } = useAuth();
 
-  useEffect(() => {
-    fetchConversations();
-  }, [adminType]);
-
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get('/chat/conversations', {
@@ -22,7 +22,111 @@ const ConversationList = ({ onSelectConversation, selectedPartnershipId, adminTy
     } finally {
       setLoading(false);
     }
-  };
+  }, [adminType]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [adminType, fetchConversations]);
+
+  // Listen for new messages - instant update to unread count
+  useEffect(() => {
+    const unsubscribe = onNewMessage?.((data) => {
+      console.log('ConversationList received new-message:', data);
+      // Check if the current user sent this message
+      const senderId = data.message?.sender?.userId?._id || data.message?.sender?.userId;
+      const isOwnMessage = senderId === user?._id || senderId?.toString() === user?._id?.toString();
+
+      console.log('Sender ID:', senderId, 'User ID:', user?._id, 'Is own message:', isOwnMessage);
+
+      // Update the conversation list
+      setConversations(prev => {
+        const updatedConversations = prev.map(conv => {
+          if (conv.partnership?._id === data.message?.partnershipId) {
+            return {
+              ...conv,
+              lastMessage: data.message,
+              // Only increment unread if message is from someone else
+              unreadCount: isOwnMessage ? conv.unreadCount : (conv.unreadCount || 0) + 1
+            };
+          }
+          return conv;
+        });
+        // Sort by last message date (most recent first)
+        return updatedConversations.sort((a, b) => {
+          const aDate = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(0);
+          const bDate = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : new Date(0);
+          return bDate - aDate;
+        });
+      });
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [onNewMessage, user?._id]);
+
+  // Listen for chat notifications (when not in the conversation)
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleChatNotification = (data) => {
+      console.log('ConversationList received chat-notification:', data);
+      // chat-notification is only sent to the OTHER party, so we don't need to check isOwnMessage
+      // But we should still check if we're currently viewing this conversation
+      const isViewingConversation = selectedPartnershipId === data.partnershipId;
+      console.log('Selected partnership:', selectedPartnershipId, 'Notification partnership:', data.partnershipId, 'Is viewing:', isViewingConversation);
+
+      if (!isViewingConversation) {
+        // Update the conversation list to show new message and increment unread
+        setConversations(prev => {
+          const updatedConversations = prev.map(conv => {
+            if (conv.partnership?._id === data.partnershipId) {
+              console.log('Incrementing unread for conversation:', conv.partnership?._id, 'New count:', (conv.unreadCount || 0) + 1);
+              return {
+                ...conv,
+                lastMessage: data.message,
+                unreadCount: (conv.unreadCount || 0) + 1
+              };
+            }
+            return conv;
+          });
+          // Sort by last message date (most recent first)
+          return updatedConversations.sort((a, b) => {
+            const aDate = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(0);
+            const bDate = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : new Date(0);
+            return bDate - aDate;
+          });
+        });
+      }
+    };
+
+    socket.on('chat-notification', handleChatNotification);
+    return () => {
+      socket.off('chat-notification', handleChatNotification);
+    };
+  }, [socket, selectedPartnershipId]);
+
+  // Handle selecting a conversation - clear unread count immediately
+  const handleSelectConversation = useCallback((partnershipId, partner) => {
+    // Find the conversation to get its unread count
+    const conversation = conversations.find(c => c.partnership?._id === partnershipId);
+    const unreadCount = conversation?.unreadCount || 0;
+
+    // Immediately clear unread in the conversation list
+    setConversations(prev => prev.map(conv => {
+      if (conv.partnership?._id === partnershipId) {
+        return { ...conv, unreadCount: 0 };
+      }
+      return conv;
+    }));
+
+    // Decrement the total unread count in sidebar
+    if (unreadCount > 0) {
+      decrementUnreadCount(unreadCount);
+    }
+
+    // Call the parent's onSelectConversation
+    onSelectConversation(partnershipId, partner);
+  }, [conversations, decrementUnreadCount, onSelectConversation]);
 
   // Filter conversations by search
   const filteredConversations = conversations.filter(conv => {
@@ -89,7 +193,7 @@ const ConversationList = ({ onSelectConversation, selectedPartnershipId, adminTy
             return (
               <div
                 key={conv.partnership._id}
-                onClick={() => onSelectConversation(conv.partnership._id, partner)}
+                onClick={() => handleSelectConversation(conv.partnership._id, partner)}
                 className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
                   isSelected ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : ''
                 }`}

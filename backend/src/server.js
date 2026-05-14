@@ -86,7 +86,7 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Body parsing middleware
@@ -131,8 +131,10 @@ app.use('/api/visits', visitRoutes);
 app.use('/api/commissions', commissionRoutes);
 app.use('/api/agreements', agreementRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/offices', officeRoutes);
+// Note: availabilityRoutes must be mounted BEFORE officeRoutes
+// because officeRoutes has /:id which would catch /offices/availabilities
 app.use('/api', availabilityRoutes);
+app.use('/api/offices', officeRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/login-logs', loginLogRoutes);
 app.use('/api/email-logs', emailLogRoutes);

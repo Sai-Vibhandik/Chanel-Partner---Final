@@ -4,6 +4,7 @@ import PartnerCompany from '../models/PartnerCompany.js';
 import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { sendNewPropertyEmail } from '../services/email.service.js';
+import { createNotificationsForRecipients } from './notification.controller.js';
 
 /**
  * @desc    Create new property
@@ -15,6 +16,7 @@ export const createProperty = async (req, res, next) => {
     console.log('Creating property - received data:', {
       hasImages: !!req.body.images,
       imagesCount: req.body.images?.length || 0,
+      images: req.body.images,
       hasVideos: !!req.body.videos,
       videosCount: req.body.videos?.length || 0,
       hasBrochure: !!req.body.brochure,
@@ -33,6 +35,7 @@ export const createProperty = async (req, res, next) => {
       status // Allow status to be passed
     } = req.body;
 
+    console.log('Extracted images:', images);
     console.log('Commission data received:', commission);
 
     // Validate region-specific details
@@ -45,6 +48,15 @@ export const createProperty = async (req, res, next) => {
 
     // Determine status (default to 'draft' if not provided)
     const propertyStatus = status || 'draft';
+
+    console.log('Creating property with commission:', {
+      received: commission,
+      processed: {
+        basePercentage: parseFloat(commission?.basePercentage) || 0,
+        isFixed: Boolean(commission?.isFixed),
+        fixedAmount: commission?.fixedAmount
+      }
+    });
 
     const property = await Property.create({
       companyId: req.user.companyId,
@@ -60,8 +72,10 @@ export const createProperty = async (req, res, next) => {
       visibility: visibility || { type: 'all', showPrice: true, showContact: true, partnerIds: [] },
       commission: {
         basePercentage: parseFloat(commission?.basePercentage) || 0,
-        isFixed: commission?.isFixed || false,
-        fixedAmount: commission?.fixedAmount ? parseFloat(commission.fixedAmount) : null
+        isFixed: Boolean(commission?.isFixed),
+        fixedAmount: commission?.fixedAmount !== undefined && commission?.fixedAmount !== null && commission?.fixedAmount !== ''
+          ? parseFloat(commission.fixedAmount)
+          : null
       },
       images: images || [],
       videos: videos || [],
@@ -118,6 +132,22 @@ export const createProperty = async (req, res, next) => {
           console.log('   📧 Sending property notification emails...');
           sendNewPropertyEmail(partnersToNotify, property, property.companyId).catch(err => {
             console.error('   ❌ Failed to send property notification emails:', err);
+          });
+
+          // Create notifications for partners
+          const recipientIds = partnersToNotify.map(p => p._id);
+          createNotificationsForRecipients({
+            recipientIds,
+            type: 'new_property',
+            title: 'New Property Available',
+            message: `A new property "${property.name}" is now available for visits.`,
+            data: {
+              propertyId: property._id,
+              companyId: property.companyId
+            },
+            link: '/partner/properties'
+          }).catch(err => {
+            console.error('   ❌ Failed to create property notification:', err.message);
           });
         } else {
           console.log('   ⚠️ No partners to notify');
@@ -353,6 +383,11 @@ export const updateProperty = async (req, res, next) => {
       throw new ApiError(403, 'Access denied');
     }
 
+    // Check if property is sold out - sold out properties cannot be edited
+    if (property.status === 'sold_out') {
+      throw new ApiError(400, 'Sold out properties cannot be edited');
+    }
+
     // Update fields
     const updateFields = [
       'name', 'description', 'type', 'location', 'pricing',
@@ -364,11 +399,16 @@ export const updateProperty = async (req, res, next) => {
       if (req.body[field] !== undefined) {
         if (field === 'commission') {
           // Handle commission specifically to ensure proper number parsing
+          const commissionData = req.body[field];
+          console.log('Updating commission - received:', commissionData);
           property[field] = {
-            basePercentage: parseFloat(req.body[field]?.basePercentage) || 0,
-            isFixed: req.body[field]?.isFixed || false,
-            fixedAmount: req.body[field]?.fixedAmount ? parseFloat(req.body[field].fixedAmount) : null
+            basePercentage: parseFloat(commissionData?.basePercentage) || 0,
+            isFixed: Boolean(commissionData?.isFixed),
+            fixedAmount: commissionData?.fixedAmount !== undefined && commissionData?.fixedAmount !== null && commissionData?.fixedAmount !== ''
+              ? parseFloat(commissionData.fixedAmount)
+              : null
           };
+          console.log('Commission after update:', property[field]);
         } else {
           property[field] = req.body[field];
         }

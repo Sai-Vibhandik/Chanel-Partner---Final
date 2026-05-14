@@ -337,7 +337,7 @@ export const getAvailableSlotsForOffice = async (req, res, next) => {
         companyId: office.companyId,
         officeId: officeId,
         scheduledDate: { $gte: dayStart, $lte: dayEnd },
-        status: { $in: ['pending', 'approved'] }
+        status: 'approved' // Only count approved visits, not pending
       });
 
       // Create booking count map

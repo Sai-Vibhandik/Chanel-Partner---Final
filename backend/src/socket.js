@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from './models/User.js';
 import ChatMessage from './models/ChatMessage.js';
 
@@ -23,9 +24,33 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
   // Authentication middleware
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ');
+      // Try to get token from auth object first
+      let token = socket.handshake.auth?.token;
+
+      // If no token in auth, try authorization header
+      if (!token && socket.handshake.headers.authorization) {
+        token = socket.handshake.headers.authorization.replace('Bearer ', '');
+      }
+
+      // If still no token, try to get from cookies
+      if (!token && socket.handshake.headers.cookie) {
+        const cookies = socket.handshake.headers.cookie;
+        // Try accessToken first (primary)
+        const accessTokenMatch = cookies.match(/accessToken=([^;]+)/);
+        if (accessTokenMatch) {
+          token = accessTokenMatch[1];
+        }
+        // Fallback to token cookie
+        if (!token) {
+          const tokenMatch = cookies.match(/token=([^;]+)/);
+          if (tokenMatch) {
+            token = tokenMatch[1];
+          }
+        }
+      }
 
       if (!token) {
+        console.error('Socket auth error: No token found');
         return next(new Error('Authentication error: Token required'));
       }
 
@@ -51,9 +76,16 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
     // Join user to their personal room for notifications
     socket.join(`user:${socket.user._id}`);
 
-    // Join company room for admin users
-    if (socket.user.companyId && ['company_superadmin', 'partner_manager'].includes(socket.user.role)) {
-      socket.join(`company:${socket.user.companyId}`);
+    // Join company room for admin users (for general company broadcasts)
+    const isAdmin = ['company_superadmin', 'partner_manager'].includes(socket.user.role);
+    console.log(`User ${socket.user.firstName} role: ${socket.user.role}, companyId: ${socket.user.companyId}, isAdmin: ${isAdmin}`);
+
+    if (socket.user.companyId && isAdmin) {
+      const companyRoom = `company:${socket.user.companyId}`;
+      const roleRoom = `company:${socket.user.companyId}:${socket.user.role}`;
+      socket.join(companyRoom);
+      socket.join(roleRoom);
+      console.log(`Admin ${socket.user.firstName} joined rooms: ${companyRoom}, ${roleRoom}`);
     }
 
     // Handle joining a conversation room
@@ -158,12 +190,25 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
       try {
         const { partnershipId, adminType } = data;
 
+        // Convert partnershipId to ObjectId
+        const partnershipObjectId = new mongoose.Types.ObjectId(partnershipId);
+
         // Determine which messages to mark as read
         const senderType = socket.user.role === 'partner' ? 'admin' : 'partner';
 
+        // Get the count before updating (for notification)
+        const countBefore = await ChatMessage.countDocuments({
+          partnershipId: partnershipObjectId,
+          adminType,
+          'sender.type': senderType,
+          readAt: { $exists: false }
+        });
+
+        console.log(`Marking ${countBefore} messages as read for partnership ${partnershipId}, adminType ${adminType}`);
+
         const result = await ChatMessage.updateMany(
           {
-            partnershipId,
+            partnershipId: partnershipObjectId,
             adminType,
             'sender.type': senderType,
             readAt: { $exists: false }
@@ -174,15 +219,41 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
           }
         );
 
+        console.log(`Marked ${result.modifiedCount} messages as read`);
+
         const roomId = getConversationRoomId(partnershipId, adminType);
+
+        // Broadcast to others in the room that messages were read
         socket.to(roomId).emit('messages-read', {
           partnershipId,
           adminType,
           readBy: socket.user._id,
-          readAt: new Date()
+          readAt: new Date(),
+          countMarked: countBefore
+        });
+
+        // Emit back to the sender so they can refresh their UI
+        socket.emit('messages-read-confirmed', {
+          partnershipId,
+          adminType,
+          modifiedCount: result.modifiedCount,
+          countMarked: countBefore
+        });
+
+        // Emit conversation update to refresh conversation list
+        socket.emit('conversation-updated', {
+          partnershipId,
+          adminType,
+          unreadCount: 0
+        });
+
+        // Emit unread count update to refresh the sidebar
+        socket.emit('unread-count-updated', {
+          unreadCount: 'refresh'
         });
 
       } catch (error) {
+        console.error('Error marking messages as read:', error);
         socket.emit('error', { message: error.message });
       }
     });
@@ -223,6 +294,7 @@ const sendNotificationToOtherParty = async (partnershipId, adminType, senderType
     if (senderType === 'partner') {
       // Notify admin (company_superadmin or partner_manager based on adminType)
       const adminRoom = `company:${partnership.companyId}:${adminType}`;
+      console.log(`Sending chat-notification to room: ${adminRoom}`);
       io.to(adminRoom).emit('chat-notification', {
         partnershipId,
         adminType,
@@ -232,6 +304,7 @@ const sendNotificationToOtherParty = async (partnershipId, adminType, senderType
     } else {
       // Notify partner
       const partnerRoom = `user:${partnership.partnerId._id}`;
+      console.log(`Sending chat-notification to room: ${partnerRoom}`);
       io.to(partnerRoom).emit('chat-notification', {
         partnershipId,
         adminType,

@@ -334,99 +334,8 @@ const PartnershipDetails = () => {
         </div>
       </div>
 
-      {/* Agreements Section */}
-      {agreements.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Legal Agreements</h3>
-              <p className="text-sm text-gray-500">
-                Please sign all required agreements to proceed
-              </p>
-            </div>
-            {/* {hasUnsignedAgreements && (
-              <button
-                onClick={() => {
-                  const firstUnsigned = agreements.findIndex(a => !a.isSigned);
-                  setCurrentAgreementIndex(firstUnsigned !== -1 ? firstUnsigned : 0);
-                  setShowAgreementModal(true);
-                }}
-                className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700"
-              >
-                {signedAgreements > 0 ? 'Continue Signing' : 'Sign Agreements'}
-              </button>
-            )} */}
-          </div>
-
-          <div className="space-y-3">
-            {agreements.map((agreement, index) => (
-              <div
-                key={agreement._id}
-                className={`p-4 rounded-lg border-2 ${
-                  agreement.isSigned ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      agreement.isSigned ? 'bg-green-100' : 'bg-gray-200'
-                    }`}>
-                      {agreement.isSigned ? (
-                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      )}
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900">{agreement.name}</h4>
-                      <p className="text-sm text-gray-500">
-                        {agreement.type.toUpperCase().replace('_', ' ')}
-                        {agreement.isRequired && <span className="text-red-500 ml-1">*</span>}
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    {agreement.isSigned ? (
-                      <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                        Signed v{agreement.version}
-                      </span>
-                    ) : agreement.needsResign ? (
-                      <span className="px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
-                        Update Required
-                      </span>
-                    ) : (
-                      <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
-                        Pending
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {signedAgreements === totalAgreements && totalAgreements > 0 && (
-            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center gap-3">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="font-medium text-green-800">All agreements signed!</p>
-                  <p className="text-sm text-green-700">You have signed all required legal documents.</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* KYC Documents Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">KYC Documents</h3>
@@ -622,7 +531,7 @@ const PartnershipDetails = () => {
                   <div>
                     <p className="font-medium text-yellow-800">KYC incomplete</p>
                     <p className="text-sm text-yellow-700">
-                      Upload {kycSummary.totalRequired - kycSummary.verified} more document(s) to complete your KYC.
+                      Upload all documents to get verified.
                     </p>
                   </div>
                 </div>
@@ -631,6 +540,111 @@ const PartnershipDetails = () => {
           </div>
         )}
       </div>
+
+      {/* Agreements Section */}
+      {agreements.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Legal Agreements</h3>
+              <p className="text-sm text-gray-500">
+                {hasUnsignedAgreements ? 'Sign all required agreements to proceed' : 'All agreements signed'}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {agreements.map((agreement, index) => (
+              <div
+                key={agreement._id}
+                className={`p-4 rounded-lg border-2 ${
+                  agreement.isSigned ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      agreement.isSigned ? 'bg-green-100' : 'bg-gray-200'
+                    }`}>
+                      {agreement.isSigned ? (
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-900">{agreement.name}</h4>
+                      <p className="text-sm text-gray-500">
+                        {agreement.type.toUpperCase().replace('_', ' ')}
+                        {agreement.isRequired && <span className="text-red-500 ml-1">*</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {agreement.isSigned ? (
+                      <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                        Signed v{agreement.version}
+                      </span>
+                    ) : agreement.needsResign ? (
+                      <>
+                        <span className="px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-800">
+                          Update Required
+                        </span>
+                        <button
+                          onClick={() => {
+                            setCurrentAgreementIndex(index);
+                            setShowAgreementModal(true);
+                            setError('');
+                            setTypedName('');
+                          }}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm font-medium"
+                        >
+                          Review & Sign
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                          Pending
+                        </span>
+                        <button
+                          onClick={() => {
+                            setCurrentAgreementIndex(index);
+                            setShowAgreementModal(true);
+                            setError('');
+                            setTypedName('');
+                          }}
+                          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+                        >
+                          Review & Sign
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {signedAgreements === totalAgreements && totalAgreements > 0 && (
+            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center gap-3">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-green-800">All agreements signed!</p>
+                  <p className="text-sm text-green-700">You have signed all required legal documents.</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Rejection Reason */}
       {partnership?.rejectionReason && (
@@ -651,7 +665,7 @@ const PartnershipDetails = () => {
       {/* Agreement Signing Modal */}
       {showAgreementModal && agreements[currentAgreementIndex] && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
               <div>
@@ -659,7 +673,7 @@ const PartnershipDetails = () => {
                   {agreements[currentAgreementIndex].name}
                 </h3>
                 <p className="text-sm text-gray-500">
-                  Agreement {currentAgreementIndex + 1} of {agreements.length}
+                  {agreements[currentAgreementIndex].type.toUpperCase().replace('_', ' ')} • Version {agreements[currentAgreementIndex].version}
                 </p>
               </div>
               <button
@@ -673,14 +687,14 @@ const PartnershipDetails = () => {
             </div>
 
             {/* Content */}
-            <div className="p-6 max-h-96 overflow-y-auto">
+            <div className="p-6 flex-1 overflow-y-auto">
               <div className="prose prose-sm max-w-none whitespace-pre-wrap bg-gray-50 p-4 rounded-lg">
                 {replacePlaceholders(agreements[currentAgreementIndex].content)}
               </div>
             </div>
 
-            {/* Signature */}
-            <div className="p-6 border-t border-gray-200">
+            {/* Signature Section */}
+            <div className="p-6 border-t border-gray-200 bg-gray-50">
               {error && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
                   {error}
@@ -696,7 +710,7 @@ const PartnershipDetails = () => {
                     value={typedName}
                     onChange={(e) => setTypedName(e.target.value)}
                     placeholder="Enter your full legal name"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     required
                   />
                   <p className="mt-1 text-xs text-gray-500">
@@ -704,35 +718,20 @@ const PartnershipDetails = () => {
                   </p>
                 </div>
 
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="agreeCheckbox"
-                    checked={typedName.length > 0}
-                    onChange={() => {}}
-                    className="w-4 h-4 mt-1 text-cyan-600 border-gray-300 rounded"
-                    disabled
-                  />
-                  <label htmlFor="agreeCheckbox" className="text-sm text-gray-700">
-                    I have read and agree to the terms and conditions outlined in this agreement.
-                    I understand that this is a legally binding document.
-                  </label>
-                </div>
-
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-3">
                   <button
                     type="button"
                     onClick={() => setShowAgreementModal(false)}
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-white"
                   >
-                    Save for Later
+                    Cancel
                   </button>
                   <button
                     onClick={handleSignAgreement}
                     disabled={signing || !typedName.trim()}
-                    className="flex-1 px-4 py-3 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {signing ? 'Signing...' : 'Sign & Continue'}
+                    {signing ? 'Signing...' : 'Sign Agreement'}
                   </button>
                 </div>
               </div>

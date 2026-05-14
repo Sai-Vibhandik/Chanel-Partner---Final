@@ -1,6 +1,8 @@
 import User from '../models/User.js';
 import Company from '../models/Company.js';
 import { ApiError } from '../middlewares/error.middleware.js';
+import { sendTeamInviteEmail } from '../services/email.service.js';
+import { createNotification } from './notification.controller.js';
 import crypto from 'crypto';
 
 /**
@@ -130,18 +132,40 @@ export const createTeamMember = async (req, res, next) => {
       password: userPassword,
       companyId,
       createdBy: req.user._id,
-      isEmailVerified: false,
+      isEmailVerified: true,  // Auto-verify since admin is creating the account
       isActive: true
     });
 
-    // If sendInvite is true, generate reset password token
-    // (In production, you would send an email here)
+    // If sendInvite is true, send invitation email with credentials
     if (sendInvite) {
-      const token = user.generateResetPasswordToken();
-      await user.save();
-      // TODO: Send email with invite link
-      console.log(`Invite link: ${process.env.FRONTEND_URL}/reset-password/${token}`);
+      // Send invitation email with temporary password
+      sendTeamInviteEmail(user, userPassword, company, req.user).catch(err => {
+        console.error('Failed to send team invitation email:', err.message);
+      });
     }
+
+    // Create notification for the new team member
+    const roleNames = {
+      company_superadmin: 'Company Admin',
+      partner_manager: 'Partner Manager',
+      property_manager: 'Property Manager',
+      finance_manager: 'Finance Manager',
+      viewer: 'Viewer'
+    };
+
+    createNotification({
+      recipientId: user._id,
+      type: 'team_member_added',
+      title: 'Welcome to the Team',
+      message: `You have been added to ${company.name} as a ${roleNames[role] || role}. ${sendInvite ? 'Check your email for login credentials.' : ''}`,
+      data: {
+        companyId: company._id,
+        userId: user._id
+      },
+      link: '/profile-settings'
+    }).catch(err => {
+      console.error('Failed to create team member notification:', err.message);
+    });
 
     // Remove sensitive fields from response
     const userResponse = user.toObject();
@@ -223,7 +247,7 @@ export const updateTeamMember = async (req, res, next) => {
 };
 
 /**
- * @desc    Delete team member
+ * @desc    Delete team member (permanently remove from database)
  * @route   DELETE /api/company/:companyId/team/:id
  * @access  Private (Company SuperAdmin)
  */
@@ -246,13 +270,12 @@ export const deleteTeamMember = async (req, res, next) => {
       throw new ApiError(404, 'Team member not found');
     }
 
-    // Soft delete - deactivate instead of removing
-    user.isActive = false;
-    await user.save();
+    // Permanently delete the user from the database
+    await User.findByIdAndDelete(id);
 
     res.status(200).json({
       success: true,
-      message: 'Team member deactivated successfully'
+      message: 'Team member permanently deleted'
     });
   } catch (error) {
     next(error);
@@ -298,41 +321,6 @@ export const toggleTeamMemberStatus = async (req, res, next) => {
 };
 
 /**
- * @desc    Reset team member password
- * @route   POST /api/company/:companyId/team/:id/reset-password
- * @access  Private (Company SuperAdmin)
- */
-export const resetTeamMemberPassword = async (req, res, next) => {
-  try {
-    const { companyId, id } = req.params;
-
-    // Verify access
-    if (req.user.role !== 'platform_admin' && req.user.companyId?.toString() !== companyId) {
-      throw new ApiError(403, 'Access denied');
-    }
-
-    const user = await User.findOne({ _id: id, companyId });
-    if (!user) {
-      throw new ApiError(404, 'Team member not found');
-    }
-
-    // Generate reset token
-    const token = user.generateResetPasswordToken();
-    await user.save();
-
-    // TODO: Send email with reset link
-    console.log(`Reset link: ${process.env.FRONTEND_URL}/reset-password/${token}`);
-
-    res.status(200).json({
-      success: true,
-      message: 'Password reset link sent to the team member'
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
  * @desc    Resend invitation to team member
  * @route   POST /api/company/:companyId/team/:id/resend-invite
  * @access  Private (Company SuperAdmin)
@@ -355,16 +343,22 @@ export const resendInvite = async (req, res, next) => {
       throw new ApiError(400, 'This team member has already verified their email');
     }
 
-    // Generate reset token
-    const token = user.generateResetPasswordToken();
+    // Get company info
+    const company = await Company.findById(companyId);
+
+    // Generate a new temporary password for resend
+    const temporaryPassword = crypto.randomBytes(8).toString('hex');
+    user.password = temporaryPassword;
     await user.save();
 
-    // TODO: Send email with invite link
-    console.log(`Invite link: ${process.env.FRONTEND_URL}/reset-password/${token}`);
+    // Send invitation email with new temporary password
+    sendTeamInviteEmail(user, temporaryPassword, company, req.user).catch(err => {
+      console.error('Failed to send team invitation email:', err.message);
+    });
 
     res.status(200).json({
       success: true,
-      message: 'Invitation resent successfully'
+      message: 'Invitation resent successfully with new temporary password'
     });
   } catch (error) {
     next(error);

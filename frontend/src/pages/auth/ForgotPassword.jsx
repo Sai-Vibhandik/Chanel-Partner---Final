@@ -1,16 +1,27 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../utils/api';
+import { validateEmail } from '../../utils/validation';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [fieldError, setFieldError] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldError('');
+
+    // Validate email
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setFieldError(emailError);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -132,11 +143,13 @@ const ForgotPassword = () => {
                   autoComplete="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400"
+                  onChange={(e) => { setEmail(e.target.value); setFieldError(''); }}
+                  maxLength={100}
+                  className={`block w-full pl-10 pr-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldError ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   placeholder="you@example.com"
                 />
               </div>
+              {fieldError && <p className="text-sm text-red-600 mt-1">{fieldError}</p>}
             </div>
 
             <button

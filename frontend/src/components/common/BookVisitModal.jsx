@@ -21,12 +21,14 @@ const BookVisitModal = ({
   const [bookingError, setBookingError] = useState('');
   const [selectedPartnership, setSelectedPartnership] = useState(preSelectedPartnership || '');
   const [selectedProperty, setSelectedProperty] = useState(preSelectedProperty?._id || preSelectedProperty || '');
+  const [blockedDates, setBlockedDates] = useState([]);
+  const [blockedReason, setBlockedReason] = useState('');
   const modalContentRef = useRef(null);
 
   const [bookingForm, setBookingForm] = useState({
     visitType: 'office',
     purpose: '',
-    hasClient: true,
+    hasClient: false,
     scheduledDate: '',
     scheduledTime: '10:00',
     officeLocation: '',
@@ -150,8 +152,9 @@ const BookVisitModal = ({
   useEffect(() => { if (externalProperties) setProperties(externalProperties); }, [externalProperties]);
   useEffect(() => { if (externalPartnerships) setPartnerships(externalPartnerships); }, [externalPartnerships]);
   useEffect(() => { if (preSelectedProperty) setSelectedProperty(preSelectedProperty._id || preSelectedProperty); }, [preSelectedProperty]);
-  useEffect(() => { if (bookingForm.scheduledDate && bookingForm.officeLocation) fetchAvailableSlots(); else setAvailableSlots([]); }, [bookingForm.scheduledDate, bookingForm.officeLocation]);
+  useEffect(() => { if (bookingForm.scheduledDate && bookingForm.officeLocation) fetchAvailableSlots(); else { setAvailableSlots([]); setBlockedReason(''); } }, [bookingForm.scheduledDate, bookingForm.officeLocation]);
   useEffect(() => { if (selectedPartnership && !externalProperties) fetchPropertiesForPartnership(selectedPartnership); }, [selectedPartnership, externalProperties]);
+  useEffect(() => { if (bookingForm.officeLocation) fetchBlockedDates(bookingForm.officeLocation); else setBlockedDates([]); }, [bookingForm.officeLocation]);
 
   const fetchPartnerships = async () => {
     try {
@@ -177,7 +180,7 @@ const BookVisitModal = ({
   };
 
   const fetchAvailableSlots = async () => {
-    if (!bookingForm.scheduledDate || !bookingForm.officeLocation) { setAvailableSlots([]); return; }
+    if (!bookingForm.scheduledDate || !bookingForm.officeLocation) { setAvailableSlots([]); setBlockedReason(''); return; }
     try {
       setLoadingSlots(true);
       const params = new URLSearchParams();
@@ -185,10 +188,35 @@ const BookVisitModal = ({
       params.append('endDate', bookingForm.scheduledDate);
       const response = await api.get(`/offices/${bookingForm.officeLocation}/available-slots?${params.toString()}`);
       const dateInfo = response.data.data.slotsByDate?.[0];
-      if (dateInfo && !dateInfo.isAvailable) { setAvailableSlots([]); }
-      else { setAvailableSlots(dateInfo?.slots || []); }
-    } catch (err) { console.error('Failed to load available slots:', err); setAvailableSlots([]); }
+      if (dateInfo && !dateInfo.isAvailable) {
+        setAvailableSlots([]);
+        setBlockedReason(dateInfo.reason || 'This date is not available for booking');
+      } else {
+        setAvailableSlots(dateInfo?.slots || []);
+        setBlockedReason('');
+      }
+    } catch (err) { console.error('Failed to load available slots:', err); setAvailableSlots([]); setBlockedReason(''); }
     finally { setLoadingSlots(false); }
+  };
+
+  // Fetch blocked dates for the selected office
+  const fetchBlockedDates = async (officeId) => {
+    if (!officeId) { setBlockedDates([]); return; }
+    try {
+      const response = await api.get(`/offices/${officeId}/availability`);
+      const availability = response.data.data.availability;
+      if (availability?.blockedDates?.length > 0) {
+        setBlockedDates(availability.blockedDates.map(b => ({
+          date: new Date(b.date).toISOString().split('T')[0],
+          reason: b.reason || 'Blocked'
+        })));
+      } else {
+        setBlockedDates([]);
+      }
+    } catch (err) {
+      console.error('Failed to load blocked dates:', err);
+      setBlockedDates([]);
+    }
   };
 
   const handleBookVisit = async (e) => {
@@ -208,15 +236,31 @@ const BookVisitModal = ({
     }
 
     try {
-      await api.post('/visits', {
-        propertyId: selectedProperty, partnershipId: selectedPartnership, visitType: bookingForm.visitType,
-        purpose: bookingForm.purpose, hasClient: bookingForm.hasClient, scheduledDate: bookingForm.scheduledDate,
-        scheduledTime: bookingForm.scheduledTime, officeLocation: bookingForm.officeLocation,
-        clientDetails: { name: bookingForm.clientName, phone: bookingForm.clientPhone, email: bookingForm.clientEmail, notes: bookingForm.clientNotes },
+      const payload = {
+        propertyId: selectedProperty,
+        partnershipId: selectedPartnership,
+        visitType: bookingForm.visitType,
+        purpose: bookingForm.purpose,
+        hasClient: bookingForm.hasClient,
+        scheduledDate: bookingForm.scheduledDate,
+        scheduledTime: bookingForm.scheduledTime,
+        officeLocation: bookingForm.officeLocation,
         partnerNotes: bookingForm.partnerNotes
-      });
+      };
+
+      // Only include clientDetails if hasClient is true
+      if (bookingForm.hasClient) {
+        payload.clientDetails = {
+          name: bookingForm.clientName,
+          phone: bookingForm.clientPhone,
+          email: bookingForm.clientEmail || undefined,
+          notes: bookingForm.clientNotes || undefined
+        };
+      }
+
+      await api.post('/visits', payload);
       // Reset form
-      setBookingForm({ visitType: 'office', purpose: '', hasClient: true, scheduledDate: '', scheduledTime: '10:00', officeLocation: '', timeSlot: '', clientName: '', clientPhone: '', clientEmail: '', clientNotes: '', partnerNotes: '' });
+      setBookingForm({ visitType: 'office', purpose: '', hasClient: false, scheduledDate: '', scheduledTime: '10:00', officeLocation: '', timeSlot: '', clientName: '', clientPhone: '', clientEmail: '', clientNotes: '', partnerNotes: '' });
       setFormErrors({});
       setTouched({});
       setSelectedProperty('');
@@ -303,7 +347,7 @@ const BookVisitModal = ({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Visit Type *</label>
             <div className="grid grid-cols-2 gap-3">
-              {[{ value: 'office', label: 'Office Visit', icon: '🏢' }, { value: 'virtual_meet', label: 'Virtual Meet', icon: '💻' }].map((type) => (
+              {[{ value: 'office', label: 'Office Visit', icon: '🏢' }, { value: 'virtual', label: 'Virtual Meet', icon: '💻' }].map((type) => (
                 <label key={type.value} className={`flex flex-col items-center p-4 rounded-lg border-2 cursor-pointer transition-colors ${bookingForm.visitType === type.value ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}>
                   <input type="radio" name="visitType" value={type.value} checked={bookingForm.visitType === type.value} onChange={(e) => setBookingForm({ ...bookingForm, visitType: e.target.value, officeLocation: '', timeSlot: '' })} className="sr-only" />
                   <span className="text-2xl mb-2">{type.icon}</span>
@@ -332,8 +376,114 @@ const BookVisitModal = ({
             <label htmlFor="hasClient" className="text-sm text-gray-700 cursor-pointer select-none">I'm bringing a client with me</label>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Office *</label>
+            <select
+              value={bookingForm.officeLocation}
+              onChange={(e) => { handleChange('officeLocation', e.target.value); setBookingForm(prev => ({ ...prev, officeLocation: e.target.value, scheduledDate: '', timeSlot: '' })); }}
+              onBlur={() => { setTouched(prev => ({ ...prev, officeLocation: true })); if (!bookingForm.officeLocation) setFormErrors(prev => ({ ...prev, officeLocation: 'Please select an office' })); }}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${touched.officeLocation && formErrors.officeLocation ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+              required
+            >
+              <option value="">Choose an office location</option>
+              {offices.map((office) => (<option key={office._id} value={office._id}>{office.name} - {office.address?.city}</option>))}
+            </select>
+            {touched.officeLocation && formErrors.officeLocation && <p className="text-sm text-red-600 mt-1">{formErrors.officeLocation}</p>}
+            {offices.length === 0 && <p className="text-sm text-amber-600 mt-1">No offices available for booking</p>}
+            {/* Show blocked dates for selected office */}
+            {bookingForm.officeLocation && blockedDates.length > 0 && (
+              <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-xs font-medium text-amber-800 mb-1">Blocked Dates:</p>
+                <div className="flex flex-wrap gap-1">
+                  {blockedDates.slice(0, 5).map((b, idx) => (
+                    <span key={idx} className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded" title={b.reason}>
+                      {new Date(b.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  ))}
+                  {blockedDates.length > 5 && (
+                    <span className="text-xs text-amber-600">+{blockedDates.length - 5} more</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Date *</label>
+            <input
+              type="date"
+              value={bookingForm.scheduledDate}
+              onChange={(e) => { handleChange('scheduledDate', e.target.value); setBookingForm(prev => ({ ...prev, scheduledDate: e.target.value, timeSlot: '' })); }}
+              onBlur={() => handleBlur('scheduledDate')}
+              min={getMinDate()}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${touched.scheduledDate && formErrors.scheduledDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+              required
+            />
+            {touched.scheduledDate && formErrors.scheduledDate && <p className="text-sm text-red-600 mt-1">{formErrors.scheduledDate}</p>}
+          </div>
+
+          {bookingForm.officeLocation && bookingForm.scheduledDate && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Available Time Slots *</label>
+              {loadingSlots ? (
+                <div className="flex items-center justify-center py-4"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div><span className="ml-2 text-sm text-gray-500">Loading slots...</span></div>
+              ) : availableSlots.length === 0 ? (
+                <div className="py-2">
+                  <p className="text-sm text-red-600 font-medium">No available slots for this date.</p>
+                  {blockedReason && (
+                    <p className="text-sm text-red-500 mt-1">
+                      <svg className="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                      {blockedReason}
+                    </p>
+                  )}
+                  <p className="text-sm text-gray-500 mt-1">Please select another date.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    {availableSlots.map((slot) => {
+                      const isSelected = bookingForm.timeSlot === slot.time;
+                      const isUnavailable = !slot.isAvailable || slot.availableSpots <= 0;
+                      return (
+                        <button
+                          key={slot.time}
+                          type="button"
+                          disabled={isUnavailable}
+                          onClick={() => {
+                            if (isUnavailable) return;
+                            setBookingForm({ ...bookingForm, timeSlot: slot.time, scheduledTime: slot.time });
+                            setTouched(prev => ({ ...prev, timeSlot: true }));
+                            if (formErrors.timeSlot) setFormErrors(prev => ({ ...prev, timeSlot: '' }));
+                          }}
+                          className={`flex flex-col items-center p-2 rounded-lg border-2 transition-colors ${
+                            isUnavailable
+                              ? 'border-red-200 bg-red-50 cursor-not-allowed'
+                              : isSelected
+                                ? 'border-indigo-500 bg-indigo-50 cursor-pointer'
+                                : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-25 cursor-pointer'
+                          }`}
+                        >
+                          <span className={`text-sm font-medium ${isUnavailable ? 'text-red-400 line-through' : isSelected ? 'text-indigo-700' : 'text-gray-700'}`}>
+                            {slot.displayTime || slot.time}
+                          </span>
+                          <span className={`text-xs ${isUnavailable ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
+                            {isUnavailable ? '✕ Full' : `${slot.availableSpots || 1} left`}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {touched.timeSlot && formErrors.timeSlot && <p className="text-sm text-red-600 mt-2">{formErrors.timeSlot}</p>}
+                </>
+              )}
+            </div>
+          )}
+
           {bookingForm.hasClient && (
             <div className="border-t pt-4 space-y-3">
+              <h4 className="font-medium text-gray-900">Client Details</h4>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Client Name *</label>
                 <input
@@ -375,84 +525,6 @@ const BookVisitModal = ({
                 />
                 {touched.clientEmail && formErrors.clientEmail && <p className="text-sm text-red-600 mt-1">{formErrors.clientEmail}</p>}
               </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Office *</label>
-            <select
-              value={bookingForm.officeLocation}
-              onChange={(e) => { handleChange('officeLocation', e.target.value); setBookingForm(prev => ({ ...prev, officeLocation: e.target.value, scheduledDate: '', timeSlot: '' })); }}
-              onBlur={() => { setTouched(prev => ({ ...prev, officeLocation: true })); if (!bookingForm.officeLocation) setFormErrors(prev => ({ ...prev, officeLocation: 'Please select an office' })); }}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${touched.officeLocation && formErrors.officeLocation ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-              required
-            >
-              <option value="">Choose an office location</option>
-              {offices.map((office) => (<option key={office._id} value={office._id}>{office.name} - {office.address?.city}</option>))}
-            </select>
-            {touched.officeLocation && formErrors.officeLocation && <p className="text-sm text-red-600 mt-1">{formErrors.officeLocation}</p>}
-            {offices.length === 0 && <p className="text-sm text-amber-600 mt-1">No offices available for booking</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Date *</label>
-            <input
-              type="date"
-              value={bookingForm.scheduledDate}
-              onChange={(e) => { handleChange('scheduledDate', e.target.value); setBookingForm(prev => ({ ...prev, scheduledDate: e.target.value, timeSlot: '' })); }}
-              onBlur={() => handleBlur('scheduledDate')}
-              min={getMinDate()}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${touched.scheduledDate && formErrors.scheduledDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-              required
-            />
-            {touched.scheduledDate && formErrors.scheduledDate && <p className="text-sm text-red-600 mt-1">{formErrors.scheduledDate}</p>}
-          </div>
-
-          {bookingForm.officeLocation && bookingForm.scheduledDate && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Available Time Slots *</label>
-              {loadingSlots ? (
-                <div className="flex items-center justify-center py-4"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div><span className="ml-2 text-sm text-gray-500">Loading slots...</span></div>
-              ) : availableSlots.length === 0 ? (
-                <p className="text-sm text-amber-600 py-2">No available slots for this date. Please select another date.</p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-3 gap-2">
-                    {availableSlots.map((slot) => {
-                      const isSelected = bookingForm.timeSlot === slot.time;
-                      const isUnavailable = !slot.isAvailable || slot.availableSpots <= 0;
-                      return (
-                        <button
-                          key={slot.time}
-                          type="button"
-                          disabled={isUnavailable}
-                          onClick={() => {
-                            if (isUnavailable) return;
-                            setBookingForm({ ...bookingForm, timeSlot: slot.time, scheduledTime: slot.time });
-                            setTouched(prev => ({ ...prev, timeSlot: true }));
-                            if (formErrors.timeSlot) setFormErrors(prev => ({ ...prev, timeSlot: '' }));
-                          }}
-                          className={`flex flex-col items-center p-2 rounded-lg border-2 transition-colors ${
-                            isUnavailable
-                              ? 'border-red-200 bg-red-50 cursor-not-allowed'
-                              : isSelected
-                                ? 'border-indigo-500 bg-indigo-50 cursor-pointer'
-                                : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-25 cursor-pointer'
-                          }`}
-                        >
-                          <span className={`text-sm font-medium ${isUnavailable ? 'text-red-400 line-through' : isSelected ? 'text-indigo-700' : 'text-gray-700'}`}>
-                            {slot.displayTime || slot.time}
-                          </span>
-                          <span className={`text-xs ${isUnavailable ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
-                            {isUnavailable ? '✕ Full' : `${slot.availableSpots || 1} left`}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {touched.timeSlot && formErrors.timeSlot && <p className="text-sm text-red-600 mt-2">{formErrors.timeSlot}</p>}
-                </>
-              )}
             </div>
           )}
 

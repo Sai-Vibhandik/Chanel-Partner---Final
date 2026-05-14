@@ -97,8 +97,10 @@ const Commissions = () => {
 
   const handlePay = async (e) => {
     e.preventDefault();
-    if (!payForm.paymentReference) {
-      setError('Payment reference is required');
+
+    // Payment reference is required for non-cash payment methods
+    if (payForm.paymentMethod !== 'cash' && !payForm.paymentReference) {
+      setError('Payment reference is required for this payment method');
       return;
     }
 
@@ -367,7 +369,8 @@ const Commissions = () => {
                         >
                           View
                         </button>
-                        {commission.status === 'pending' && (
+                        {/* Approve/Cancel buttons only for finance_manager and company_superadmin */}
+                        {commission.status === 'pending' && user?.role !== 'partner_manager' && (
                           <>
                             <button
                               onClick={() => handleApprove(commission._id)}
@@ -387,7 +390,8 @@ const Commissions = () => {
                             </button>
                           </>
                         )}
-                        {commission.status === 'approved' && (
+                        {/* Mark Paid button only for finance_manager and company_superadmin */}
+                        {commission.status === 'approved' && user?.role !== 'partner_manager' && (
                           <button
                             onClick={() => {
                               setSelectedCommission(commission);
@@ -450,15 +454,20 @@ const Commissions = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Reference *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Reference {payForm.paymentMethod === 'cash' ? '(Optional)' : '*'}
+                </label>
                 <input
                   type="text"
                   value={payForm.paymentReference}
                   onChange={(e) => setPayForm({ ...payForm, paymentReference: e.target.value })}
-                  placeholder="Transaction ID / Cheque Number"
+                  placeholder={payForm.paymentMethod === 'cash' ? 'Optional - e.g., Receipt Number' : 'Transaction ID / Cheque Number'}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  required
+                  required={payForm.paymentMethod !== 'cash'}
                 />
+                {payForm.paymentMethod === 'cash' && (
+                  <p className="text-xs text-gray-500 mt-1">Payment reference is optional for cash payments</p>
+                )}
               </div>
 
               <div>

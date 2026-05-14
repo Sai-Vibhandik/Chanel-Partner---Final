@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import { validatePhone, validateEmail, validateRequired, handlePhoneInput } from '../../utils/validation';
 
 const OfficeManagement = ({ role = 'company_superadmin' }) => {
   const config = role === 'partner_manager' ? sidebarConfig.partner_manager : sidebarConfig.company_superadmin;
@@ -10,6 +11,7 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   // Modal states
   const [showOfficeModal, setShowOfficeModal] = useState(false);
@@ -71,12 +73,33 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
       const res = await api.get(`/offices/${officeId}/availability`);
       if (res.data?.data?.availability) {
         const avail = res.data.data.availability;
+        // Format blocked dates to ensure consistent date string format
+        const formattedBlockedDates = (avail.blockedDates || []).map(bd => {
+          let dateStr = '';
+          try {
+            if (bd.date) {
+              // Handle various date formats
+              const dateObj = bd.date instanceof Date ? bd.date : new Date(bd.date);
+              if (!isNaN(dateObj.getTime())) {
+                dateStr = dateObj.toISOString().split('T')[0];
+              }
+            }
+          } catch (e) {
+            console.error('Date parse error:', e);
+          }
+          return {
+            _id: bd._id,
+            date: dateStr,
+            reason: bd.reason || 'Holiday'
+          };
+        }).filter(bd => bd.date); // Remove any entries without a valid date
+
         setAvailabilityForm({
           workingHours: avail.workingHours || availabilityForm.workingHours,
           slotDuration: avail.slotDuration || 30,
           bufferTime: avail.bufferTime || 0,
           maxVisitsPerSlot: avail.maxVisitsPerSlot || 3,
-          blockedDates: avail.blockedDates || []
+          blockedDates: formattedBlockedDates
         });
       }
     } catch (err) {
@@ -84,9 +107,60 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
     }
   };
 
+  const validateOfficeForm = () => {
+    const errors = {};
+
+    const nameError = validateRequired(officeForm.name, 'Office name');
+    if (nameError) errors.name = nameError;
+
+    const cityError = validateRequired(officeForm.address.city, 'City');
+    if (cityError) errors.city = cityError;
+
+    const countryError = validateRequired(officeForm.address.country, 'Country');
+    if (countryError) errors.country = countryError;
+
+    if (officeForm.phone) {
+      const phoneError = validatePhone(officeForm.phone);
+      if (phoneError) errors.phone = phoneError;
+    }
+
+    if (officeForm.email) {
+      const emailError = validateEmail(officeForm.email);
+      if (emailError) errors.email = emailError;
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleOfficeInputChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'phone') {
+      const phoneValue = handlePhoneInput(e, null, null);
+      setOfficeForm(prev => ({ ...prev, phone: phoneValue }));
+    } else if (name.startsWith('address.')) {
+      const field = name.split('.')[1];
+      setOfficeForm(prev => ({
+        ...prev,
+        address: { ...prev.address, [field]: value }
+      }));
+    } else {
+      setOfficeForm(prev => ({ ...prev, [name]: value }));
+    }
+    // Clear error when user types
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
   const handleCreateOffice = async () => {
+    if (!validateOfficeForm()) {
+      return;
+    }
+
     try {
       setError('');
+      setFieldErrors({});
       const res = await api.post('/offices', officeForm);
       setOffices([...offices, res.data.data.office]);
       setShowOfficeModal(false);
@@ -98,8 +172,13 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
   };
 
   const handleUpdateOffice = async () => {
+    if (!validateOfficeForm()) {
+      return;
+    }
+
     try {
       setError('');
+      setFieldErrors({});
       const res = await api.put(`/offices/${editingOffice._id}`, officeForm);
       setOffices(offices.map(o => o._id === editingOffice._id ? res.data.data.office : o));
       setShowOfficeModal(false);
@@ -125,7 +204,15 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
   const handleSaveAvailability = async () => {
     try {
       setError('');
-      await api.put(`/offices/${selectedOffice._id}/availability`, availabilityForm);
+      // Format blocked dates to ensure proper date format for backend
+      const formattedData = {
+        ...availabilityForm,
+        blockedDates: availabilityForm.blockedDates.map(bd => ({
+          date: bd.date,
+          reason: bd.reason || 'Holiday'
+        }))
+      };
+      await api.put(`/offices/${selectedOffice._id}/availability`, formattedData);
       setShowAvailabilityModal(false);
       setSuccess('Availability settings saved successfully');
     } catch (err) {
@@ -142,6 +229,7 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
       googleMapsUrl: '',
       operatingHours: { start: '09:00', end: '18:00' }
     });
+    setFieldErrors({});
   };
 
   const openEditOffice = (office) => {
@@ -335,11 +423,14 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Office Name *</label>
                 <input
                   type="text"
+                  name="name"
                   value={officeForm.name}
-                  onChange={(e) => setOfficeForm({ ...officeForm, name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  onChange={handleOfficeInputChange}
+                  maxLength={100}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   placeholder="e.g., Main Office, Branch Office"
                 />
+                {fieldErrors.name && <p className="text-sm text-red-600 mt-1">{fieldErrors.name}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -347,11 +438,10 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
                   <input
                     type="text"
+                    name="address.street"
                     value={officeForm.address.street}
-                    onChange={(e) => setOfficeForm({
-                      ...officeForm,
-                      address: { ...officeForm.address, street: e.target.value }
-                    })}
+                    onChange={handleOfficeInputChange}
+                    maxLength={200}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -359,23 +449,22 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
                   <input
                     type="text"
+                    name="address.city"
                     value={officeForm.address.city}
-                    onChange={(e) => setOfficeForm({
-                      ...officeForm,
-                      address: { ...officeForm.address, city: e.target.value }
-                    })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    onChange={handleOfficeInputChange}
+                    maxLength={100}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.city ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
+                  {fieldErrors.city && <p className="text-sm text-red-600 mt-1">{fieldErrors.city}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
                   <input
                     type="text"
+                    name="address.state"
                     value={officeForm.address.state}
-                    onChange={(e) => setOfficeForm({
-                      ...officeForm,
-                      address: { ...officeForm.address, state: e.target.value }
-                    })}
+                    onChange={handleOfficeInputChange}
+                    maxLength={100}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -383,23 +472,22 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
                   <input
                     type="text"
+                    name="address.country"
                     value={officeForm.address.country}
-                    onChange={(e) => setOfficeForm({
-                      ...officeForm,
-                      address: { ...officeForm.address, country: e.target.value }
-                    })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    onChange={handleOfficeInputChange}
+                    maxLength={100}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.country ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
+                  {fieldErrors.country && <p className="text-sm text-red-600 mt-1">{fieldErrors.country}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Zip Code</label>
                   <input
                     type="text"
+                    name="address.zipCode"
                     value={officeForm.address.zipCode}
-                    onChange={(e) => setOfficeForm({
-                      ...officeForm,
-                      address: { ...officeForm.address, zipCode: e.target.value }
-                    })}
+                    onChange={handleOfficeInputChange}
+                    maxLength={20}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -410,19 +498,26 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                   <input
                     type="tel"
+                    name="phone"
                     value={officeForm.phone}
-                    onChange={(e) => setOfficeForm({ ...officeForm, phone: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    onChange={handleOfficeInputChange}
+                    maxLength={16}
+                    placeholder="10-digit mobile number"
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.phone ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
+                  {fieldErrors.phone && <p className="text-sm text-red-600 mt-1">{fieldErrors.phone}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                   <input
                     type="email"
+                    name="email"
                     value={officeForm.email}
-                    onChange={(e) => setOfficeForm({ ...officeForm, email: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    onChange={handleOfficeInputChange}
+                    maxLength={100}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
+                  {fieldErrors.email && <p className="text-sm text-red-600 mt-1">{fieldErrors.email}</p>}
                 </div>
               </div>
 
@@ -615,21 +710,37 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                   <input
                     type="date"
                     id="blockedDateInput"
+                    min={new Date().toISOString().split('T')[0]}
                     className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
                   <button
+                    type="button"
                     onClick={() => {
                       const input = document.getElementById('blockedDateInput');
-                      if (input.value) {
-                        setAvailabilityForm(prev => ({
-                          ...prev,
-                          blockedDates: [
-                            ...prev.blockedDates,
-                            { date: new Date(input.value), reason: 'Holiday' }
-                          ]
-                        }));
-                        input.value = '';
+                      const selectedDate = input.value;
+
+                      if (!selectedDate) {
+                        setError('Please select a date');
+                        return;
                       }
+
+                      // Check if date is already added
+                      const isDuplicate = availabilityForm.blockedDates.some(bd => bd.date === selectedDate);
+                      if (isDuplicate) {
+                        setError('This date is already blocked');
+                        return;
+                      }
+
+                      // Add the date
+                      setAvailabilityForm(prev => ({
+                        ...prev,
+                        blockedDates: [
+                          ...prev.blockedDates,
+                          { date: selectedDate, reason: 'Holiday' }
+                        ]
+                      }));
+                      input.value = '';
+                      setError('');
                     }}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
                   >
@@ -638,24 +749,51 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                 </div>
                 {availabilityForm.blockedDates.length > 0 && (
                   <div className="flex flex-wrap gap-2">
-                    {availabilityForm.blockedDates.map((bd, index) => (
-                      <span
-                        key={index}
-                        className="inline-flex items-center gap-1 px-3 py-1 bg-red-50 text-red-700 rounded-full text-sm"
-                      >
-                        {new Date(bd.date).toLocaleDateString()}
-                        {bd.reason && ` (${bd.reason})`}
-                        <button
-                          onClick={() => setAvailabilityForm(prev => ({
-                            ...prev,
-                            blockedDates: prev.blockedDates.filter((_, i) => i !== index)
-                          }))}
-                          className="ml-1 text-red-500 hover:text-red-700"
+                    {availabilityForm.blockedDates.map((bd, index) => {
+                      // Simple date formatting - just parse YYYY-MM-DD directly
+                      const formatDate = (dateInput) => {
+                        if (!dateInput) return 'No date';
+
+                        // Convert to string if needed
+                        const dateStr = String(dateInput);
+
+                        // Check if it matches YYYY-MM-DD format
+                        const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                        if (match) {
+                          const [, year, month, day] = match;
+                          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                          const monthNum = parseInt(month, 10);
+                          const dayNum = parseInt(day, 10);
+                          const yearNum = parseInt(year, 10);
+
+                          if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+                            return `${monthNames[monthNum - 1]} ${dayNum}, ${yearNum}`;
+                          }
+                        }
+
+                        // If not in expected format, show the raw value
+                        return dateStr || 'Invalid';
+                      };
+
+                      return (
+                        <span
+                          key={bd._id || index}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-red-50 text-red-700 rounded-full text-sm"
                         >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+                          {formatDate(bd.date)}
+                          {bd.reason && ` (${bd.reason})`}
+                          <button
+                            onClick={() => setAvailabilityForm(prev => ({
+                              ...prev,
+                              blockedDates: prev.blockedDates.filter((_, i) => i !== index)
+                            }))}
+                            className="ml-1 text-red-500 hover:text-red-700"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
               </div>

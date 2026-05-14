@@ -30,8 +30,8 @@ const visitSchema = new mongoose.Schema(
     // ========== VISIT DETAILS ==========
     visitType: {
       type: String,
-      enum: ['site', 'office', 'virtual'],
-      default: 'site'
+      enum: ['office', 'virtual'],
+      default: 'office'
     },
     // Office location for 'office' type visits
     officeLocation: {
@@ -55,12 +55,10 @@ const visitSchema = new mongoose.Schema(
     // ========== CLIENT INFORMATION ==========
     clientDetails: {
       name: {
-        type: String,
-        required: true
+        type: String
       },
       phone: {
-        type: String,
-        required: true
+        type: String
       },
       email: String,
       notes: String,
@@ -71,7 +69,7 @@ const visitSchema = new mongoose.Schema(
     // ========== STATUS ==========
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected', 'completed', 'deal_closed', 'cancelled'],
+      enum: ['pending', 'approved', 'rejected', 'completed', 'cancelled'],
       default: 'pending',
       index: true
     },
@@ -104,39 +102,6 @@ const visitSchema = new mongoose.Schema(
         max: 5
       },
       comment: String
-    },
-
-    // ========== DEAL DETAILS (when status is deal_closed) ==========
-    dealDetails: {
-      salePrice: {
-        type: Number
-      },
-      saleDate: {
-        type: Date
-      },
-      buyerName: {
-        type: String
-      },
-      buyerPhone: {
-        type: String
-      },
-      buyerEmail: {
-        type: String
-      },
-      notes: {
-        type: String
-      },
-      closedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-      },
-      closedAt: {
-        type: Date
-      },
-      commissionId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Commission'
-      }
     },
 
     // ========== NOTIFICATIONS ==========

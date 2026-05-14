@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import { validatePhone, handlePhoneInput } from '../../utils/validation';
 
 const CompanySettings = () => {
   const { user } = useAuth();
@@ -14,6 +15,7 @@ const CompanySettings = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState('general');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [formData, setFormData] = useState({
     // Company Info
@@ -42,8 +44,10 @@ const CompanySettings = () => {
   });
 
   useEffect(() => {
-    fetchCompany();
-  }, []);
+    if (user?.companyId) {
+      fetchCompany();
+    }
+  }, [user?.companyId]);
 
   const fetchCompany = async () => {
     try {
@@ -80,6 +84,12 @@ const CompanySettings = () => {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+
+    // Clear field error when user types
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => ({ ...prev, [name]: '' }));
+    }
+
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
       setFormData(prev => ({
@@ -97,10 +107,29 @@ const CompanySettings = () => {
     }
   };
 
+  const handlePhoneChange = (e) => {
+    const value = handlePhoneInput(e, null, null);
+    setFormData(prev => ({ ...prev, phone: value }));
+    if (fieldErrors.phone) {
+      setFieldErrors(prev => ({ ...prev, phone: '' }));
+    }
+  };
+
   const handleCompanyUpdate = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setFieldErrors({});
+
+    // Validate phone if provided
+    if (formData.phone) {
+      const phoneError = validatePhone(formData.phone);
+      if (phoneError) {
+        setFieldErrors({ phone: phoneError });
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
@@ -259,6 +288,7 @@ const CompanySettings = () => {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
+                    maxLength={100}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
                 </div>
@@ -268,9 +298,12 @@ const CompanySettings = () => {
                     type="tel"
                     name="phone"
                     value={formData.phone}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    onChange={handlePhoneChange}
+                    maxLength={16}
+                    placeholder="10-digit mobile number"
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${fieldErrors.phone ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
+                  {fieldErrors.phone && <p className="text-sm text-red-600 mt-1">{fieldErrors.phone}</p>}
                 </div>
               </div>
 
@@ -281,6 +314,7 @@ const CompanySettings = () => {
                   name="website"
                   value={formData.website}
                   onChange={handleChange}
+                  maxLength={200}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
@@ -293,6 +327,7 @@ const CompanySettings = () => {
                   name="address.street"
                   value={formData.address.street}
                   onChange={handleChange}
+                  maxLength={200}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
@@ -304,6 +339,7 @@ const CompanySettings = () => {
                     name="address.city"
                     value={formData.address.city}
                     onChange={handleChange}
+                    maxLength={100}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
                 </div>
@@ -314,6 +350,7 @@ const CompanySettings = () => {
                     name="address.state"
                     value={formData.address.state}
                     onChange={handleChange}
+                    maxLength={100}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
                 </div>
@@ -324,6 +361,7 @@ const CompanySettings = () => {
                     name="address.country"
                     value={formData.address.country}
                     onChange={handleChange}
+                    maxLength={100}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
                 </div>
@@ -334,6 +372,7 @@ const CompanySettings = () => {
                     name="address.zipCode"
                     value={formData.address.zipCode}
                     onChange={handleChange}
+                    maxLength={20}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
                 </div>
@@ -351,7 +390,8 @@ const CompanySettings = () => {
                         name="indiaConfig.gstNumber"
                         value={formData.indiaConfig.gstNumber}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        maxLength={15}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono uppercase"
                       />
                     </div>
                     <div>
@@ -361,7 +401,8 @@ const CompanySettings = () => {
                         name="indiaConfig.panNumber"
                         value={formData.indiaConfig.panNumber}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        maxLength={10}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono uppercase"
                       />
                     </div>
                     <div>
@@ -371,7 +412,8 @@ const CompanySettings = () => {
                         name="indiaConfig.reraNumber"
                         value={formData.indiaConfig.reraNumber}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        maxLength={50}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono uppercase"
                       />
                     </div>
                     <div>
@@ -381,7 +423,8 @@ const CompanySettings = () => {
                         name="indiaConfig.cinNumber"
                         value={formData.indiaConfig.cinNumber}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        maxLength={21}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono uppercase"
                       />
                     </div>
                   </div>

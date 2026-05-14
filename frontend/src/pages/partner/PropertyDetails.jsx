@@ -4,6 +4,7 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
 import api, { getDocumentViewUrl } from '../../utils/api';
+import BookVisitModal from '../../components/common/BookVisitModal';
 
 const PropertyDetails = () => {
   const navigate = useNavigate();
@@ -18,17 +19,6 @@ const PropertyDetails = () => {
   const [showBookModal, setShowBookModal] = useState(false);
   const [partnerships, setPartnerships] = useState([]);
   const [selectedPartnership, setSelectedPartnership] = useState('');
-  const [bookingForm, setBookingForm] = useState({
-    visitType: 'site',
-    scheduledDate: '',
-    scheduledTime: '10:00',
-    clientName: '',
-    clientPhone: '',
-    clientEmail: '',
-    clientNotes: '',
-    partnerNotes: ''
-  });
-  const [submitting, setSubmitting] = useState(false);
 
   // Chat modal state
   const [showChatModal, setShowChatModal] = useState(false);
@@ -73,52 +63,6 @@ const PropertyDetails = () => {
     } catch (err) {
       console.error('Failed to load partnerships');
     }
-  };
-
-  const handleBookVisit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError('');
-
-    try {
-      await api.post('/visits', {
-        propertyId: id,
-        partnershipId: selectedPartnership,
-        visitType: bookingForm.visitType,
-        scheduledDate: bookingForm.scheduledDate,
-        scheduledTime: bookingForm.scheduledTime,
-        clientDetails: {
-          name: bookingForm.clientName,
-          phone: bookingForm.clientPhone,
-          email: bookingForm.clientEmail,
-          notes: bookingForm.clientNotes
-        },
-        partnerNotes: bookingForm.partnerNotes
-      });
-
-      setSuccess('Visit booked successfully!');
-      setShowBookModal(false);
-      setBookingForm({
-        visitType: 'site',
-        scheduledDate: '',
-        scheduledTime: '10:00',
-        clientName: '',
-        clientPhone: '',
-        clientEmail: '',
-        clientNotes: '',
-        partnerNotes: ''
-      });
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to book visit');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const getMinDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
   };
 
   const formatPrice = (prop) => {
@@ -232,8 +176,26 @@ const PropertyDetails = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            {property.location?.address}, {property.location?.city}, {property.location?.state || property.location?.emirate} {property.location?.pincode}
+            {property.location?.address}, {property.location?.city}, {property.location?.state || property.location?.emirate} {property.location?.zipCode}
           </p>
+          {property.location?.landmark && (
+            <p className="text-gray-500 text-sm mt-1">
+              <span className="font-medium">Landmark:</span> {property.location.landmark}
+            </p>
+          )}
+          {property.location?.mapUrl && (
+            <a
+              href={property.location.mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-sm mt-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              View on Map
+            </a>
+          )}
 
           {/* Price */}
           <div className="mt-4">
@@ -244,11 +206,13 @@ const PropertyDetails = () => {
           </div>
 
           {/* Commission Info */}
-          {property.commission?.basePercentage > 0 && (
+          {(property.commission?.basePercentage > 0 || property.commission?.fixedAmount > 0) && (
             <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
               <p className="text-sm text-gray-600 mb-1">Commission Available</p>
               <p className="text-lg font-semibold text-green-700">
-                {property.commission.basePercentage}% of sale value
+                {property.commission?.isFixed
+                  ? `${property.pricing?.currency === 'AED' ? 'د.إ' : '₹'}${property.commission.fixedAmount} (Fixed)`
+                  : `${property.commission.basePercentage}% of sale value`}
               </p>
             </div>
           )}
@@ -293,6 +257,44 @@ const PropertyDetails = () => {
         </div>
       )}
 
+      {/* Pricing Details */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Pricing Details</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div>
+            <p className="text-sm text-gray-500">Base Price</p>
+            <p className="font-semibold text-lg text-indigo-600">{formatPrice(property)}</p>
+            {property.pricing?.priceOnRequest && (
+              <span className="text-xs text-gray-500">(Price on Request)</span>
+            )}
+          </div>
+          {property.pricing?.pricePerSqFt && (
+            <div>
+              <p className="text-sm text-gray-500">Price per {property.details?.areaUnit === 'sqm' ? 'sq m' : 'sq ft'}</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'د.إ' : '₹'}{property.pricing.pricePerSqFt.toLocaleString()}</p>
+            </div>
+          )}
+          {property.pricing?.bookingAmount && (
+            <div>
+              <p className="text-sm text-gray-500">Booking Amount</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'د.إ' : '₹'}{property.pricing.bookingAmount.toLocaleString()}</p>
+            </div>
+          )}
+          {property.pricing?.maintenanceCharges && (
+            <div>
+              <p className="text-sm text-gray-500">Maintenance Charges</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'د.إ' : '₹'}{property.pricing.maintenanceCharges.toLocaleString()}</p>
+            </div>
+          )}
+          {property.pricing?.otherCharges && (
+            <div>
+              <p className="text-sm text-gray-500">Other Charges</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'د.إ' : '₹'}{property.pricing.otherCharges.toLocaleString()}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Property Details */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Property Details</h3>
@@ -309,46 +311,124 @@ const PropertyDetails = () => {
               <p className="font-semibold">{property.details.bathrooms}</p>
             </div>
           )}
+          {property.details?.balconies && (
+            <div>
+              <p className="text-sm text-gray-500">Balconies</p>
+              <p className="font-semibold">{property.details.balconies}</p>
+            </div>
+          )}
+          {property.details?.superBuiltUpArea && (
+            <div>
+              <p className="text-sm text-gray-500">Super Built-up Area</p>
+              <p className="font-semibold">{property.details.superBuiltUpArea} {property.details.areaUnit || 'sqft'}</p>
+            </div>
+          )}
           {property.details?.builtUpArea && (
             <div>
               <p className="text-sm text-gray-500">Built-up Area</p>
               <p className="font-semibold">{property.details.builtUpArea} {property.details.areaUnit || 'sqft'}</p>
             </div>
           )}
+          {property.details?.carpetArea && (
+            <div>
+              <p className="text-sm text-gray-500">Carpet Area</p>
+              <p className="font-semibold">{property.details.carpetArea} {property.details.areaUnit || 'sqft'}</p>
+            </div>
+          )}
           {property.details?.plotArea && (
             <div>
               <p className="text-sm text-gray-500">Plot Area</p>
-              <p className="font-semibold">{property.details.plotArea} {property.details.plotUnit || 'sqft'}</p>
+              <p className="font-semibold">{property.details.plotArea} {property.details.areaUnit || 'sqft'}</p>
             </div>
           )}
-          {property.details?.floors && (
+          {property.details?.totalFloors && (
             <div>
-              <p className="text-sm text-gray-500">Floors</p>
-              <p className="font-semibold">{property.details.floors}</p>
+              <p className="text-sm text-gray-500">Total Floors</p>
+              <p className="font-semibold">{property.details.totalFloors}</p>
             </div>
           )}
-          {(property.details?.parking?.covered || property.details?.parking?.open) ? (
+          {property.details?.floorNumber && (
+            <div>
+              <p className="text-sm text-gray-500">Floor Number</p>
+              <p className="font-semibold">{property.details.floorNumber}</p>
+            </div>
+          )}
+          {property.details?.furnishing && (
+            <div>
+              <p className="text-sm text-gray-500">Furnishing</p>
+              <p className="font-semibold capitalize">{property.details.furnishing.replace('furnished', ' Furnished')}</p>
+            </div>
+          )}
+          {(property.details?.parking?.covered || property.details?.parking?.open) && (
             <div>
               <p className="text-sm text-gray-500">Parking</p>
               <p className="font-semibold">
                 {property.details.parking.covered || 0} covered, {property.details.parking.open || 0} open
               </p>
             </div>
-          ) : null}
+          )}
           {property.details?.facing && (
             <div>
               <p className="text-sm text-gray-500">Facing</p>
               <p className="font-semibold capitalize">{property.details.facing}</p>
             </div>
           )}
-          {property.details?.possession && (
+          {property.details?.ageOfProperty && (
             <div>
-              <p className="text-sm text-gray-500">Possession</p>
-              <p className="font-semibold">{property.details.possession}</p>
+              <p className="text-sm text-gray-500">Age of Property</p>
+              <p className="font-semibold">{property.details.ageOfProperty} years</p>
             </div>
           )}
         </div>
       </div>
+
+      {/* Amenities */}
+      {(() => {
+        const amenityLabels = {
+          powerBackup: 'Power Backup',
+          lift: 'Lift',
+          security: 'Security',
+          swimmingPool: 'Swimming Pool',
+          gym: 'Gym',
+          clubHouse: 'Club House',
+          garden: 'Garden',
+          childrenPlayArea: 'Children Play Area',
+          joggingTrack: 'Jogging Track',
+          indoorGames: 'Indoor Games',
+          fireSafety: 'Fire Safety',
+          rainWaterHarvesting: 'Rain Water Harvesting',
+          sewageTreatment: 'Sewage Treatment'
+        };
+        const amenities = Object.keys(amenityLabels).filter(key => property.details?.[key]);
+        const customAmenities = property.details?.customAmenities || [];
+
+        if (amenities.length > 0 || customAmenities.length > 0) {
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h3>
+              <div className="flex flex-wrap gap-2">
+                {amenities.map((amenity) => (
+                  <span key={amenity} className="px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-sm flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    {amenityLabels[amenity]}
+                  </span>
+                ))}
+                {customAmenities.map((amenity, idx) => (
+                  <span key={`custom-${idx}`} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-sm flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    {amenity}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Description */}
       {property.description && (
@@ -358,22 +438,8 @@ const PropertyDetails = () => {
         </div>
       )}
 
-      {/* Amenities */}
-      {property.details?.amenities && property.details.amenities.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Amenities</h3>
-          <div className="flex flex-wrap gap-2">
-            {property.details.amenities.map((amenity, idx) => (
-              <span key={idx} className="px-3 py-1 bg-gray-100 rounded-full text-sm">
-                {amenity}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Region-Specific Details */}
-      {property.region === 'india' && property.indiaDetails && (
+      {/* Region-Specific Details - India */}
+      {property.region === 'india' && property.indiaDetails && Object.keys(property.indiaDetails).some(key => property.indiaDetails[key]) && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">India Details</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -389,17 +455,62 @@ const PropertyDetails = () => {
                 <p className="font-medium">{property.indiaDetails.reraProjectName}</p>
               </div>
             )}
+            {property.indiaDetails.reraWebsite && (
+              <div>
+                <p className="text-sm text-gray-500">RERA Website</p>
+                <a href={property.indiaDetails.reraWebsite} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-600 hover:underline">
+                  {property.indiaDetails.reraWebsite}
+                </a>
+              </div>
+            )}
             {property.indiaDetails.gstNumber && (
               <div>
                 <p className="text-sm text-gray-500">GST Number</p>
                 <p className="font-medium">{property.indiaDetails.gstNumber}</p>
               </div>
             )}
+            {property.indiaDetails.ownershipType && (
+              <div>
+                <p className="text-sm text-gray-500">Ownership Type</p>
+                <p className="font-medium capitalize">{property.indiaDetails.ownershipType.replace(/([A-Z])/g, ' $1').trim()}</p>
+              </div>
+            )}
+            {property.indiaDetails.transactionType && (
+              <div>
+                <p className="text-sm text-gray-500">Transaction Type</p>
+                <p className="font-medium capitalize">{property.indiaDetails.transactionType.replace(/([A-Z])/g, ' $1').trim()}</p>
+              </div>
+            )}
+            {property.indiaDetails.possessionStatus && (
+              <div>
+                <p className="text-sm text-gray-500">Possession Status</p>
+                <p className="font-medium capitalize">{property.indiaDetails.possessionStatus.replace(/([A-Z])/g, ' $1').trim()}</p>
+              </div>
+            )}
+            {property.indiaDetails.possessionDate && (
+              <div>
+                <p className="text-sm text-gray-500">Possession Date</p>
+                <p className="font-medium">{new Date(property.indiaDetails.possessionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+              </div>
+            )}
+            {property.indiaDetails.builderName && (
+              <div>
+                <p className="text-sm text-gray-500">Builder Name</p>
+                <p className="font-medium">{property.indiaDetails.builderName}</p>
+              </div>
+            )}
+            {property.indiaDetails.approvedBy && property.indiaDetails.approvedBy.length > 0 && (
+              <div>
+                <p className="text-sm text-gray-500">Approved By</p>
+                <p className="font-medium">{property.indiaDetails.approvedBy.map(a => a.replace(/([A-Z])/g, ' $1').trim()).join(', ')}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {property.region === 'dubai' && property.dubaiDetails && (
+      {/* Region-Specific Details - Dubai */}
+      {property.region === 'dubai' && property.dubaiDetails && Object.keys(property.dubaiDetails).some(key => property.dubaiDetails[key]) && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Dubai Details</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -407,6 +518,12 @@ const PropertyDetails = () => {
               <div>
                 <p className="text-sm text-gray-500">DLD Permit Number</p>
                 <p className="font-medium">{property.dubaiDetails.dldPermitNumber}</p>
+              </div>
+            )}
+            {property.dubaiDetails.dldPropertyId && (
+              <div>
+                <p className="text-sm text-gray-500">DLD Property ID</p>
+                <p className="font-medium">{property.dubaiDetails.dldPropertyId}</p>
               </div>
             )}
             {property.dubaiDetails.developerName && (
@@ -419,6 +536,42 @@ const PropertyDetails = () => {
               <div>
                 <p className="text-sm text-gray-500">Project Name</p>
                 <p className="font-medium">{property.dubaiDetails.projectName}</p>
+              </div>
+            )}
+            {property.dubaiDetails.propertyStatus && (
+              <div>
+                <p className="text-sm text-gray-500">Property Status</p>
+                <p className="font-medium capitalize">{property.dubaiDetails.propertyStatus}</p>
+              </div>
+            )}
+            {property.dubaiDetails.completionDate && (
+              <div>
+                <p className="text-sm text-gray-500">Completion Date</p>
+                <p className="font-medium">{new Date(property.dubaiDetails.completionDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+              </div>
+            )}
+            {property.dubaiDetails.titleDeedNumber && (
+              <div>
+                <p className="text-sm text-gray-500">Title Deed Number</p>
+                <p className="font-medium">{property.dubaiDetails.titleDeedNumber}</p>
+              </div>
+            )}
+            {property.dubaiDetails.serviceCharges && (
+              <div>
+                <p className="text-sm text-gray-500">Service Charges</p>
+                <p className="font-medium">د.إ {property.dubaiDetails.serviceCharges}/sq ft</p>
+              </div>
+            )}
+            {property.dubaiDetails.ownershipType && (
+              <div>
+                <p className="text-sm text-gray-500">Ownership Type</p>
+                <p className="font-medium capitalize">{property.dubaiDetails.ownershipType}</p>
+              </div>
+            )}
+            {property.dubaiDetails.escrowAccountNumber && (
+              <div>
+                <p className="text-sm text-gray-500">Escrow Account Number</p>
+                <p className="font-medium">{property.dubaiDetails.escrowAccountNumber}</p>
               </div>
             )}
           </div>
@@ -451,15 +604,21 @@ const PropertyDetails = () => {
       {property.videos && property.videos.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Videos</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
             {property.videos.map((video, idx) => (
-              <div key={idx} className="aspect-video rounded-lg overflow-hidden bg-gray-100">
-                <video
-                  src={video.url}
-                  controls
-                  className="w-full h-full object-cover"
-                />
-              </div>
+              <a
+                key={idx}
+                href={video.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 hover:underline"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {video.title || `Video ${idx + 1}`}
+              </a>
             ))}
           </div>
         </div>
@@ -484,158 +643,17 @@ const PropertyDetails = () => {
       )}
 
       {/* Book Visit Modal */}
-      {showBookModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-              <h3 className="text-lg font-semibold text-gray-900">Book a Visit</h3>
-              <button
-                onClick={() => setShowBookModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={handleBookVisit} className="p-6 space-y-4">
-              {/* Property Info */}
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <p className="font-medium text-gray-900">{property.name}</p>
-                <p className="text-sm text-gray-500">{property.location?.city}, {property.location?.state || property.location?.emirate}</p>
-              </div>
-
-              {/* Visit Type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Visit Type</label>
-                <div className="flex gap-4">
-                  {[
-                    { value: 'site', label: 'Site Visit' },
-                    { value: 'office', label: 'Office Visit' },
-                    { value: 'virtual', label: 'Virtual Tour' }
-                  ].map((type) => (
-                    <label key={type.value} className="flex items-center">
-                      <input
-                        type="radio"
-                        name="visitType"
-                        value={type.value}
-                        checked={bookingForm.visitType === type.value}
-                        onChange={(e) => setBookingForm({ ...bookingForm, visitType: e.target.value })}
-                        className="mr-2"
-                      />
-                      <span className="text-sm">{type.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Date & Time */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date *</label>
-                  <input
-                    type="date"
-                    value={bookingForm.scheduledDate}
-                    onChange={(e) => setBookingForm({ ...bookingForm, scheduledDate: e.target.value })}
-                    min={getMinDate()}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Time *</label>
-                  <select
-                    value={bookingForm.scheduledTime}
-                    onChange={(e) => setBookingForm({ ...bookingForm, scheduledTime: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                    required
-                  >
-                    <option value="09:00">09:00 AM</option>
-                    <option value="10:00">10:00 AM</option>
-                    <option value="11:00">11:00 AM</option>
-                    <option value="12:00">12:00 PM</option>
-                    <option value="14:00">02:00 PM</option>
-                    <option value="15:00">03:00 PM</option>
-                    <option value="16:00">04:00 PM</option>
-                    <option value="17:00">05:00 PM</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Client Details */}
-              <div className="border-t pt-4">
-                <h4 className="font-medium text-gray-900 mb-3">Client Details</h4>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Client Name *</label>
-                    <input
-                      type="text"
-                      value={bookingForm.clientName}
-                      onChange={(e) => setBookingForm({ ...bookingForm, clientName: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Client Phone *</label>
-                    <input
-                      type="tel"
-                      value={bookingForm.clientPhone}
-                      onChange={(e) => setBookingForm({ ...bookingForm, clientPhone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Client Email</label>
-                    <input
-                      type="email"
-                      value={bookingForm.clientEmail}
-                      onChange={(e) => setBookingForm({ ...bookingForm, clientEmail: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                    <textarea
-                      value={bookingForm.clientNotes}
-                      onChange={(e) => setBookingForm({ ...bookingForm, clientNotes: e.target.value })}
-                      rows={2}
-                      placeholder="Any special requirements..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <button
-                  type="button"
-                  onClick={() => setShowBookModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || partnerships.length === 0}
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {submitting ? 'Booking...' : 'Book Visit'}
-                </button>
-              </div>
-
-              {partnerships.length === 0 && (
-                <p className="text-sm text-red-600 text-center">
-                  You don't have an active partnership with this company. Please apply first.
-                </p>
-              )}
-            </form>
-          </div>
-        </div>
-      )}
+      <BookVisitModal
+        show={showBookModal}
+        onClose={() => setShowBookModal(false)}
+        onSuccess={() => {
+          setSuccess('Visit booked successfully!');
+          setShowBookModal(false);
+        }}
+        selectedProperty={property}
+        selectedPartnership={selectedPartnership}
+        partnerships={partnerships}
+      />
 
       {/* Chat Modal */}
       {showChatModal && (

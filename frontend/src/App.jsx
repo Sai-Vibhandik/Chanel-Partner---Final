@@ -54,7 +54,6 @@ import ViewerDashboard from './pages/viewer/Dashboard';
 
 // Partner Pages
 import PartnerDashboard from './pages/partner/Dashboard';
-import PartnerProfile from './pages/partner/Profile';
 import MyCompanies from './pages/partner/MyCompanies';
 import PartnershipDetails from './pages/partner/PartnershipDetails';
 import PartnerProperties from './pages/partner/Properties';
@@ -524,14 +523,6 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={['partner']}>
             <PartnerDashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/partner/profile"
-        element={
-          <ProtectedRoute allowedRoles={['partner']}>
-            <PartnerProfile />
           </ProtectedRoute>
         }
       />

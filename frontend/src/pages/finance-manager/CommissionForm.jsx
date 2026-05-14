@@ -4,6 +4,7 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
+import { validatePhone, validateEmail, validatePrice, handlePhoneInput, handleDecimalInput } from '../../utils/validation';
 
 // Default tier percentages (what % of property's base commission each tier gets)
 // Example: If property has 5% base, Gold tier (50%) gets 2.5% effective rate
@@ -23,6 +24,7 @@ const CommissionForm = () => {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [partnerships, setPartnerships] = useState([]);
   const [properties, setProperties] = useState([]);
   const [companySettings, setCompanySettings] = useState(null);
@@ -190,29 +192,69 @@ const CommissionForm = () => {
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
+    // Clear field error when user types
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handlePhoneChange = (e) => {
+    const value = handlePhoneInput(e, null, null);
+    setFormData(prev => ({
+      ...prev,
+      saleDetails: { ...prev.saleDetails, buyerPhone: value }
+    }));
+    if (fieldErrors['saleDetails.buyerPhone']) {
+      setFieldErrors(prev => ({ ...prev, ['saleDetails.buyerPhone']: '' }));
+    }
+  };
+
+  const handlePriceChange = (e) => {
+    const value = handleDecimalInput(e, null, null, 2);
+    setFormData(prev => ({
+      ...prev,
+      saleDetails: { ...prev.saleDetails, salePrice: value }
+    }));
+    if (fieldErrors['saleDetails.salePrice']) {
+      setFieldErrors(prev => ({ ...prev, ['saleDetails.salePrice']: '' }));
+    }
+  };
+
+  const validateForm = () => {
+    const errors = {};
+
+    if (!formData.partnershipId) {
+      errors.partnershipId = 'Please select a partner';
+    }
+
+    if (!formData.propertyId) {
+      errors.propertyId = 'Please select a property';
+    }
+
+    const priceError = validatePrice(formData.saleDetails.salePrice, 'Sale price');
+    if (priceError) errors['saleDetails.salePrice'] = priceError;
+
+    if (!formData.saleDetails.buyerName || formData.saleDetails.buyerName.trim() === '') {
+      errors['saleDetails.buyerName'] = 'Buyer name is required';
+    }
+
+    const phoneError = validatePhone(formData.saleDetails.buyerPhone);
+    if (phoneError) errors['saleDetails.buyerPhone'] = phoneError;
+
+    if (formData.saleDetails.buyerEmail) {
+      const emailError = validateEmail(formData.saleDetails.buyerEmail);
+      if (emailError) errors['saleDetails.buyerEmail'] = emailError;
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!formData.partnershipId) {
-      setError('Please select a partner');
-      return;
-    }
-
-    if (!formData.propertyId) {
-      setError('Please select a property');
-      return;
-    }
-
-    if (!formData.saleDetails.salePrice || parseFloat(formData.saleDetails.salePrice) <= 0) {
-      setError('Please enter a valid sale price');
-      return;
-    }
-
-    if (!formData.saleDetails.buyerName || !formData.saleDetails.buyerPhone) {
-      setError('Buyer name and phone are required');
+    if (!validateForm()) {
       return;
     }
 
@@ -375,14 +417,16 @@ const CommissionForm = () => {
                 Sale Price *
               </label>
               <input
-                type="number"
+                type="text"
                 name="saleDetails.salePrice"
                 value={formData.saleDetails.salePrice}
-                onChange={handleInputChange}
+                onChange={handlePriceChange}
                 placeholder="Enter sale price"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                maxLength={15}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors['saleDetails.salePrice'] ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                 required
               />
+              {fieldErrors['saleDetails.salePrice'] && <p className="text-sm text-red-600 mt-1">{fieldErrors['saleDetails.salePrice']}</p>}
               {selectedProperty && (
                 <p className="mt-1 text-sm text-gray-500">
                   Property Price: <span className="font-medium">{formatCurrency(selectedProperty.pricing?.basePrice, selectedProperty.pricing?.currency)}</span>
@@ -413,9 +457,11 @@ const CommissionForm = () => {
                 value={formData.saleDetails.buyerName}
                 onChange={handleInputChange}
                 placeholder="Enter buyer name"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                maxLength={100}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors['saleDetails.buyerName'] ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                 required
               />
+              {fieldErrors['saleDetails.buyerName'] && <p className="text-sm text-red-600 mt-1">{fieldErrors['saleDetails.buyerName']}</p>}
             </div>
 
             <div>
@@ -426,11 +472,13 @@ const CommissionForm = () => {
                 type="tel"
                 name="saleDetails.buyerPhone"
                 value={formData.saleDetails.buyerPhone}
-                onChange={handleInputChange}
+                onChange={handlePhoneChange}
                 placeholder="Enter buyer phone"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                maxLength={16}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors['saleDetails.buyerPhone'] ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                 required
               />
+              {fieldErrors['saleDetails.buyerPhone'] && <p className="text-sm text-red-600 mt-1">{fieldErrors['saleDetails.buyerPhone']}</p>}
             </div>
 
             <div className="md:col-span-2">
@@ -443,8 +491,10 @@ const CommissionForm = () => {
                 value={formData.saleDetails.buyerEmail}
                 onChange={handleInputChange}
                 placeholder="Enter buyer email (optional)"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                maxLength={100}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors['saleDetails.buyerEmail'] ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
               />
+              {fieldErrors['saleDetails.buyerEmail'] && <p className="text-sm text-red-600 mt-1">{fieldErrors['saleDetails.buyerEmail']}</p>}
             </div>
           </div>
         </div>
@@ -458,6 +508,26 @@ const CommissionForm = () => {
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800">
                 <p className="font-medium">⚠️ {preview.warning}</p>
               </div>
+            ) : preview.isFixed ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white rounded-lg p-4 border border-green-200">
+                    <p className="text-sm text-gray-600">Commission Type</p>
+                    <p className="text-xl font-bold text-gray-900">Fixed Amount</p>
+                  </div>
+
+                  <div className="bg-green-600 rounded-lg p-4">
+                    <p className="text-sm text-green-100">Commission Amount</p>
+                    <p className="text-2xl font-bold text-white">
+                      {formatCurrency(preview.fixedAmount, preview.currency)}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-4 text-sm text-green-700">
+                  <strong>Fixed Commission:</strong> This property has a fixed commission amount of {formatCurrency(preview.fixedAmount, preview.currency)}, regardless of the sale price.
+                </p>
+              </>
             ) : (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
