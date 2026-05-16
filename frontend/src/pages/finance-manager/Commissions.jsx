@@ -17,6 +17,7 @@ const Commissions = () => {
 
   const [commissions, setCommissions] = useState([]);
   const [stats, setStats] = useState(null);
+  const [activeCurrencies, setActiveCurrencies] = useState(['INR']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -74,6 +75,7 @@ const Commissions = () => {
     try {
       const response = await api.get('/commissions/stats');
       setStats(response.data.data);
+      setActiveCurrencies(response.data.data.activeCurrencies || ['INR']);
     } catch (err) {
       console.error('Failed to load stats');
     }
@@ -186,6 +188,10 @@ const Commissions = () => {
     return `${symbol}${amount?.toLocaleString() || '0'}`;
   };
 
+  const getCurrencyLabel = (currency) => {
+    return currency === 'INR' ? '₹ (INR)' : 'AED';
+  };
+
   const formatDate = (date) => {
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -213,47 +219,59 @@ const Commissions = () => {
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <p className="text-sm text-gray-500">Total</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{stats?.total || 0}</p>
+      {/* Stats by Currency */}
+      {activeCurrencies.map(currency => (
+        <div key={currency} className="mb-6">
+          <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            {getCurrencyLabel(currency)}
+            <span className="text-sm font-normal text-gray-500">(Commissions in {currency === 'INR' ? 'Indian Rupees' : 'UAE Dirhams'})</span>
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <p className="text-sm text-gray-500">Total</p>
+              <p className="text-xl font-bold text-gray-900 mt-1">
+                {commissions.filter(c => c.commission?.currency === currency).length}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <p className="text-sm text-gray-500">Pending</p>
+              <p className="text-xl font-bold text-yellow-600 mt-1">
+                {stats?.statusCountsByCurrency?.[currency]?.pending?.count || 0}
+              </p>
+              <p className="text-sm text-gray-500">
+                {formatCurrency(stats?.statusCountsByCurrency?.[currency]?.pending?.amount || 0, currency)}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <p className="text-sm text-gray-500">Approved</p>
+              <p className="text-xl font-bold text-green-600 mt-1">
+                {stats?.statusCountsByCurrency?.[currency]?.approved?.count || 0}
+              </p>
+              <p className="text-sm text-gray-500">
+                {formatCurrency(stats?.statusCountsByCurrency?.[currency]?.approved?.amount || 0, currency)}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <p className="text-sm text-gray-500">Paid</p>
+              <p className="text-xl font-bold text-purple-600 mt-1">
+                {stats?.statusCountsByCurrency?.[currency]?.paid?.count || 0}
+              </p>
+              <p className="text-sm text-gray-500">
+                {formatCurrency(stats?.statusCountsByCurrency?.[currency]?.paid?.amount || 0, currency)}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <p className="text-sm text-gray-500">This Month</p>
+              <p className="text-xl font-bold text-indigo-600 mt-1">
+                {formatCurrency(stats?.monthlyPaidByCurrency?.[currency]?.monthlyPaidAmount || 0, currency)}
+              </p>
+              <p className="text-sm text-gray-500">
+                {stats?.monthlyPaidByCurrency?.[currency]?.monthlyPaidCount || 0} payouts
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <p className="text-sm text-gray-500">Pending</p>
-          <p className="text-2xl font-bold text-yellow-600 mt-1">
-            {stats?.statusCounts?.pending?.count || 0}
-          </p>
-          <p className="text-sm text-gray-500">
-            {formatCurrency(stats?.statusCounts?.pending?.amount || 0)}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <p className="text-sm text-gray-500">Approved</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">
-            {stats?.statusCounts?.approved?.count || 0}
-          </p>
-          <p className="text-sm text-gray-500">
-            {formatCurrency(stats?.statusCounts?.approved?.amount || 0)}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <p className="text-sm text-gray-500">Paid</p>
-          <p className="text-2xl font-bold text-purple-600 mt-1">
-            {stats?.statusCounts?.paid?.count || 0}
-          </p>
-          <p className="text-sm text-gray-500">
-            {formatCurrency(stats?.statusCounts?.paid?.amount || 0)}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <p className="text-sm text-gray-500">This Month</p>
-          <p className="text-2xl font-bold text-indigo-600 mt-1">
-            {formatCurrency(stats?.monthlyPaid?.monthlyPaidAmount || 0)}
-          </p>
-          <p className="text-sm text-gray-500">{stats?.monthlyPaid?.monthlyPaidCount || 0} payouts</p>
-        </div>
-      </div>
+      ))}
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">

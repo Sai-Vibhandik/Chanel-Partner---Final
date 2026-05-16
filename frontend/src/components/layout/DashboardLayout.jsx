@@ -190,6 +190,16 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
     fetchNotifications();
   };
 
+  const handleMarkAllAsRead = async () => {
+    try {
+      await api.put('/notifications/read-all');
+      // Update local state to mark all as read
+      setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+    } catch (err) {
+      console.error('Failed to mark all as read:', err.message);
+    }
+  };
+
   const getNotificationIcon = (type) => {
     switch (type) {
       case 'commission':
@@ -501,12 +511,24 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
                     <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50">
                       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                         <h3 className="font-semibold text-gray-900">Notifications</h3>
-                        <button
-                          onClick={fetchNotifications}
-                          className="text-sm text-indigo-600 hover:text-indigo-700"
-                        >
-                          Refresh
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {unreadCount > 0 && (
+                            <button
+                              onClick={handleMarkAllAsRead}
+                              className="text-sm text-indigo-600 hover:text-indigo-700"
+                            >
+                              Mark all read
+                            </button>
+                          )}
+                          <button
+                            onClick={fetchNotifications}
+                            className="text-sm text-gray-500 hover:text-gray-700"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
 
                       <div className="max-h-80 sm:max-h-96 overflow-y-auto">

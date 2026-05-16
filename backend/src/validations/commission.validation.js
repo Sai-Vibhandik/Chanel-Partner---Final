@@ -7,51 +7,67 @@ import { handleValidationErrors } from '../middlewares/validation.middleware.js'
 
 // Create Commission Validation
 export const validateCreateCommission = [
-  body('partner')
-    .notEmpty().withMessage('Partner ID is required')
-    .isMongoId().withMessage('Invalid partner ID'),
+  body('partnershipId')
+    .notEmpty().withMessage('Partnership ID is required')
+    .isMongoId().withMessage('Invalid partnership ID'),
 
-  body('property')
+  body('propertyId')
     .notEmpty().withMessage('Property ID is required')
     .isMongoId().withMessage('Invalid property ID'),
 
-  body('visit')
-    .optional()
-    .isMongoId().withMessage('Invalid visit ID'),
+  // visitId is completely optional - can be missing, null, or empty string
+  body('visitId')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === '' || value === undefined) return true;
+      return /^[0-9a-fA-F]{24}$/.test(value);
+    }).withMessage('Invalid visit ID'),
 
   body('saleDetails.salePrice')
     .notEmpty().withMessage('Sale price is required')
-    .isFloat({ min: 0 }).withMessage('Sale price must be a positive number'),
+    .isFloat({ min: 1 }).withMessage('Sale price must be a positive number'),
 
   body('saleDetails.saleDate')
-    .notEmpty().withMessage('Sale date is required')
-    .isISO8601().withMessage('Sale date must be a valid date'),
-
-  body('saleDetails.unitNumber')
-    .optional()
-    .trim()
-    .isLength({ max: 50 }).withMessage('Unit number cannot exceed 50 characters'),
+    .optional({ values: 'falsy' }),
 
   body('saleDetails.buyerName')
-    .optional()
+    .notEmpty().withMessage('Buyer name is required')
     .trim()
     .isLength({ max: 100 }).withMessage('Buyer name cannot exceed 100 characters'),
 
-  body('commission.tier')
-    .optional()
-    .isIn(['bronze', 'silver', 'gold', 'platinum'])
-    .withMessage('Invalid commission tier'),
+  body('saleDetails.buyerPhone')
+    .notEmpty().withMessage('Buyer phone is required')
+    .trim()
+    .isLength({ max: 20 }).withMessage('Buyer phone cannot exceed 20 characters'),
 
-  body('commission.percentage')
-    .notEmpty().withMessage('Commission percentage is required')
-    .isFloat({ min: 0, max: 100 }).withMessage('Commission percentage must be between 0 and 100'),
+  // buyerEmail is completely optional
+  body('saleDetails.buyerEmail')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === '' || value === undefined) return true;
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return emailRegex.test(value);
+    }).withMessage('Invalid email format'),
 
-  body('commission.calculatedAmount')
-    .optional()
-    .isFloat({ min: 0 }).withMessage('Calculated amount must be a positive number'),
+  body('source.type')
+    .optional({ values: 'falsy' })
+    .isIn(['visit', 'direct', 'referral', 'marketing'])
+    .withMessage('Invalid source type'),
+
+  body('source.visitId')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === '' || value === undefined) return true;
+      return /^[0-9a-fA-F]{24}$/.test(value);
+    }).withMessage('Invalid source visit ID'),
+
+  body('source.notes')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 500 }).withMessage('Source notes cannot exceed 500 characters'),
 
   body('notes')
-    .optional()
+    .optional({ values: 'falsy' })
     .trim()
     .isLength({ max: 1000 }).withMessage('Notes cannot exceed 1000 characters'),
 
@@ -63,10 +79,6 @@ export const validateUpdateCommission = [
   param('id')
     .notEmpty().withMessage('Commission ID is required')
     .isMongoId().withMessage('Invalid commission ID'),
-
-  body('commission.percentage')
-    .optional()
-    .isFloat({ min: 0, max: 100 }).withMessage('Commission percentage must be between 0 and 100'),
 
   body('notes')
     .optional()
@@ -82,29 +94,38 @@ export const validateCommissionAction = [
     .notEmpty().withMessage('Commission ID is required')
     .isMongoId().withMessage('Invalid commission ID'),
 
-  body('payout.method')
-    .optional()
-    .isIn(['bank_transfer', 'cheque', 'upi', 'cash'])
-    .withMessage('Invalid payout method'),
-
-  body('payout.reference')
+  body('notes')
     .optional()
     .trim()
-    .isLength({ max: 100 }).withMessage('Payout reference cannot exceed 100 characters'),
+    .isLength({ max: 1000 }).withMessage('Notes cannot exceed 1000 characters'),
 
-  body('payout.paidAt')
-    .optional()
-    .isISO8601().withMessage('Paid date must be a valid date'),
-
-  body('rejectionReason')
+  body('paymentReference')
     .optional()
     .trim()
-    .isLength({ max: 500 }).withMessage('Rejection reason cannot exceed 500 characters'),
+    .isLength({ max: 100 }).withMessage('Payment reference cannot exceed 100 characters'),
 
-  body('cancellationReason')
+  body('paymentMethod')
+    .optional()
+    .isIn(['bank_transfer', 'cheque', 'cash', 'other'])
+    .withMessage('Invalid payment method'),
+
+  body('overrideAmount')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('Override amount must be a positive number'),
+
+  body('overridePercentage')
+    .optional()
+    .isFloat({ min: 0, max: 100 }).withMessage('Override percentage must be between 0 and 100'),
+
+  body('overrideReason')
     .optional()
     .trim()
-    .isLength({ max: 500 }).withMessage('Cancellation reason cannot exceed 500 characters'),
+    .isLength({ max: 500 }).withMessage('Override reason cannot exceed 500 characters'),
+
+  body('reason')
+    .optional()
+    .trim()
+    .isLength({ max: 500 }).withMessage('Reason cannot exceed 500 characters'),
 
   handleValidationErrors
 ];

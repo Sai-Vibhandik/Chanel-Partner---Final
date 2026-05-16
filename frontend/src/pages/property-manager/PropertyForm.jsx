@@ -285,7 +285,10 @@ const PropertyForm = () => {
           type: property.visibility?.type || 'all',
           showPrice: property.visibility?.showPrice ?? true,
           showContact: property.visibility?.showContact ?? true,
-          partnerIds: property.visibility?.partnerIds || []
+          // Normalize partnerIds to strings for consistent comparison
+          partnerIds: (property.visibility?.partnerIds || []).map(id =>
+            id?._id?.toString() || id?.toString() || id
+          )
         },
         commission: {
           basePercentage: property.commission?.basePercentage || '',
@@ -1611,7 +1614,10 @@ const PropertyForm = () => {
                     <div className="space-y-2">
                       {partners.map((partner) => {
                         const partnerId = partner._id;
-                        const isSelected = (formData.visibility?.partnerIds || []).includes(partnerId);
+                        // Compare IDs as strings to handle both ObjectId objects and string IDs
+                        const isSelected = (formData.visibility?.partnerIds || []).some(
+                          id => (id?._id?.toString() || id?.toString() || id) === partnerId.toString()
+                        );
                         return (
                           <label
                             key={partnerId}
@@ -1626,7 +1632,10 @@ const PropertyForm = () => {
                                 if (e.target.checked) {
                                   newIds = [...currentIds, partnerId];
                                 } else {
-                                  newIds = currentIds.filter(id => id !== partnerId);
+                                  // Compare as strings when removing
+                                  newIds = currentIds.filter(
+                                    id => (id?._id?.toString() || id?.toString() || id) !== partnerId.toString()
+                                  );
                                 }
                                 setFormData(prev => ({
                                   ...prev,

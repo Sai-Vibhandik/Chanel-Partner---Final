@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
 import Pagination from '../../components/common/Pagination';
 import ExportButton from '../../components/common/ExportButton';
+import useDebounce from '../../hooks/useDebounce';
 
 const LoginLogs = () => {
   const { user } = useAuth();
@@ -23,6 +24,9 @@ const LoginLogs = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Debounce search for real-time filtering
+  const debouncedSearch = useDebounce(searchEmail, 300);
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -35,7 +39,7 @@ const LoginLogs = () => {
   useEffect(() => {
     fetchLogs();
     fetchStats();
-  }, [statusFilter, startDate, endDate, currentPage]);
+  }, [statusFilter, startDate, endDate, currentPage, debouncedSearch]);
 
   const fetchLogs = async () => {
     try {
@@ -44,7 +48,7 @@ const LoginLogs = () => {
 
       const params = new URLSearchParams();
       if (statusFilter) params.append('status', statusFilter);
-      if (searchEmail) params.append('email', searchEmail);
+      if (debouncedSearch) params.append('email', debouncedSearch);
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
       params.append('page', currentPage);
@@ -71,12 +75,6 @@ const LoginLogs = () => {
     } catch (err) {
       console.error('Failed to load stats:', err);
     }
-  };
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setCurrentPage(1);
-    fetchLogs();
   };
 
   const handlePageChange = (page) => {
@@ -219,86 +217,75 @@ const LoginLogs = () => {
             Clear All
           </button>
         </div>
-        <form onSubmit={handleSearch}>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </span>
-                <input
-                  type="text"
-                  placeholder="Search by email..."
-                  value={searchEmail}
-                  onChange={(e) => setSearchEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
-              >
-                <option value="">All Status</option>
-                <option value="success">✓ Successful</option>
-                <option value="failed">✗ Failed</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">From Date</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">To Date</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              {(statusFilter || searchEmail || startDate || endDate) && (
-                <span className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                  </svg>
-                  Filters applied
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="submit"
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                Search
-              </button>
-              <ExportButton
-                data={logs}
-                columns={exportColumns}
-                filename="login-logs"
-                title="Login Logs"
+              </span>
+              <input
+                type="text"
+                placeholder="Search by email..."
+                value={searchEmail}
+                onChange={(e) => setSearchEmail(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
               />
             </div>
           </div>
-        </form>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
+            >
+              <option value="">All Status</option>
+              <option value="success">✓ Successful</option>
+              <option value="failed">✗ Failed</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">From Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">To Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            {(statusFilter || searchEmail || startDate || endDate) && (
+              <span className="flex items-center gap-1">
+                <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                Filters applied
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <ExportButton
+              data={logs}
+              columns={exportColumns}
+              filename="login-logs"
+              title="Login Logs"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Logs Table */}

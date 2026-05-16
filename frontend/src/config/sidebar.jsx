@@ -60,6 +60,11 @@ const sidebarIcons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   ),
+  globe: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+    </svg>
+  ),
   agreements: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -108,6 +113,7 @@ export const sidebarConfig = {
       { path: '/platform/dashboard', label: 'Dashboard', icon: sidebarIcons.dashboard },
       { path: '/platform/companies', label: 'Companies', icon: sidebarIcons.companies },
       { path: '/platform/partners', label: 'Partners', icon: sidebarIcons.partners },
+      { path: '/platform/landing', label: 'Landing Page', icon: sidebarIcons.globe },
     ],
   },
 
@@ -139,8 +145,6 @@ export const sidebarConfig = {
     links: [
       { path: '/property-manager/dashboard', label: 'Dashboard', icon: sidebarIcons.dashboard },
       { path: '/property-manager/properties', label: 'Properties', icon: sidebarIcons.properties },
-      { path: '/property-manager/categories', label: 'Categories', icon: sidebarIcons.categories },
-      { path: '/property-manager/media', label: 'Media', icon: sidebarIcons.media },
       { path: '/property-manager/reports', label: 'Reports', icon: sidebarIcons.reports },
     ],
   },
@@ -152,6 +156,7 @@ export const sidebarConfig = {
       { path: '/partner-manager/dashboard', label: 'Dashboard', icon: sidebarIcons.dashboard },
       { path: '/partner-manager/partners', label: 'Partners', icon: sidebarIcons.partners },
       { path: '/company/kyc-verification', label: 'KYC Verification', icon: sidebarIcons.documents },
+      { path: '/company/signed-agreements', label: 'Signed Agreements', icon: sidebarIcons.documents },
       { path: '/partner-manager/offices', label: 'Office Locations', icon: sidebarIcons.office },
       { path: '/partner-manager/visits', label: 'Visits', icon: sidebarIcons.visits },
       { path: '/finance-manager/commissions', label: 'Commissions', icon: sidebarIcons.commissions },

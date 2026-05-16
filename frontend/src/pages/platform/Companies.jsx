@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import useDebounce from '../../hooks/useDebounce';
 
 const Companies = () => {
   const config = sidebarConfig.platform_admin;
@@ -12,6 +13,55 @@ const Companies = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+
+  // Debounce search for real-time filtering
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Fetch companies when filters change
+  useEffect(() => {
+    fetchCompanies();
+  }, [debouncedSearch, statusFilter, pagination.page]);
+
+  const fetchCompanies = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (statusFilter) params.append('status', statusFilter);
+      params.append('page', pagination.page);
+
+      const response = await api.get(`/companies?${params.toString()}`);
+      setCompanies(response.data.data.companies);
+      setPagination(prev => ({
+        ...prev,
+        total: response.data.data.pagination?.total || 0,
+        pages: response.data.data.pagination?.pages || 1
+      }));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load companies');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const styles = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      active: 'bg-green-100 text-green-800',
+      suspended: 'bg-red-100 text-red-800',
+      cancelled: 'bg-gray-100 text-gray-800'
+    };
+    return styles[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getSubscriptionBadge = (plan) => {
+    const styles = {
+      free: 'bg-gray-100 text-gray-800',
+      basic: 'bg-blue-100 text-blue-800',
+      premium: 'bg-purple-100 text-purple-800'
+    };
+    return styles[plan] || 'bg-gray-100 text-gray-800';
+  };
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Companies" subtitle="Manage all registered companies" color={config.color}>
@@ -26,22 +76,18 @@ const Companies = () => {
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
         <div className="flex flex-col sm:flex-row gap-4">
-          <form onSubmit={handleSearch} className="flex-1">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or email..."
-                className="block w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              />
-            </div>
-          </form>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or email..."
+              className="block w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
           <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setPagination(prev => ({ ...prev, page: 1 })); }}
@@ -53,12 +99,6 @@ const Companies = () => {
             <option value="suspended">Suspended</option>
             <option value="cancelled">Cancelled</option>
           </select>
-          <button
-            onClick={fetchCompanies}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            Search
-          </button>
         </div>
       </div>
 

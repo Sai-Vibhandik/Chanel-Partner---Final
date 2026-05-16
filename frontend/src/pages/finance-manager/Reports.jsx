@@ -101,14 +101,19 @@ const Reports = () => {
     }
   };
 
-  const formatCurrency = (amount) => {
-    if (!amount) return '₹0';
+  const formatCurrency = (amount, currency = 'INR') => {
+    const symbol = currency === 'INR' ? '₹' : 'AED ';
+    if (!amount) return `${symbol}0`;
     if (amount >= 10000000) {
-      return `₹${(amount / 10000000).toFixed(2)} Cr`;
+      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
     } else if (amount >= 100000) {
-      return `₹${(amount / 100000).toFixed(2)} Lac`;
+      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
     }
-    return `₹${amount.toLocaleString()}`;
+    return `${symbol}${amount.toLocaleString()}`;
+  };
+
+  const getCurrencyLabel = (currency) => {
+    return currency === 'INR' ? '₹ (INR)' : 'AED';
   };
 
   const clearFilters = () => {
@@ -122,143 +127,333 @@ const Reports = () => {
   const CommissionOverview = () => {
     if (!overviewData) return null;
 
-    const { summary, byStatus, byTier, monthlyTrend, topPartners } = overviewData;
+    const { byStatus, byTier, byCurrency, statusTotalsByCurrency, monthlyTrend, topPartners, activeCurrencies } = overviewData;
 
-    // Calculate max for trend chart
-    const maxTrendValue = Math.max(...monthlyTrend.map(t => t.totalAmount), 1);
+    // Calculate max for trend chart (per currency)
+    const getMaxTrendValue = (currency) => {
+      const values = (monthlyTrend || []).map(t => t.byCurrency?.[currency]?.amount || 0);
+      return Math.max(...values, 1);
+    };
 
     return (
       <div className="space-y-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Total Commissions</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.totalAmount)}</p>
-            <p className="text-xs text-gray-400 mt-1">{summary.totalCount} records</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Paid</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(summary.totalPaid)}</p>
-            <p className="text-xs text-gray-400 mt-1">Completed payouts</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Approved</p>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(summary.totalApproved)}</p>
-            <p className="text-xs text-gray-400 mt-1">Ready for payment</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Pending</p>
-            <p className="text-2xl font-bold text-amber-600">{formatCurrency(summary.totalPending)}</p>
-            <p className="text-xs text-gray-400 mt-1">Awaiting approval</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Liability</p>
-            <p className="text-2xl font-bold text-purple-600">{formatCurrency(summary.totalApproved + summary.totalPending)}</p>
-            <p className="text-xs text-gray-400 mt-1">Total outstanding</p>
-          </div>
-        </div>
+        {/* Stats by Currency */}
+        {(activeCurrencies || ['INR']).map(currency => {
+          const currencyData = byCurrency?.[currency] || { count: 0, amount: 0 };
+          const statusData = statusTotalsByCurrency?.[currency] || { paid: 0, approved: 0, pending: 0 };
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* By Status */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commissions by Status</h3>
-            <div className="space-y-3">
-              {byStatus.map((item) => (
-                <div key={item.status} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-3 h-3 rounded-full ${
-                      item.status === 'paid' ? 'bg-green-500' :
-                      item.status === 'approved' ? 'bg-blue-500' :
-                      item.status === 'pending' ? 'bg-amber-500' :
-                      'bg-red-500'
-                    }`}></span>
-                    <span className="text-gray-700 capitalize">{item.status}</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-900">{formatCurrency(item.amount)}</p>
-                    <p className="text-xs text-gray-500">{item.count} records</p>
-                  </div>
+          return (
+            <div key={currency} className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                {getCurrencyLabel(currency)}
+                <span className="text-sm font-normal text-gray-500">(Commissions in {currency === 'INR' ? 'Indian Rupees' : 'UAE Dirhams'})</span>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <p className="text-sm text-gray-500">Total Commissions</p>
+                  <p className="text-xl font-bold text-gray-900">{currencyData.count}</p>
+                  <p className="text-sm text-gray-400">{formatCurrency(currencyData.amount, currency)}</p>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* By Tier */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commissions by Tier</h3>
-            <div className="space-y-3">
-              {byTier.sort((a, b) => {
-                const order = { platinum: 1, gold: 2, silver: 3, bronze: 4 };
-                return (order[a.tier] || 5) - (order[b.tier] || 5);
-              }).map((item) => (
-                <div key={item.tier} className="flex items-center justify-between">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
-                    item.tier === 'platinum' ? 'bg-purple-100 text-purple-700' :
-                    item.tier === 'gold' ? 'bg-amber-100 text-amber-700' :
-                    item.tier === 'silver' ? 'bg-gray-200 text-gray-700' :
-                    'bg-orange-100 text-orange-700'
-                  }`}>
-                    {item.tier}
-                  </span>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-900">{formatCurrency(item.totalAmount)}</p>
-                    <p className="text-xs text-gray-500">{formatCurrency(item.paidAmount)} paid</p>
-                  </div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <p className="text-sm text-gray-500">Paid</p>
+                  <p className="text-xl font-bold text-green-600">{formatCurrency(statusData.paid, currency)}</p>
+                  <p className="text-xs text-gray-400">Completed payouts</p>
                 </div>
-              ))}
-              {byTier.length === 0 && (
-                <p className="text-gray-500 text-center py-4">No tier data available</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Monthly Trend */}
-        {monthlyTrend.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Trend</h3>
-            <div className="overflow-x-auto">
-              <div className="min-w-[400px]">
-                <div className="h-48 relative">
-                  <div className="absolute left-0 top-0 bottom-6 w-20 flex flex-col justify-between text-xs text-gray-500">
-                    <span>{formatCurrency(maxTrendValue)}</span>
-                    <span>{formatCurrency(maxTrendValue / 2)}</span>
-                    <span>₹0</span>
-                  </div>
-                  <div className="ml-20 h-full flex items-end gap-2">
-                    {monthlyTrend.map((trend, index) => (
-                      <div key={index} className="flex-1 flex flex-col items-center">
-                        <div
-                          className="w-full bg-green-500 rounded-t hover:bg-green-600 transition-colors relative group"
-                          style={{ height: `${(trend.totalAmount / maxTrendValue) * 150}px`, minHeight: '2px' }}
-                        >
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {formatCurrency(trend.totalAmount)} ({trend.count})
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <p className="text-sm text-gray-500">Approved</p>
+                  <p className="text-xl font-bold text-blue-600">{formatCurrency(statusData.approved, currency)}</p>
+                  <p className="text-xs text-gray-400">Ready for payment</p>
                 </div>
-                <div className="ml-20 flex justify-between text-xs text-gray-500 mt-2">
-                  {monthlyTrend.length > 0 && (
-                    <>
-                      <span>{monthlyTrend[0].period}</span>
-                      <span>{monthlyTrend[monthlyTrend.length - 1].period}</span>
-                    </>
-                  )}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <p className="text-sm text-gray-500">Pending</p>
+                  <p className="text-xl font-bold text-amber-600">{formatCurrency(statusData.pending, currency)}</p>
+                  <p className="text-xs text-gray-400">Awaiting approval</p>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })}
 
-        {/* Top Partners */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* By Status - Show per currency */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commissions by Status</h3>
+            {(activeCurrencies || ['INR']).map(currency => (
+              <div key={currency} className="mb-4 last:mb-0">
+                <p className="text-xs font-medium text-gray-500 mb-2">{getCurrencyLabel(currency)}</p>
+                <div className="space-y-2">
+                  {(byStatus || []).map((item) => {
+                    const currencyAmount = item.byCurrency?.[currency]?.amount || 0;
+                    const currencyCount = item.byCurrency?.[currency]?.count || 0;
+                    return (
+                      <div key={`${item.status}-${currency}`} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded-full ${
+                            item.status === 'paid' ? 'bg-green-500' :
+                            item.status === 'approved' ? 'bg-blue-500' :
+                            item.status === 'pending' ? 'bg-amber-500' :
+                            'bg-red-500'
+                          }`}></span>
+                          <span className="text-gray-700 capitalize">{item.status}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium text-gray-900">{formatCurrency(currencyAmount, currency)}</p>
+                          <p className="text-xs text-gray-500">{currencyCount} records</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {(byStatus || []).length === 0 && (
+              <p className="text-gray-500 text-center py-4">No status data available</p>
+            )}
+          </div>
+
+          {/* By Tier - Show per currency */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commissions by Tier</h3>
+            {(activeCurrencies || ['INR']).map(currency => (
+              <div key={currency} className="mb-4 last:mb-0">
+                <p className="text-xs font-medium text-gray-500 mb-2">{getCurrencyLabel(currency)}</p>
+                <div className="space-y-2">
+                  {(byTier || []).sort((a, b) => {
+                    const order = { platinum: 1, gold: 2, silver: 3, bronze: 4 };
+                    return (order[a.tier] || 5) - (order[b.tier] || 5);
+                  }).map((item) => {
+                    const currencyData = item.byCurrency?.[currency] || { totalAmount: 0, paidAmount: 0 };
+                    return (
+                      <div key={`${item.tier}-${currency}`} className="flex items-center justify-between">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
+                          item.tier === 'platinum' ? 'bg-purple-100 text-purple-700' :
+                          item.tier === 'gold' ? 'bg-amber-100 text-amber-700' :
+                          item.tier === 'silver' ? 'bg-gray-200 text-gray-700' :
+                          'bg-orange-100 text-orange-700'
+                        }`}>
+                          {item.tier}
+                        </span>
+                        <div className="text-right">
+                          <p className="font-medium text-gray-900">{formatCurrency(currencyData.totalAmount, currency)}</p>
+                          <p className="text-xs text-gray-500">{formatCurrency(currencyData.paidAmount, currency)} paid</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {(byTier || []).length === 0 && (
+              <p className="text-gray-500 text-center py-4">No tier data available</p>
+            )}
+          </div>
+        </div>
+
+        {/* Monthly Trend - Per Currency - Smooth Area Chart */}
+        {(activeCurrencies || ['INR']).map(currency => {
+          const maxTrendValue = getMaxTrendValue(currency);
+          const trendData = (monthlyTrend || []).map(t => ({
+            period: t.period,
+            amount: t.byCurrency?.[currency]?.amount || 0,
+            count: t.byCurrency?.[currency]?.count || 0
+          }));
+
+          // Chart dimensions
+          const chartWidth = 600;
+          const chartHeight = 200;
+          const padding = { top: 20, right: 20, bottom: 30, left: 80 };
+          const innerWidth = chartWidth - padding.left - padding.right;
+          const innerHeight = chartHeight - padding.top - padding.bottom;
+
+          // Generate smooth curve path
+          const generateSmoothPath = (data, isArea = false) => {
+            if (data.length === 0) return '';
+
+            const xStep = innerWidth / Math.max(data.length - 1, 1);
+            const points = data.map((d, i) => ({
+              x: padding.left + i * xStep,
+              y: padding.top + innerHeight - (d.amount / maxTrendValue) * innerHeight
+            }));
+
+            if (points.length === 1) {
+              const p = points[0];
+              return isArea
+                ? `M ${p.x} ${padding.top + innerHeight} L ${p.x} ${p.y} L ${p.x} ${padding.top + innerHeight}`
+                : `M ${p.x} ${p.y}`;
+            }
+
+            // Create smooth curve using bezier
+            let path = `M ${points[0].x} ${points[0].y}`;
+
+            for (let i = 0; i < points.length - 1; i++) {
+              const p0 = points[Math.max(0, i - 1)];
+              const p1 = points[i];
+              const p2 = points[i + 1];
+              const p3 = points[Math.min(points.length - 1, i + 2)];
+
+              // Catmull-Rom to Bezier conversion
+              const cp1x = p1.x + (p2.x - p0.x) / 6;
+              const cp1y = p1.y + (p2.y - p0.y) / 6;
+              const cp2x = p2.x - (p3.x - p1.x) / 6;
+              const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+              path += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
+            }
+
+            if (isArea) {
+              path += ` L ${points[points.length - 1].x} ${padding.top + innerHeight}`;
+              path += ` L ${points[0].x} ${padding.top + innerHeight} Z`;
+            }
+
+            return path;
+          };
+
+          const xStep = innerWidth / Math.max(trendData.length - 1, 1);
+          const points = trendData.map((d, i) => ({
+            x: padding.left + i * xStep,
+            y: padding.top + innerHeight - (d.amount / maxTrendValue) * innerHeight,
+            ...d
+          }));
+
+          const chartColor = currency === 'INR' ? '#10b981' : '#3b82f6';
+          const gradientId = `gradient-${currency}`;
+
+          return (
+            trendData.length > 0 && (
+              <div key={currency} className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Trend - {getCurrencyLabel(currency)}</h3>
+                <div className="overflow-x-auto">
+                  <svg width="100%" height={chartHeight + 40} viewBox={`0 0 ${chartWidth} ${chartHeight + 40}`} className="min-w-[500px]">
+                    {/* Definitions for gradient */}
+                    <defs>
+                      <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor={chartColor} stopOpacity="0.3"/>
+                        <stop offset="100%" stopColor={chartColor} stopOpacity="0.02"/>
+                      </linearGradient>
+                    </defs>
+
+                    {/* Grid lines */}
+                    <g className="text-gray-200">
+                      <line x1={padding.left} y1={padding.top} x2={chartWidth - padding.right} y2={padding.top} stroke="currentColor" strokeDasharray="4"/>
+                      <line x1={padding.left} y1={padding.top + innerHeight / 2} x2={chartWidth - padding.right} y2={padding.top + innerHeight / 2} stroke="currentColor" strokeDasharray="4"/>
+                      <line x1={padding.left} y1={padding.top + innerHeight} x2={chartWidth - padding.right} y2={padding.top + innerHeight} stroke="currentColor"/>
+                    </g>
+
+                    {/* Y-axis labels */}
+                    <text x={padding.left - 10} y={padding.top + 4} textAnchor="end" className="text-xs fill-gray-500">
+                      {formatCurrency(maxTrendValue, currency)}
+                    </text>
+                    <text x={padding.left - 10} y={padding.top + innerHeight / 2 + 4} textAnchor="end" className="text-xs fill-gray-500">
+                      {formatCurrency(Math.round(maxTrendValue / 2), currency)}
+                    </text>
+                    <text x={padding.left - 10} y={padding.top + innerHeight + 4} textAnchor="end" className="text-xs fill-gray-500">
+                      {currency === 'INR' ? '₹0' : 'AED 0'}
+                    </text>
+
+                    {/* Area fill */}
+                    <path
+                      d={generateSmoothPath(trendData, true)}
+                      fill={`url(#${gradientId})`}
+                    />
+
+                    {/* Line */}
+                    <path
+                      d={generateSmoothPath(trendData)}
+                      fill="none"
+                      stroke={chartColor}
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+
+                    {/* Data points */}
+                    {points.map((point, index) => (
+                      <g key={index} className="group cursor-pointer">
+                        <circle
+                          cx={point.x}
+                          cy={point.y}
+                          r="5"
+                          fill="white"
+                          stroke={chartColor}
+                          strokeWidth="2"
+                          className="transition-all group-hover:r-6"
+                        />
+                        <circle
+                          cx={point.x}
+                          cy={point.y}
+                          r="3"
+                          fill={chartColor}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        />
+                        {/* Tooltip */}
+                        <g className="opacity-0 group-hover:opacity-100 transition-opacity">
+                          <rect
+                            x={point.x - 50}
+                            y={point.y - 35}
+                            width="100"
+                            height="28"
+                            rx="4"
+                            fill="#1f2937"
+                            className="text-xs"
+                          />
+                          <text
+                            x={point.x}
+                            y={point.y - 22}
+                            textAnchor="middle"
+                            fill="white"
+                            fontSize="10"
+                          >
+                            {formatCurrency(point.amount, currency)}
+                          </text>
+                          <text
+                            x={point.x}
+                            y={point.y - 12}
+                            textAnchor="middle"
+                            fill="#9ca3af"
+                            fontSize="9"
+                          >
+                            {point.count} transactions
+                          </text>
+                        </g>
+                      </g>
+                    ))}
+
+                    {/* X-axis labels */}
+                    {trendData.length > 0 && (
+                      <>
+                        <text x={padding.left} y={chartHeight + 15} textAnchor="middle" className="text-xs fill-gray-500">
+                          {trendData[0].period}
+                        </text>
+                        {trendData.length > 1 && (
+                          <text x={chartWidth - padding.right} y={chartHeight + 15} textAnchor="middle" className="text-xs fill-gray-500">
+                            {trendData[trendData.length - 1].period}
+                          </text>
+                        )}
+                      </>
+                    )}
+                  </svg>
+                </div>
+
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-4 mt-4 text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: chartColor }}></div>
+                    <span>{currency === 'INR' ? 'Indian Rupees' : 'UAE Dirhams'}</span>
+                  </div>
+                  <span>|</span>
+                  <span>{trendData.length} months of data</span>
+                </div>
+              </div>
+            )
+          );
+        })}
+
+        {/* Top Partners - Per Currency */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-4 border-b border-gray-100">
             <h3 className="text-lg font-semibold text-gray-900">Top Partners by Commission</h3>
           </div>
-          {topPartners.length === 0 ? (
+          {(!topPartners || topPartners.length === 0) ? (
             <div className="p-8 text-center text-gray-500">No partner data available</div>
           ) : (
             <div className="overflow-x-auto">
@@ -268,9 +463,11 @@ const Reports = () => {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Partner</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tier</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Paid</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Pending</th>
+                    {(activeCurrencies || ['INR']).map(currency => (
+                      <th key={currency} className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                        Total ({currency})
+                      </th>
+                    ))}
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Sales</th>
                   </tr>
                 </thead>
@@ -300,12 +497,17 @@ const Reports = () => {
                           partner.tier === 'silver' ? 'bg-gray-200 text-gray-700' :
                           'bg-orange-100 text-orange-700'
                         }`}>
-                          {partner.tier}
+                          {partner.tier || 'N/A'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(partner.totalCommission)}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{formatCurrency(partner.paidCommission)}</td>
-                      <td className="px-4 py-3 text-right text-amber-600">{formatCurrency(partner.pendingCommission)}</td>
+                      {(activeCurrencies || ['INR']).map(currency => {
+                        const currData = partner.commissionsByCurrency?.find(c => c.currency === currency) || { totalCommission: 0 };
+                        return (
+                          <td key={currency} className="px-4 py-3 text-right font-medium text-gray-900">
+                            {formatCurrency(currData.totalCommission, currency)}
+                          </td>
+                        );
+                      })}
                       <td className="px-4 py-3 text-right text-gray-500">{partner.commissionCount}</td>
                     </tr>
                   ))}
@@ -322,28 +524,38 @@ const Reports = () => {
   const PartnerPayoutReport = () => {
     if (!payoutData) return null;
 
-    const { summary, partners, pagination } = payoutData;
+    const { summaryByCurrency, activeCurrencies, partners, pagination } = payoutData;
 
     return (
       <div className="space-y-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Pending Approvals</p>
-            <p className="text-2xl font-bold text-amber-600">{formatCurrency(summary.pendingPayouts)}</p>
-            <p className="text-xs text-gray-400 mt-1">Awaiting approval</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Approved for Payment</p>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(summary.approvedPayouts)}</p>
-            <p className="text-xs text-gray-400 mt-1">Ready to pay</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Total Commissions</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.totalPayouts)}</p>
-            <p className="text-xs text-gray-400 mt-1">All time</p>
-          </div>
-        </div>
+        {/* Summary Cards - Per Currency */}
+        {(activeCurrencies || ['INR']).map(currency => {
+          const summary = summaryByCurrency?.[currency] || { pendingPayouts: 0, approvedPayouts: 0, totalPayouts: 0 };
+          return (
+            <div key={currency} className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                {getCurrencyLabel(currency)}
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <p className="text-sm text-gray-500">Pending Approvals</p>
+                  <p className="text-2xl font-bold text-amber-600">{formatCurrency(summary.pendingPayouts, currency)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Awaiting approval</p>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <p className="text-sm text-gray-500">Approved for Payment</p>
+                  <p className="text-2xl font-bold text-blue-600">{formatCurrency(summary.approvedPayouts, currency)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Ready to pay</p>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <p className="text-sm text-gray-500">Total Commissions</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.totalPayouts, currency)}</p>
+                  <p className="text-xs text-gray-400 mt-1">All time</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
 
         {/* Partner Payout Table */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
@@ -378,17 +590,18 @@ const Reports = () => {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Partner</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tier</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Earned</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Paid</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Approved</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Pending</th>
+                    {(activeCurrencies || ['INR']).map(currency => (
+                      <th key={currency} className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                        Total ({currency})
+                      </th>
+                    ))}
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Sales</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {partners.map((partner) => (
                     <tr
-                      key={partner.partnershipId}
+                      key={partner.partnerId}
                       className="hover:bg-gray-50 cursor-pointer"
                       onClick={() => navigate(`/finance-manager/commissions?partnerId=${partner.partnerId}`)}
                     >
@@ -408,10 +621,14 @@ const Reports = () => {
                           {partner.tier}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(partner.totalCommission)}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{formatCurrency(partner.paidCommission)}</td>
-                      <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(partner.approvedCommission)}</td>
-                      <td className="px-4 py-3 text-right text-amber-600">{formatCurrency(partner.pendingCommission)}</td>
+                      {(activeCurrencies || ['INR']).map(currency => {
+                        const currData = partner.commissionsByCurrency?.find(c => c.currency === currency) || { totalCommission: 0 };
+                        return (
+                          <td key={currency} className="px-4 py-3 text-right font-medium text-gray-900">
+                            {formatCurrency(currData.totalCommission, currency)}
+                          </td>
+                        );
+                      })}
                       <td className="px-4 py-3 text-right text-gray-500">{partner.commissionCount}</td>
                     </tr>
                   ))}
@@ -524,16 +741,6 @@ const Reports = () => {
           >
             Commission Overview
           </button>
-          {/* <button
-            onClick={() => setActiveTab('payouts')}
-            className={`flex-1 px-6 py-4 text-sm font-medium text-center transition-colors ${
-              activeTab === 'payouts'
-                ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Partner Payouts
-          </button> */}
         </div>
       </div>
 

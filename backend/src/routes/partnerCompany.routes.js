@@ -12,7 +12,8 @@ import {
   getKYCReviews,
   leaveCompany,
   getPerformanceReport,
-  getCommissionReport
+  getCommissionReport,
+  getDashboardActivity
 } from '../controllers/partnerCompany.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
 
@@ -49,6 +50,13 @@ router.get(
   '/kyc-reviews',
   restrictTo('platform_admin', 'company_superadmin', 'partner_manager'),
   getKYCReviews
+);
+
+// Get dashboard activity for company (new partners + KYC pending)
+router.get(
+  '/dashboard/activity',
+  restrictTo('company_superadmin', 'partner_manager'),
+  getDashboardActivity
 );
 
 // ========== REPORTS ROUTES ==========

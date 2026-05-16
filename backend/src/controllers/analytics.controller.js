@@ -72,10 +72,20 @@ export const getOverview = async (req, res, next) => {
     const { startDate, endDate } = getDateRange(period);
     const { previousStart, previousEnd } = getPreviousPeriod(startDate, endDate);
 
+    // Get partner IDs for this company (partners are associated via PartnerCompany, not User.companyId)
+    const partnerCompanies = await PartnerCompany.find({ companyId }).select('partnerId createdAt').lean();
+    const partnerIds = partnerCompanies.map(pc => pc.partnerId);
+
+    // Get partner creation dates from PartnerCompany for accurate registration counting
+    const currentPartnerRegistrations = partnerCompanies.filter(pc =>
+      pc.createdAt >= startDate && pc.createdAt <= endDate
+    ).length;
+    const previousPartnerRegistrations = partnerCompanies.filter(pc =>
+      pc.createdAt >= previousStart && pc.createdAt <= previousEnd
+    ).length;
+
     // Fetch all stats in parallel
     const [
-      currentPartners,
-      previousPartners,
       currentProperties,
       previousProperties,
       currentVisits,
@@ -87,18 +97,6 @@ export const getOverview = async (req, res, next) => {
       pendingApprovals,
       kycStats
     ] = await Promise.all([
-      // Current period registrations
-      User.countDocuments({
-        companyId,
-        role: 'partner',
-        createdAt: { $gte: startDate, $lte: endDate }
-      }),
-      // Previous period registrations
-      User.countDocuments({
-        companyId,
-        role: 'partner',
-        createdAt: { $gte: previousStart, $lte: previousEnd }
-      }),
       // Current period properties
       Property.countDocuments({
         companyId,
@@ -179,8 +177,8 @@ export const getOverview = async (req, res, next) => {
           total: totalPartners,
           active: activePartners,
           pending: pendingApprovals,
-          newThisPeriod: currentPartners,
-          change: calculateChange(currentPartners, previousPartners)
+          newThisPeriod: currentPartnerRegistrations,
+          change: calculateChange(currentPartnerRegistrations, previousPartnerRegistrations)
         },
         properties: {
           newThisPeriod: currentProperties,
@@ -220,25 +218,24 @@ export const getRegistrationTrends = async (req, res, next) => {
     const { startDate, endDate } = getDateRange(period, customStart, customEnd);
 
     // Determine grouping format based on period
-    let dateFormat;
     let groupBy;
     if (period === 'week') {
-      dateFormat = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
       groupBy = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
     } else if (period === 'year') {
-      dateFormat = { $dateToString: { format: '%Y-%m', date: '$createdAt' } };
       groupBy = { $dateToString: { format: '%Y-%m', date: '$createdAt' } };
     } else {
-      dateFormat = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
       groupBy = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
     }
 
-    // Get registration trends
+    // Get partner IDs for this company
+    const partnerCompanies = await PartnerCompany.find({ companyId }).select('partnerId').lean();
+    const partnerIds = partnerCompanies.map(pc => pc.partnerId);
+
+    // Get registration trends - partners are associated via PartnerCompany, not User.companyId
     const trends = await User.aggregate([
       {
         $match: {
-          companyId,
-          role: 'partner',
+          _id: { $in: partnerIds },
           createdAt: { $gte: startDate, $lte: endDate }
         }
       },
@@ -278,8 +275,7 @@ export const getRegistrationTrends = async (req, res, next) => {
     const byRegion = await User.aggregate([
       {
         $match: {
-          companyId,
-          role: 'partner'
+          _id: { $in: partnerIds }
         }
       },
       {
@@ -294,8 +290,7 @@ export const getRegistrationTrends = async (req, res, next) => {
     const records = await User.aggregate([
       {
         $match: {
-          companyId,
-          role: 'partner',
+          _id: { $in: partnerIds },
           createdAt: { $gte: startDate, $lte: endDate }
         }
       },
@@ -956,13 +951,11 @@ export const getCommissionReports = async (req, res, next) => {
       totalCommissions,
       previousTotal,
       byStatus,
+      byStatusByCurrency,
       byTier,
       byCurrency,
       trends,
-      topPartners,
-      totalAmount,
-      pendingAmount,
-      paidAmount
+      topPartners
     ] = await Promise.all([
       // Total commissions in period
       Commission.countDocuments({
@@ -978,6 +971,17 @@ export const getCommissionReports = async (req, res, next) => {
       Commission.aggregate([
         { $match: { companyId } },
         { $group: { _id: '$status', count: { $sum: 1 }, total: { $sum: '$commission.calculatedAmount' } } }
+      ]),
+      // By status by currency
+      Commission.aggregate([
+        { $match: { companyId } },
+        {
+          $group: {
+            _id: { status: '$status', currency: '$commission.currency' },
+            count: { $sum: 1 },
+            total: { $sum: '$commission.calculatedAmount' }
+          }
+        }
       ]),
       // By tier
       Commission.aggregate([
@@ -1035,21 +1039,6 @@ export const getCommissionReports = async (req, res, next) => {
             count: 1
           }
         }
-      ]),
-      // Total amount
-      Commission.aggregate([
-        { $match: { companyId } },
-        { $group: { _id: null, total: { $sum: '$commission.calculatedAmount' } } }
-      ]),
-      // Pending amount
-      Commission.aggregate([
-        { $match: { companyId, status: 'pending' } },
-        { $group: { _id: null, total: { $sum: '$commission.calculatedAmount' } } }
-      ]),
-      // Paid amount
-      Commission.aggregate([
-        { $match: { companyId, status: 'paid' } },
-        { $group: { _id: null, total: { $sum: '$commission.calculatedAmount' } } }
       ])
     ]);
 
@@ -1063,6 +1052,25 @@ export const getCommissionReports = async (req, res, next) => {
     byStatus.forEach(item => {
       if (item._id && statusData.hasOwnProperty(item._id)) {
         statusData[item._id] = { count: item.count, amount: item.total || 0 };
+      }
+    });
+
+    // Format status by currency data
+    const statusByCurrency = {};
+    const currencies = [...new Set(byStatusByCurrency.map(item => item._id?.currency).filter(Boolean))];
+    currencies.forEach(currency => {
+      statusByCurrency[currency] = {
+        pending: { count: 0, amount: 0 },
+        approved: { count: 0, amount: 0 },
+        paid: { count: 0, amount: 0 },
+        rejected: { count: 0, amount: 0 }
+      };
+    });
+    byStatusByCurrency.forEach(item => {
+      const currency = item._id?.currency || 'INR';
+      const status = item._id?.status;
+      if (statusByCurrency[currency] && status && statusByCurrency[currency].hasOwnProperty(status)) {
+        statusByCurrency[currency][status] = { count: item.count, amount: item.total || 0 };
       }
     });
 
@@ -1080,6 +1088,18 @@ export const getCommissionReports = async (req, res, next) => {
       if (item._id) {
         currencyData[item._id] = { count: item.count, amount: item.total || 0 };
       }
+    });
+
+    // Calculate totals per currency
+    const summaryByCurrency = {};
+    currencies.forEach(currency => {
+      const statusData = statusByCurrency[currency] || {};
+      summaryByCurrency[currency] = {
+        totalAmount: (statusData.paid?.amount || 0) + (statusData.approved?.amount || 0) + (statusData.pending?.amount || 0),
+        pendingAmount: statusData.pending?.amount || 0,
+        paidAmount: statusData.paid?.amount || 0,
+        approvedAmount: statusData.approved?.amount || 0
+      };
     });
 
     // Format trends
@@ -1112,11 +1132,14 @@ export const getCommissionReports = async (req, res, next) => {
         summary: {
           total: totalCommissions,
           change,
-          totalAmount: totalAmount[0]?.total || 0,
-          pendingAmount: pendingAmount[0]?.total || 0,
-          paidAmount: paidAmount[0]?.total || 0
+          totalAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.totalAmount, 0),
+          pendingAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.pendingAmount, 0),
+          paidAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.paidAmount, 0)
         },
+        summaryByCurrency,
+        activeCurrencies: currencies.length > 0 ? currencies : ['INR'],
         byStatus: statusData,
+        byStatusByCurrency: statusByCurrency,
         byTier: tierData,
         byCurrency: currencyData,
         trends: formattedTrends,

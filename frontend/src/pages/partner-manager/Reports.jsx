@@ -71,8 +71,9 @@ const Reports = () => {
   };
 
   const formatCurrency = (amount, currency = 'INR') => {
-    if (!amount) return currency === 'INR' ? '₹0' : 'AED 0';
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
+    const symbols = { INR: '₹', USD: '$', AED: 'د.إ', EUR: '€', GBP: '£' };
+    if (!amount) return `${symbols[currency] || currency}0`;
+    const symbol = symbols[currency] || currency;
     if (amount >= 10000000) {
       return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
     } else if (amount >= 100000) {
@@ -98,16 +99,135 @@ const Reports = () => {
     setPage(1);
   };
 
+  // Export to CSV
+  const exportToCSV = (data, filename, columns) => {
+    if (!data || data.length === 0) return;
+
+    const headers = columns.map(col => col.label).join(',');
+    const rows = data.map(row =>
+      columns.map(col => {
+        const value = col.key.split('.').reduce((obj, key) => obj?.[key], row);
+        // Escape commas and quotes
+        const cellValue = value ?? '';
+        return typeof cellValue === 'string' && (cellValue.includes(',') || cellValue.includes('"'))
+          ? `"${cellValue.replace(/"/g, '""')}"`
+          : cellValue;
+      }).join(',')
+    ).join('\n');
+
+    const csv = `${headers}\n${rows}`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${filename}-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportPerformanceReport = () => {
+    if (!performanceData?.partners) return;
+
+    const activeCurrencies = performanceData.activeCurrencies || ['INR'];
+    const isMultiCurrency = activeCurrencies.length > 1;
+
+    // Build columns based on currencies
+    const baseColumns = [
+      { key: 'partnerName', label: 'Partner Name' },
+      { key: 'partnerEmail', label: 'Email' },
+      { key: 'tier', label: 'Tier' },
+      { key: 'totalVisits', label: 'Total Visits' },
+      { key: 'completedVisits', label: 'Completed Visits' },
+      { key: 'conversionRate', label: 'Conversion Rate (%)' }
+    ];
+
+    // Add currency-specific columns
+    if (isMultiCurrency) {
+      activeCurrencies.forEach(currency => {
+        baseColumns.push({ key: `commissionsByCurrency.${currency}.total`, label: `Total (${currency})` });
+        baseColumns.push({ key: `commissionsByCurrency.${currency}.paid`, label: `Paid (${currency})` });
+      });
+    } else {
+      baseColumns.push({ key: 'totalCommissions', label: 'Total Commissions' });
+      baseColumns.push({ key: 'paidCommissions', label: 'Paid Commissions' });
+    }
+
+    baseColumns.push({ key: 'kycStatus', label: 'KYC Status' });
+
+    // Transform data for multi-currency export
+    const exportData = performanceData.partners.map(partner => {
+      if (isMultiCurrency && partner.commissionsByCurrency) {
+        const transformed = { ...partner };
+        // Flatten commissionsByCurrency for CSV
+        Object.entries(partner.commissionsByCurrency).forEach(([currency, amounts]) => {
+          transformed[`commissionsByCurrency.${currency}.total`] = amounts.total || 0;
+          transformed[`commissionsByCurrency.${currency}.paid`] = amounts.paid || 0;
+        });
+        return transformed;
+      }
+      return partner;
+    });
+
+    exportToCSV(exportData, 'partner-performance-report', baseColumns);
+  };
+
+  const exportCommissionReport = () => {
+    if (!commissionData?.byPartner) return;
+
+    const activeCurrencies = commissionData.activeCurrencies || ['INR'];
+    const isMultiCurrency = activeCurrencies.length > 1;
+
+    // Build columns based on currencies
+    const baseColumns = [
+      { key: 'partnerName', label: 'Partner Name' },
+      { key: 'tier', label: 'Tier' }
+    ];
+
+    // Add currency-specific columns
+    if (isMultiCurrency) {
+      activeCurrencies.forEach(currency => {
+        baseColumns.push({ key: `commissionsByCurrency.${currency}.total`, label: `Total (${currency})` });
+        baseColumns.push({ key: `commissionsByCurrency.${currency}.paid`, label: `Paid (${currency})` });
+        baseColumns.push({ key: `commissionsByCurrency.${currency}.pending`, label: `Pending (${currency})` });
+      });
+    } else {
+      baseColumns.push({ key: 'totalCommissions', label: 'Total Commissions' });
+      baseColumns.push({ key: 'paidCommissions', label: 'Paid Commissions' });
+      baseColumns.push({ key: 'pendingCommissions', label: 'Pending Commissions' });
+    }
+
+    baseColumns.push({ key: 'commissionCount', label: 'Sales Count' });
+
+    // Transform data for multi-currency export
+    const exportData = commissionData.byPartner.map(partner => {
+      if (isMultiCurrency && partner.commissionsByCurrency) {
+        const transformed = { ...partner };
+        // Flatten commissionsByCurrency for CSV
+        Object.entries(partner.commissionsByCurrency).forEach(([currency, amounts]) => {
+          transformed[`commissionsByCurrency.${currency}.total`] = amounts.total || 0;
+          transformed[`commissionsByCurrency.${currency}.paid`] = amounts.paid || 0;
+          transformed[`commissionsByCurrency.${currency}.pending`] = amounts.pending || 0;
+        });
+        return transformed;
+      }
+      return partner;
+    });
+
+    exportToCSV(exportData, 'commission-report', baseColumns);
+  };
+
   // Performance Report Component
   const PerformanceReport = () => {
     if (!performanceData) return null;
 
-    const { partners, summary, tierBreakdown, pagination } = performanceData;
+    const { partners, summary, summaryByCurrency, activeCurrencies, tierBreakdown, pagination } = performanceData;
 
     return (
       <div className="space-y-6">
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <p className="text-sm text-gray-500">Total Partners</p>
             <p className="text-2xl font-bold text-gray-900">{summary.totalPartners}</p>
@@ -120,13 +240,28 @@ const Reports = () => {
           </div>
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <p className="text-sm text-gray-500">Total Commissions</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(summary.totalCommissions)}</p>
-            <p className="text-xs text-gray-400 mt-1">{formatCurrency(summary.paidCommissions)} paid</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Avg. Conversion</p>
-            <p className="text-2xl font-bold text-purple-600">{summary.avgConversionRate?.toFixed(1) || 0}%</p>
-            <p className="text-xs text-gray-400 mt-1">Visit to completion</p>
+            {(activeCurrencies || ['INR']).map((currency) => {
+              const currStats = summaryByCurrency?.[currency] || {};
+              return (
+                <div key={currency} className="flex items-center gap-2">
+                  <p className="text-lg font-bold text-green-600">{formatCurrency(currStats.totalAmount || 0, currency)}</p>
+                  {(activeCurrencies?.length || 1) > 1 && (
+                    <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{currency}</span>
+                  )}
+                </div>
+              );
+            })}
+            <div className="mt-1">
+              {(activeCurrencies || ['INR']).map((currency) => {
+                const currStats = summaryByCurrency?.[currency] || {};
+                return (
+                  <span key={currency} className="text-xs text-gray-400 mr-2">
+                    {formatCurrency(currStats.paidAmount || 0, currency)} paid
+                    {(activeCurrencies?.length || 1) > 1 && ` (${currency})`}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -145,9 +280,22 @@ const Reports = () => {
 
         {/* Partner Performance Table */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 border-b border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900">Partner Performance</h3>
-            <p className="text-sm text-gray-500">Click on a partner to view details</p>
+          <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Partner Performance</h3>
+              {(activeCurrencies?.length || 1) > 1 && (
+                <p className="text-xs text-gray-400">Note: Commission amounts may include mixed currencies</p>
+              )}
+            </div>
+            <button
+              onClick={exportPerformanceReport}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export CSV
+            </button>
           </div>
           {partners.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
@@ -168,12 +316,8 @@ const Reports = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {partners.map((partner) => (
-                    <tr
-                      key={partner.partnershipId}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => navigate(`/partner-manager/partners/${partner.partnershipId}`)}
-                    >
+                  {partners.map((partner, index) => (
+                    <tr key={`perf-partner-${index}-${partner.partnershipId || 'unknown'}`} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div>
                           <p className="font-medium text-gray-900">{partner.partnerName}</p>
@@ -199,8 +343,24 @@ const Reports = () => {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div>
-                          <p className="font-medium text-gray-900">{formatCurrency(partner.totalCommissions)}</p>
-                          <p className="text-xs text-gray-500">{formatCurrency(partner.paidCommissions)} paid</p>
+                          {partner.commissionsByCurrency && Object.keys(partner.commissionsByCurrency).length > 0 ? (
+                            <div className="space-y-0.5">
+                              {Object.entries(partner.commissionsByCurrency).map(([currency, amounts]) => (
+                                <div key={`perf-total-${index}-${currency}`} className="flex items-center justify-end gap-1">
+                                  <span className="font-medium text-gray-900">
+                                    {formatCurrency(amounts.total || 0, currency)}
+                                  </span>
+                                  {Object.keys(partner.commissionsByCurrency).length > 1 && (
+                                    <span className="text-xs text-gray-400">({currency})</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="font-medium text-gray-900">
+                              {formatCurrency(partner.totalCommissions, activeCurrencies?.[0] || 'INR')}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -256,85 +416,64 @@ const Reports = () => {
   const CommissionReport = () => {
     if (!commissionData) return null;
 
-    const { summary, byStatus, byTier, byPartner, byPeriod, pagination } = commissionData;
+    const { summary, summaryByCurrency, byStatusByCurrency, activeCurrencies, byStatus, byTier, byPartner, byPeriod, pagination } = commissionData;
 
     return (
       <div className="space-y-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Total Commissions</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.totalAmount)}</p>
-            <p className="text-xs text-gray-400 mt-1">{summary.totalCount} transactions</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Pending</p>
-            <p className="text-2xl font-bold text-amber-600">{formatCurrency(summary.pendingAmount)}</p>
-            <p className="text-xs text-gray-400 mt-1">{summary.pendingCount} pending</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Approved</p>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(summary.approvedAmount)}</p>
-            <p className="text-xs text-gray-400 mt-1">{summary.approvedCount} approved</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Paid</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(summary.paidAmount)}</p>
-            <p className="text-xs text-gray-400 mt-1">{summary.paidCount} paid</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Cancelled</p>
-            <p className="text-2xl font-bold text-red-600">{formatCurrency(summary.cancelledAmount)}</p>
-            <p className="text-xs text-gray-400 mt-1">{summary.cancelledCount} cancelled</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* By Status */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commissions by Status</h3>
-            <div className="space-y-3">
-              {byStatus.map((item) => (
-                <div key={item.status} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-3 h-3 rounded-full ${
-                      item.status === 'paid' ? 'bg-green-500' :
-                      item.status === 'approved' ? 'bg-blue-500' :
-                      item.status === 'pending' ? 'bg-amber-500' :
-                      'bg-red-500'
-                    }`}></span>
-                    <span className="text-gray-700 capitalize">{item.status}</span>
+        {/* Summary Cards - Per Currency */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Summary by Currency</h3>
+          {(activeCurrencies || ['INR']).map((currency) => {
+            const currStats = summaryByCurrency?.[currency] || {};
+            return (
+              <div key={currency} className="mb-6 last:mb-0">
+                <div className="flex items-center gap-2 mb-3">
+                  <h4 className="text-sm font-medium text-gray-700">{currency}</h4>
+                  {(activeCurrencies?.length || 1) > 1 && (
+                    <span className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">
+                      {currency}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Total</p>
+                    <p className="text-lg font-bold text-gray-900">{formatCurrency(currStats.totalAmount || 0, currency)}</p>
+                    <p className="text-xs text-gray-400">{currStats.count || 0} transactions</p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-900">{formatCurrency(item.amount)}</p>
-                    <p className="text-xs text-gray-500">{item.count} records</p>
+                  <div className="bg-amber-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Pending</p>
+                    <p className="text-lg font-bold text-amber-600">{formatCurrency(currStats.pendingAmount || 0, currency)}</p>
+                    <p className="text-xs text-gray-400">{currStats.pendingCount || 0} pending</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Approved</p>
+                    <p className="text-lg font-bold text-blue-600">{formatCurrency(currStats.approvedAmount || 0, currency)}</p>
+                    <p className="text-xs text-gray-400">{currStats.approvedCount || 0} approved</p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Paid</p>
+                    <p className="text-lg font-bold text-green-600">{formatCurrency(currStats.paidAmount || 0, currency)}</p>
+                    <p className="text-xs text-gray-400">{currStats.paidCount || 0} paid</p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500">Cancelled</p>
+                    <p className="text-lg font-bold text-red-600">{formatCurrency(currStats.cancelledAmount || 0, currency)}</p>
+                    <p className="text-xs text-gray-400">{currStats.cancelledCount || 0} cancelled</p>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* By Tier */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commissions by Tier</h3>
-            <div className="space-y-3">
-              {byTier.map((item) => (
-                <div key={item.tier} className="flex items-center justify-between">
-                  <span className="text-gray-700 capitalize">{item.tier}</span>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-900">{formatCurrency(item.amount)}</p>
-                    <p className="text-xs text-gray-500">{item.count} commissions</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Commission Trend */}
         {byPeriod && byPeriod.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Trend</h3>
+            {(activeCurrencies?.length || 1) > 1 && (
+              <p className="text-xs text-gray-400 mb-3">Note: Amounts may include mixed currencies</p>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
@@ -362,9 +501,23 @@ const Reports = () => {
 
         {/* Top Partners by Commission */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 border-b border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900">Top Partners by Commission</h3>
-            <p className="text-sm text-gray-500">Top 20 partners by total commission earned</p>
+          <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Top Partners by Commission</h3>
+              <p className="text-sm text-gray-500">Top 20 partners by total commission earned</p>
+              {(activeCurrencies?.length || 1) > 1 && (
+                <p className="text-xs text-gray-400">Note: Amounts may include mixed currencies</p>
+              )}
+            </div>
+            <button
+              onClick={exportCommissionReport}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export CSV
+            </button>
           </div>
           {byPartner.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
@@ -386,7 +539,7 @@ const Reports = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {byPartner.map((partner, index) => (
-                    <tr key={partner.partnerId} className="hover:bg-gray-50">
+                    <tr key={`partner-${index}-${partner.partnerId || 'unknown'}`} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                           index === 0 ? 'bg-amber-100 text-amber-700' :
@@ -408,9 +561,48 @@ const Reports = () => {
                           {partner.tier}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(partner.totalCommissions)}</td>
-                      <td className="px-4 py-3 text-right text-green-600">{formatCurrency(partner.paidCommissions)}</td>
-                      <td className="px-4 py-3 text-right text-amber-600">{formatCurrency(partner.pendingCommissions)}</td>
+                      <td className="px-4 py-3 text-right">
+                        {partner.commissionsByCurrency && Object.keys(partner.commissionsByCurrency).length > 0 ? (
+                          <div className="space-y-0.5">
+                            {Object.entries(partner.commissionsByCurrency).map(([currency, amounts]) => (
+                              <div key={`total-${currency}`} className="flex items-center justify-end gap-1">
+                                <span className="font-medium text-gray-900">{formatCurrency(amounts.total || 0, currency)}</span>
+                                {Object.keys(partner.commissionsByCurrency).length > 1 && (
+                                  <span className="text-xs text-gray-400">({currency})</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="font-medium text-gray-900">{formatCurrency(partner.totalCommissions, activeCurrencies?.[0] || 'INR')}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {partner.commissionsByCurrency && Object.keys(partner.commissionsByCurrency).length > 0 ? (
+                          <div className="space-y-0.5">
+                            {Object.entries(partner.commissionsByCurrency).map(([currency, amounts]) => (
+                              <div key={`paid-${currency}`} className="flex items-center justify-end gap-1">
+                                <span className="text-green-600">{formatCurrency(amounts.paid || 0, currency)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-green-600">{formatCurrency(partner.paidCommissions, activeCurrencies?.[0] || 'INR')}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {partner.commissionsByCurrency && Object.keys(partner.commissionsByCurrency).length > 0 ? (
+                          <div className="space-y-0.5">
+                            {Object.entries(partner.commissionsByCurrency).map(([currency, amounts]) => (
+                              <div key={`pending-${currency}`} className="flex items-center justify-end gap-1">
+                                <span className="text-amber-600">{formatCurrency(amounts.pending || 0, currency)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-amber-600">{formatCurrency(partner.pendingCommissions, activeCurrencies?.[0] || 'INR')}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right text-gray-500">{partner.commissionCount}</td>
                     </tr>
                   ))}

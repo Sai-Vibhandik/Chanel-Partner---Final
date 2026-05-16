@@ -162,7 +162,7 @@ export const createTeamMember = async (req, res, next) => {
         companyId: company._id,
         userId: user._id
       },
-      link: '/profile-settings'
+      link: '/profile'
     }).catch(err => {
       console.error('Failed to create team member notification:', err.message);
     });

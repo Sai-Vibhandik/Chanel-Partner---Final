@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../utils/api';
+import useDebounce from '../../hooks/useDebounce';
 
 const SelectCompany = () => {
   const [searchParams] = useSearchParams();
@@ -13,15 +14,18 @@ const SelectCompany = () => {
 
   const navigate = useNavigate();
 
+  // Debounce search for real-time filtering
+  const debouncedSearch = useDebounce(search, 300);
+
   useEffect(() => {
     fetchCompanies();
-  }, [regionFilter]);
+  }, [regionFilter, debouncedSearch]);
 
   const fetchCompanies = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (search) params.append('search', search);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (regionFilter) params.append('region', regionFilter);
 
       const response = await api.get(`/companies/public/list?${params.toString()}`);
@@ -31,11 +35,6 @@ const SelectCompany = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    fetchCompanies();
   };
 
   const handleSelectCompany = (company) => {
@@ -146,7 +145,7 @@ const SelectCompany = () => {
 
           {/* Search and Filters */}
           <div className="mb-6">
-            <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1 relative">
                 <input
                   type="text"
@@ -173,13 +172,7 @@ const SelectCompany = () => {
                 <option value="india">🇮🇳 India</option>
                 <option value="dubai">🇦🇪 Dubai</option>
               </select>
-              <button
-                type="submit"
-                className="px-6 py-3 bg-cyan-600 text-white rounded-xl hover:bg-cyan-700 transition-colors"
-              >
-                Search
-              </button>
-            </form>
+            </div>
           </div>
 
           {/* Company List */}

@@ -55,7 +55,8 @@ api.interceptors.response.use(
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Don't try to refresh for auth endpoints (login, register, etc.)
-      const authEndpoints = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/auth/refresh-token'];
+      // Also include /auth/me - it's expected to return 401 for unauthenticated users
+      const authEndpoints = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/auth/refresh-token', '/auth/me'];
       const isAuthEndpoint = authEndpoints.some(endpoint => originalRequest.url?.includes(endpoint));
 
       if (isAuthEndpoint) {
@@ -95,12 +96,11 @@ api.interceptors.response.use(
         // Clear any stale data
         localStorage.removeItem('user');
 
-        // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login') &&
-            !window.location.pathname.includes('/register') &&
-            !window.location.pathname.includes('/forgot-password') &&
-            !window.location.pathname.includes('/reset-password') &&
-            !window.location.pathname.includes('/verify-email')) {
+        // Only redirect if not already on public pages
+        const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/'];
+        const isPublicPath = publicPaths.some(path => window.location.pathname === path || window.location.pathname.startsWith(path + '/'));
+
+        if (!isPublicPath) {
           window.location.href = '/login';
         }
 

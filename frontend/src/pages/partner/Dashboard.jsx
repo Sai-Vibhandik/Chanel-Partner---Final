@@ -16,9 +16,10 @@ const PartnerDashboard = () => {
   const [stats, setStats] = useState({
     properties: 0,
     visits: 0,
-    pendingCommissions: 0,
-    totalEarnings: 0
+    pendingCommissions: { INR: 0, AED: 0 },
+    totalEarnings: { INR: 0, AED: 0 }
   });
+  const [activeCurrencies, setActiveCurrencies] = useState(['INR']);
 
   useEffect(() => {
     fetchDashboardData();
@@ -63,13 +64,21 @@ const PartnerDashboard = () => {
       }
 
       // Get commissions stats and recent commissions
-      let pendingCommissions = 0;
-      let totalEarnings = 0;
+      const pendingByCurrency = { INR: 0, AED: 0 };
+      const earningsByCurrency = { INR: 0, AED: 0 };
       try {
         const commissionsRes = await api.get('/commissions/my');
         const commissionStats = commissionsRes.data.data?.stats || {};
-        pendingCommissions = (commissionStats.pending?.amount || 0) + (commissionStats.approved?.amount || 0);
-        totalEarnings = commissionStats.paid?.amount || 0;
+        const currencies = commissionsRes.data.data?.activeCurrencies || ['INR'];
+        setActiveCurrencies(currencies);
+
+        // Calculate pending and earnings for each currency
+        currencies.forEach(currency => {
+          if (commissionStats[currency]) {
+            pendingByCurrency[currency] = (commissionStats[currency].pending?.amount || 0) + (commissionStats[currency].approved?.amount || 0);
+            earningsByCurrency[currency] = commissionStats[currency].paid?.amount || 0;
+          }
+        });
 
         // Get recent commissions
         const allCommissions = commissionsRes.data.data?.commissions || [];
@@ -84,14 +93,28 @@ const PartnerDashboard = () => {
       setStats({
         properties: totalProperties,
         visits: totalVisits,
-        pendingCommissions,
-        totalEarnings
+        pendingCommissions: pendingByCurrency,
+        totalEarnings: earningsByCurrency
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatCurrency = (amount, currency = 'INR') => {
+    const symbol = currency === 'INR' ? '₹' : 'AED ';
+    if (amount >= 10000000) {
+      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
+    } else if (amount >= 100000) {
+      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
+    }
+    return `${symbol}${amount?.toLocaleString() || '0'}`;
+  };
+
+  const getCurrencyLabel = (currency) => {
+    return currency === 'INR' ? '₹' : 'AED';
   };
 
   const tierColors = {
@@ -121,7 +144,7 @@ const PartnerDashboard = () => {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">My Partnerships</h3>
           <button
-            onClick={() => navigate('/partner/companies')}
+            onClick={() => navigate('/partner/my-companies')}
             className="text-sm text-indigo-600 hover:text-indigo-700"
           >
             View All →
@@ -139,7 +162,7 @@ const PartnerDashboard = () => {
             </svg>
             <p className="text-gray-500 mb-2">No partnerships yet</p>
             <button
-              onClick={() => navigate('/partner/companies')}
+              onClick={() => navigate('/partner/my-companies')}
               className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
             >
               Apply to partner with companies →
@@ -156,7 +179,7 @@ const PartnerDashboard = () => {
                 <div
                   key={partnership._id}
                   className={`rounded-xl border ${tierStyle.bg} ${tierStyle.border} p-4 hover:shadow-md transition-shadow cursor-pointer`}
-                  onClick={() => navigate('/partner/companies')}
+                  onClick={() => navigate('/partner/my-companies')}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -226,7 +249,22 @@ const PartnerDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Pending Commissions</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{loading ? '...' : `₹${stats.pendingCommissions.toLocaleString()}`}</p>
+              {loading ? (
+                <p className="text-2xl font-bold text-gray-900 mt-1">...</p>
+              ) : (
+                <div className="mt-1">
+                  {activeCurrencies.map(currency => (
+                    stats.pendingCommissions[currency] > 0 && (
+                      <p key={currency} className="text-xl font-bold text-green-600">
+                        {formatCurrency(stats.pendingCommissions[currency] || 0, currency)}
+                      </p>
+                    )
+                  ))}
+                  {activeCurrencies.filter(c => stats.pendingCommissions[c] > 0).length === 0 && (
+                    <p className="text-xl font-bold text-green-600">{formatCurrency(0)}</p>
+                  )}
+                </div>
+              )}
               <p className="text-sm text-green-600 mt-1">Awaiting payout</p>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
@@ -241,7 +279,22 @@ const PartnerDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Total Earnings</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{loading ? '...' : `₹${stats.totalEarnings.toLocaleString()}`}</p>
+              {loading ? (
+                <p className="text-2xl font-bold text-gray-900 mt-1">...</p>
+              ) : (
+                <div className="mt-1">
+                  {activeCurrencies.map(currency => (
+                    stats.totalEarnings[currency] > 0 && (
+                      <p key={currency} className="text-xl font-bold text-purple-600">
+                        {formatCurrency(stats.totalEarnings[currency] || 0, currency)}
+                      </p>
+                    )
+                  ))}
+                  {activeCurrencies.filter(c => stats.totalEarnings[c] > 0).length === 0 && (
+                    <p className="text-xl font-bold text-purple-600">{formatCurrency(0)}</p>
+                  )}
+                </div>
+              )}
               <p className="text-sm text-purple-600 mt-1">All time</p>
             </div>
             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
@@ -332,10 +385,10 @@ const PartnerDashboard = () => {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">
-                      {visit.propertyId?.name || 'Property'}
+                      {visit.property?.name || 'Property'}
                     </p>
                     <p className="text-sm text-gray-500 truncate">
-                      {visit.propertyId?.location?.city || ''} {visit.propertyId?.location?.state || ''}
+                      {visit.property?.location?.city || ''} {visit.property?.location?.state || ''}
                     </p>
                   </div>
                   <div className="text-right ml-4">
@@ -384,41 +437,51 @@ const PartnerDashboard = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {recentCommissions.map((commission) => (
-                <div
-                  key={commission._id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
-                  onClick={() => navigate('/partner/commissions')}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">
-                      {commission.propertyId?.name || 'Property'}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {commission.visitId?.clientName || 'Client Visit'}
-                    </p>
+              {recentCommissions.map((commission) => {
+                const amount = commission.commission?.calculatedAmount || 0;
+                const currency = commission.commission?.currency || commission.currency || 'INR';
+                const formattedAmount = currency === 'AED'
+                  ? `AED ${(amount / 1000).toFixed(1)}K`
+                  : amount >= 100000
+                    ? `₹${(amount / 100000).toFixed(1)} Lac`
+                    : `₹${amount.toLocaleString()}`;
+
+                return (
+                  <div
+                    key={commission._id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                    onClick={() => navigate('/partner/commissions')}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {commission.property?.name || 'Property'}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {commission.visit?.clientDetails?.name || commission.visit?.visitType || 'Visit'}
+                      </p>
+                    </div>
+                    <div className="text-right ml-4">
+                      <p className="font-semibold text-gray-900">
+                        {formattedAmount}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(commission.createdAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short'
+                        })}
+                      </p>
+                      <span className={`inline-block px-2 py-0.5 text-xs rounded-full mt-1 ${
+                        commission.status === 'paid' ? 'bg-green-100 text-green-800' :
+                        commission.status === 'approved' ? 'bg-blue-100 text-blue-800' :
+                        commission.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {commission.status}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right ml-4">
-                    <p className="font-semibold text-gray-900">
-                      ₹{(commission.amount || 0).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(commission.createdAt).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short'
-                      })}
-                    </p>
-                    <span className={`inline-block px-2 py-0.5 text-xs rounded-full mt-1 ${
-                      commission.status === 'paid' ? 'bg-green-100 text-green-800' :
-                      commission.status === 'approved' ? 'bg-blue-100 text-blue-800' :
-                      commission.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {commission.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
 import { sidebarConfig } from '../../config/sidebar';
 import ExportButton from '../../components/common/ExportButton';
+import useDebounce from '../../hooks/useDebounce';
 
 const Properties = () => {
   const { user } = useAuth();
@@ -17,6 +18,9 @@ const Properties = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [regionFilter, setRegionFilter] = useState('');
+
+  // Debounce search for real-time filtering
+  const debouncedSearch = useDebounce(search, 300);
 
   const config = sidebarConfig[user?.role] || sidebarConfig.property_manager;
   const basePath = user?.role === 'company_superadmin' ? '/company/properties' : '/property-manager/properties';
@@ -56,12 +60,13 @@ const Properties = () => {
   useEffect(() => {
     fetchProperties();
     fetchStats();
-  }, [statusFilter, typeFilter, regionFilter]);
+  }, [debouncedSearch, statusFilter, typeFilter, regionFilter]);
 
   const fetchProperties = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (statusFilter) params.append('status', statusFilter);
       if (typeFilter) params.append('type', typeFilter);
       if (regionFilter) params.append('region', regionFilter);
@@ -82,11 +87,6 @@ const Properties = () => {
     } catch (err) {
       console.error('Failed to load stats:', err);
     }
-  };
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    fetchProperties();
   };
 
   const formatPrice = (property) => {
@@ -160,13 +160,18 @@ const Properties = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
         <div className="flex flex-col gap-3 sm:gap-4">
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <input
-              type="text"
-              placeholder="Search properties..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="flex-1 px-3 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-sm"
-            />
+            <div className="relative flex-1">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search properties..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full py-2 pl-10 pr-4 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-sm"
+              />
+            </div>
             <button
               onClick={() => navigate(`${basePath}/new?fresh=true`)}
               className="px-4 sm:px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm whitespace-nowrap"

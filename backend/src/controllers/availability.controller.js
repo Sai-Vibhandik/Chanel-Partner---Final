@@ -31,22 +31,24 @@ export const getAvailability = async (req, res, next) => {
       officeId
     });
 
-    // If no availability exists, return default
+    // If no availability exists, return default based on office operating hours
     if (!availability) {
+      const defaultStart = office.operatingHours?.start || '09:00';
+      const defaultEnd = office.operatingHours?.end || '18:00';
+
       availability = {
         officeId,
         workingHours: {
-          monday: { start: '09:00', end: '18:00', isActive: true },
-          tuesday: { start: '09:00', end: '18:00', isActive: true },
-          wednesday: { start: '09:00', end: '18:00', isActive: true },
-          thursday: { start: '09:00', end: '18:00', isActive: true },
-          friday: { start: '09:00', end: '18:00', isActive: true },
-          saturday: { start: '09:00', end: '14:00', isActive: false },
-          sunday: { start: '09:00', end: '14:00', isActive: false }
+          monday: { start: defaultStart, end: defaultEnd, isActive: true },
+          tuesday: { start: defaultStart, end: defaultEnd, isActive: true },
+          wednesday: { start: defaultStart, end: defaultEnd, isActive: true },
+          thursday: { start: defaultStart, end: defaultEnd, isActive: true },
+          friday: { start: defaultStart, end: defaultEnd, isActive: true },
+          saturday: { start: defaultStart, end: defaultEnd, isActive: false },
+          sunday: { start: defaultStart, end: defaultEnd, isActive: false }
         },
         slotDuration: 30,
         bufferTime: 0,
-        maxVisitsPerSlot: 3,
         blockedDates: [],
         isActive: true
       };
@@ -69,7 +71,7 @@ export const getAvailability = async (req, res, next) => {
 export const updateAvailability = async (req, res, next) => {
   try {
     const { officeId } = req.params;
-    const { workingHours, slotDuration, bufferTime, maxVisitsPerSlot, blockedDates, isActive } = req.body;
+    const { workingHours, slotDuration, bufferTime, blockedDates, isActive } = req.body;
 
     // Verify office belongs to company
     const office = await OfficeLocation.findOne({
@@ -91,7 +93,6 @@ export const updateAvailability = async (req, res, next) => {
       if (workingHours) availability.workingHours = workingHours;
       if (slotDuration !== undefined) availability.slotDuration = slotDuration;
       if (bufferTime !== undefined) availability.bufferTime = bufferTime;
-      if (maxVisitsPerSlot !== undefined) availability.maxVisitsPerSlot = maxVisitsPerSlot;
       if (blockedDates !== undefined) availability.blockedDates = blockedDates;
       if (isActive !== undefined) availability.isActive = isActive;
 
@@ -112,7 +113,6 @@ export const updateAvailability = async (req, res, next) => {
         },
         slotDuration: slotDuration || 30,
         bufferTime: bufferTime || 0,
-        maxVisitsPerSlot: maxVisitsPerSlot || 3,
         blockedDates: blockedDates || [],
         isActive: isActive !== undefined ? isActive : true,
         createdBy: req.user._id
@@ -237,21 +237,24 @@ export const getAvailableSlotsForOffice = async (req, res, next) => {
     // Get availability settings
     let availability = await OfficeAvailability.findOne({ officeId });
 
-    // If no custom availability, use defaults
+    // Get office operating hours for defaults
+    const officeDefaultStart = office.operatingHours?.start || '09:00';
+    const officeDefaultEnd = office.operatingHours?.end || '18:00';
+
+    // If no custom availability, use defaults based on office operating hours
     if (!availability) {
       availability = {
         workingHours: {
-          monday: { start: '09:00', end: '18:00', isActive: true },
-          tuesday: { start: '09:00', end: '18:00', isActive: true },
-          wednesday: { start: '09:00', end: '18:00', isActive: true },
-          thursday: { start: '09:00', end: '18:00', isActive: true },
-          friday: { start: '09:00', end: '18:00', isActive: true },
-          saturday: { start: '09:00', end: '14:00', isActive: false },
-          sunday: { start: '09:00', end: '14:00', isActive: false }
+          monday: { start: officeDefaultStart, end: officeDefaultEnd, isActive: true },
+          tuesday: { start: officeDefaultStart, end: officeDefaultEnd, isActive: true },
+          wednesday: { start: officeDefaultStart, end: officeDefaultEnd, isActive: true },
+          thursday: { start: officeDefaultStart, end: officeDefaultEnd, isActive: true },
+          friday: { start: officeDefaultStart, end: officeDefaultEnd, isActive: true },
+          saturday: { start: officeDefaultStart, end: officeDefaultEnd, isActive: false },
+          sunday: { start: officeDefaultStart, end: officeDefaultEnd, isActive: false }
         },
         slotDuration: 30,
         bufferTime: 0,
-        maxVisitsPerSlot: 3,
         blockedDates: [],
         isActive: true
       };
@@ -327,7 +330,7 @@ export const getAvailableSlotsForOffice = async (req, res, next) => {
         availability.bufferTime
       );
 
-      // Get booked visits for this date
+      // Get booked visits for this date (both pending and approved block the slot)
       const dayStart = new Date(date);
       dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(date);
@@ -335,9 +338,9 @@ export const getAvailableSlotsForOffice = async (req, res, next) => {
 
       const bookedVisits = await Visit.find({
         companyId: office.companyId,
-        officeId: officeId,
+        officeLocation: officeId,
         scheduledDate: { $gte: dayStart, $lte: dayEnd },
-        status: 'approved' // Only count approved visits, not pending
+        status: { $in: ['pending', 'approved'] } // Both pending and approved block the slot
       });
 
       // Create booking count map
@@ -348,14 +351,14 @@ export const getAvailableSlotsForOffice = async (req, res, next) => {
         }
       });
 
-      // Mark slots with availability
+      // Mark slots with availability (fixed capacity of 1 per slot)
       const availableSlots = slots.map(slot => {
         const booked = bookingCount[slot.time] || 0;
         return {
           ...slot,
           bookedCount: booked,
-          availableSpots: Math.max(0, availability.maxVisitsPerSlot - booked),
-          isAvailable: booked < availability.maxVisitsPerSlot
+          availableSpots: booked > 0 ? 0 : 1,
+          isAvailable: booked === 0 // Only available if no bookings
         };
       });
 
@@ -378,7 +381,7 @@ export const getAvailableSlotsForOffice = async (req, res, next) => {
         },
         availability: {
           slotDuration: availability.slotDuration,
-          maxVisitsPerSlot: availability.maxVisitsPerSlot
+          maxVisitsPerSlot: 1 // Fixed capacity of 1 per slot
         },
         slotsByDate
       }

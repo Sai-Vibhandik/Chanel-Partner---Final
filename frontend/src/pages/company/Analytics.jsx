@@ -95,9 +95,18 @@ const Analytics = () => {
       const row = {};
       columns.forEach(col => {
         let value = col.key.split('.').reduce((obj, key) => obj?.[key], record);
-        if (col.format === 'date') value = formatDate(value);
-        else if (col.format === 'datetime') value = formatDateTime(value);
-        else if (col.format === 'currency') value = formatCurrency(value);
+
+        // Check if column has a custom render function for export
+        if (col.render) {
+          value = col.render(record, value);
+        } else if (col.format === 'date') {
+          value = formatDate(value);
+        } else if (col.format === 'datetime') {
+          value = formatDateTime(value);
+        } else if (col.format === 'currency') {
+          value = formatCurrency(value);
+        }
+
         row[col.header] = value ?? '-';
       });
       return row;
@@ -232,9 +241,17 @@ const Analytics = () => {
                 <tr key={record._id || rowIndex} className="hover:bg-gray-50">
                   {columns.map((col, colIndex) => {
                     let value = col.key.split('.').reduce((obj, key) => obj?.[key], record);
-                    if (col.format === 'date') value = formatDate(value);
-                    else if (col.format === 'datetime') value = formatDateTime(value);
-                    else if (col.format === 'currency') value = formatCurrency(value);
+
+                    // Check if column has a custom render function
+                    if (col.render) {
+                      value = col.render(record, value);
+                    } else if (col.format === 'date') {
+                      value = formatDate(value);
+                    } else if (col.format === 'datetime') {
+                      value = formatDateTime(value);
+                    } else if (col.format === 'currency') {
+                      value = formatCurrency(value);
+                    }
 
                     return (
                       <td key={colIndex} className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -304,17 +321,37 @@ const Analytics = () => {
     { key: 'partner.lastName', header: 'Partner Last Name' },
     { key: 'partner.email', header: 'Partner Email' },
     { key: 'property.name', header: 'Property' },
-    { key: 'commission.calculatedAmount', header: 'Amount', format: 'currency' },
+    {
+      key: 'commission.calculatedAmount',
+      header: 'Amount',
+      render: (record, value) => formatCurrency(value, record.commission?.currency)
+    },
     { key: 'status', header: 'Status', badge: { pending: 'bg-yellow-100 text-yellow-800', approved: 'bg-blue-100 text-blue-800', paid: 'bg-green-100 text-green-800', cancelled: 'bg-red-100 text-red-800' } },
     { key: 'commission.partnerTier', header: 'Tier', badge: { bronze: 'bg-orange-100 text-orange-800', silver: 'bg-gray-200 text-gray-800', gold: 'bg-yellow-100 text-yellow-800', platinum: 'bg-purple-100 text-purple-800' } },
     { key: 'createdAt', header: 'Created', format: 'date' }
   ];
 
+  // Helper to format dates for charts
+  const formatDateForChart = (dateStr) => {
+    if (!dateStr) return dateStr;
+    const dateParts = dateStr.split('-');
+    if (dateParts.length === 3) {
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[parseInt(dateParts[1], 10) - 1];
+      return `${month} ${dateParts[2]}`;
+    } else if (dateParts.length === 2) {
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[parseInt(dateParts[1], 10) - 1];
+      return `${month} ${dateParts[0]}`;
+    }
+    return dateStr;
+  };
+
   // Chart data transformation functions
   const getRegistrationTrendData = () => {
     if (!data.registrations?.trends) return [];
     return data.registrations.trends.map(item => ({
-      date: item.date,
+      date: formatDateForChart(item.date),
       registrations: item.count
     }));
   };
@@ -343,7 +380,7 @@ const Analytics = () => {
   const getLoginTrendData = () => {
     if (!data.logins?.trends) return [];
     return data.logins.trends.map(item => ({
-      date: item.date,
+      date: formatDateForChart(item.date),
       total: item.total,
       successful: item.successful,
       failed: item.failed
@@ -388,7 +425,7 @@ const Analytics = () => {
   const getCommissionTrendData = () => {
     if (!data.commissions?.trends) return [];
     return data.commissions.trends.map(item => ({
-      date: item.date,
+      date: formatDateForChart(item.date),
       amount: item.amount || 0,
       count: item.count
     }));
@@ -900,131 +937,155 @@ const Analytics = () => {
     </div>
   );
 
-  const renderCommissionsTab = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
-        <StatCard
-          title="Total Amount"
-          value={formatCurrency(data.commissions?.summary?.totalAmount)}
-          color="green"
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-        />
-        <StatCard
-          title="Pending Amount"
-          value={formatCurrency(data.commissions?.summary?.pendingAmount)}
-          color="orange"
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-        />
-        <StatCard
-          title="Paid Amount"
-          value={formatCurrency(data.commissions?.summary?.paidAmount)}
-          color="blue"
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-        />
-        <StatCard
-          title="Total Commissions"
-          value={data.commissions?.summary?.total || 0}
-          change={data.commissions?.summary?.change}
-          color="purple"
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          }
-        />
-      </div>
+  const renderCommissionsTab = () => {
+    const activeCurrencies = data.commissions?.activeCurrencies || ['INR'];
+    const summaryByCurrency = data.commissions?.summaryByCurrency || {};
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Trend</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={getCommissionTrendData()}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="amount" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e' }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+    return (
+      <div className="space-y-6">
+        {/* Currency-wise Stats */}
+        {activeCurrencies.map((currency) => {
+          const currencySummary = summaryByCurrency[currency] || {};
+          const statusByCurrency = data.commissions?.byStatusByCurrency?.[currency] || {};
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Commissions by Status</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={getCommissionByStatusData()}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+          return (
+            <div key={currency} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Commission Summary
+                </h3>
+                {activeCurrencies.length > 1 && (
+                  <span className="text-sm px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">{currency}</span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6">
+                <div className="text-center">
+                  <p className="text-xs sm:text-sm text-gray-500 mb-1">Total Amount</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-600">
+                    {formatCurrency(currencySummary.totalAmount || 0, currency)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs sm:text-sm text-gray-500 mb-1">Pending</p>
+                  <p className="text-lg sm:text-xl font-bold text-orange-600">
+                    {formatCurrency(currencySummary.pendingAmount || 0, currency)}
+                  </p>
+                  <p className="text-xs text-gray-400">{statusByCurrency.pending?.count || 0} commissions</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs sm:text-sm text-gray-500 mb-1">Approved</p>
+                  <p className="text-lg sm:text-xl font-bold text-blue-600">
+                    {formatCurrency(currencySummary.approvedAmount || 0, currency)}
+                  </p>
+                  <p className="text-xs text-gray-400">{statusByCurrency.approved?.count || 0} commissions</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs sm:text-sm text-gray-500 mb-1">Paid</p>
+                  <p className="text-lg sm:text-xl font-bold text-indigo-600">
+                    {formatCurrency(currencySummary.paidAmount || 0, currency)}
+                  </p>
+                  <p className="text-xs text-gray-400">{statusByCurrency.paid?.count || 0} commissions</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
 
-      {/* Top Partners */}
-      {data.commissions?.topPartners && data.commissions.topPartners.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Earning Partners</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Partner</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Total Earnings</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Deals</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.commissions.topPartners.map((partner, index) => (
-                  <tr key={partner.partnerId || index} className="border-b border-gray-100">
-                    <td className="py-3 px-4">
-                      <p className="font-medium text-gray-900">{partner.name}</p>
-                    </td>
-                    <td className="py-3 px-4 text-right font-medium text-green-600">
-                      {formatCurrency(partner.totalAmount)}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-600">
-                      {partner.count}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Data Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Commission Records</h3>
-          <ExportButton
-            records={data.commissions?.records || []}
-            filename="commissions"
-            columns={commissionColumns}
+        {/* Total Commissions Count */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+          <StatCard
+            title="Total Commissions"
+            value={data.commissions?.summary?.total || 0}
+            change={data.commissions?.summary?.change}
+            color="purple"
+            icon={
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            }
           />
         </div>
-        <DataTable
-          records={data.commissions?.records || []}
-          columns={commissionColumns}
-          loading={loading}
-        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Trend</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={getCommissionTrendData()}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="amount" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commissions by Status</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={getCommissionByStatusData()}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Top Partners */}
+        {data.commissions?.topPartners && data.commissions.topPartners.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Earning Partners</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Partner</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Total Earnings</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Deals</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.commissions.topPartners.map((partner, index) => (
+                    <tr key={partner.partnerId || index} className="border-b border-gray-100">
+                      <td className="py-3 px-4">
+                        <p className="font-medium text-gray-900">{partner.name}</p>
+                      </td>
+                      <td className="py-3 px-4 text-right font-medium text-green-600">
+                        {formatCurrency(partner.totalAmount)}
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-600">
+                        {partner.count}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Data Table */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Commission Records</h3>
+            <ExportButton
+              records={data.commissions?.records || []}
+              filename="commissions"
+              columns={commissionColumns}
+            />
+          </div>
+          <DataTable
+            records={data.commissions?.records || []}
+            columns={commissionColumns}
+            loading={loading}
+          />
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <DashboardLayout

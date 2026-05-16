@@ -5,6 +5,7 @@ import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
 import Pagination from '../../components/common/Pagination';
+import useDebounce from '../../hooks/useDebounce';
 
 const Partners = () => {
   const navigate = useNavigate();
@@ -20,14 +21,18 @@ const Partners = () => {
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
 
+  // Debounce search for real-time filtering
+  const debouncedSearch = useDebounce(search, 300);
+
   useEffect(() => {
     fetchPartners();
-  }, [statusFilter, tierFilter, page]);
+  }, [debouncedSearch, statusFilter, tierFilter, page]);
 
   const fetchPartners = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (statusFilter) params.append('status', statusFilter);
       if (tierFilter) params.append('tier', tierFilter);
       params.append('page', page);
@@ -41,11 +46,6 @@ const Partners = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    fetchPartners();
   };
 
   const getStatusBadge = (status) => {
@@ -101,14 +101,17 @@ const Partners = () => {
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
-        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-          <div className="flex-1">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+          <div className="flex-1 relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
             <input
               type="text"
               placeholder="Search partners..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-3 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="w-full py-2 pl-10 pr-4 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
             />
           </div>
           <div className="flex gap-2 sm:gap-3">
@@ -134,13 +137,7 @@ const Partners = () => {
               <option value="platinum">Platinum</option>
             </select>
           </div>
-          <button
-            type="submit"
-            className="px-4 sm:px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm whitespace-nowrap"
-          >
-            Search
-          </button>
-        </form>
+        </div>
       </div>
 
       {/* Partners Table/Cards */}

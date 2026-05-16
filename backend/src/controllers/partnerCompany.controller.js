@@ -7,7 +7,7 @@ import Visit from '../models/Visit.js';
 import Commission from '../models/Commission.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { sendPartnershipApprovedEmail } from '../services/email.service.js';
-import { createNotification } from './notification.controller.js';
+import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
 
 /**
  * @desc    Partner applies to join a company
@@ -46,6 +46,33 @@ export const applyToCompany = async (req, res, next) => {
       status: 'pending',
       tier: 'bronze'
     });
+
+    // Get partner details for notification
+    const partner = await User.findById(partnerId).select('firstName lastName email');
+    const partnerName = partner ? `${partner.firstName} ${partner.lastName}` : 'A partner';
+
+    // Notify company admins and partner managers about the new application
+    const companyAdmins = await User.find({
+      companyId,
+      role: { $in: ['company_superadmin', 'partner_manager'] },
+      isActive: true
+    }).select('_id');
+
+    if (companyAdmins.length > 0) {
+      const recipientIds = companyAdmins.map(admin => admin._id);
+      await createNotificationsForRecipients({
+        recipientIds,
+        type: 'partnership_application',
+        title: 'New Partner Application',
+        message: `${partnerName} has applied to join your company as a partner. Review and approve their application.`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: company._id,
+          partnerId: partnerId
+        },
+        link: '/company/partners'
+      });
+    }
 
     // Populate details
     await partnership.populate('companyId', 'name slug');
@@ -920,7 +947,10 @@ export const getPerformanceReport = async (req, res, next) => {
     const totalPages = Math.ceil(totalPartnerships / parseInt(limit));
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Aggregation pipeline for partner performance
+    // Get active currencies
+    const activeCurrencies = await Commission.distinct('commission.currency', { companyId });
+
+    // Aggregation pipeline for partner performance with currency breakdown
     const partners = await PartnerCompany.aggregate([
       { $match: matchQuery },
       {
@@ -1015,6 +1045,55 @@ export const getPerformanceReport = async (req, res, next) => {
                 in: '$$paidCommission.commission.calculatedAmount'
               }
             }
+          },
+          // Per-currency breakdown
+          commissionsByCurrency: {
+            $arrayToObject: {
+              $map: {
+                input: { $setUnion: ['$commissions.commission.currency', []] },
+                as: 'currency',
+                in: {
+                  k: '$$currency',
+                  v: {
+                    total: {
+                      $sum: {
+                        $map: {
+                          input: {
+                            $filter: {
+                              input: '$commissions',
+                              as: 'c',
+                              cond: { $eq: ['$$c.commission.currency', '$$currency'] }
+                            }
+                          },
+                          as: 'filtered',
+                          in: '$$filtered.commission.calculatedAmount'
+                        }
+                      }
+                    },
+                    paid: {
+                      $sum: {
+                        $map: {
+                          input: {
+                            $filter: {
+                              input: '$commissions',
+                              as: 'c',
+                              cond: {
+                                $and: [
+                                  { $eq: ['$$c.commission.currency', '$$currency'] },
+                                  { $eq: ['$$c.status', 'paid'] }
+                                ]
+                              }
+                            }
+                          },
+                          as: 'filtered',
+                          in: '$$filtered.commission.calculatedAmount'
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -1084,7 +1163,7 @@ export const getPerformanceReport = async (req, res, next) => {
       },
       {
         $group: {
-          _id: null,
+          _id: '$commission.currency',
           totalAmount: { $sum: '$commission.calculatedAmount' },
           paidAmount: {
             $sum: {
@@ -1108,6 +1187,17 @@ export const getPerformanceReport = async (req, res, next) => {
       ? partners.reduce((sum, p) => sum + (p.conversionRate || 0), 0) / partners.length
       : 0;
 
+    // Format commission stats by currency
+    const commissionsByCurrency = {};
+    commissionStats.forEach(item => {
+      if (item._id) {
+        commissionsByCurrency[item._id] = {
+          totalAmount: item.totalAmount || 0,
+          paidAmount: item.paidAmount || 0
+        };
+      }
+    });
+
     res.status(200).json({
       success: true,
       data: {
@@ -1116,10 +1206,12 @@ export const getPerformanceReport = async (req, res, next) => {
           totalPartners: summary[0]?.totalPartners || 0,
           totalVisits: visitStats[0]?.total || 0,
           completedVisits: visitStats[0]?.completed || 0,
-          totalCommissions: commissionStats[0]?.totalAmount || 0,
-          paidCommissions: commissionStats[0]?.paidAmount || 0,
+          totalCommissions: Object.values(commissionsByCurrency).reduce((sum, c) => sum + c.totalAmount, 0),
+          paidCommissions: Object.values(commissionsByCurrency).reduce((sum, c) => sum + c.paidAmount, 0),
           avgConversionRate: avgConversion
         },
+        summaryByCurrency: commissionsByCurrency,
+        activeCurrencies: activeCurrencies.length > 0 ? activeCurrencies : ['INR'],
         tierBreakdown: tierMap,
         pagination: {
           total: totalPartnerships,
@@ -1151,47 +1243,70 @@ export const getCommissionReport = async (req, res, next) => {
       if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
     }
 
-    // Get summary stats
+    // Get active currencies
+    const activeCurrencies = await Commission.distinct('commission.currency', { companyId });
+
+    // Get summary stats by currency
     const [
       totalCount,
-      totalAmount,
-      pendingStats,
-      approvedStats,
-      paidStats,
-      cancelledStats,
-      byStatus,
+      summaryByCurrency,
+      byStatusByCurrency,
       byTier,
       byPeriod
     ] = await Promise.all([
       Commission.countDocuments({ companyId, ...dateFilter }),
+      // Summary by currency
       Commission.aggregate([
         { $match: { companyId, ...dateFilter } },
-        { $group: { _id: null, total: { $sum: '$commission.calculatedAmount' } } }
+        {
+          $group: {
+            _id: '$commission.currency',
+            totalAmount: { $sum: '$commission.calculatedAmount' },
+            count: { $sum: 1 },
+            pendingAmount: {
+              $sum: { $cond: [{ $eq: ['$status', 'pending'] }, '$commission.calculatedAmount', 0] }
+            },
+            pendingCount: {
+              $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+            },
+            approvedAmount: {
+              $sum: { $cond: [{ $eq: ['$status', 'approved'] }, '$commission.calculatedAmount', 0] }
+            },
+            approvedCount: {
+              $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
+            },
+            paidAmount: {
+              $sum: { $cond: [{ $eq: ['$status', 'paid'] }, '$commission.calculatedAmount', 0] }
+            },
+            paidCount: {
+              $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] }
+            },
+            cancelledAmount: {
+              $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, '$commission.calculatedAmount', 0] }
+            },
+            cancelledCount: {
+              $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] }
+            }
+          }
+        }
       ]),
-      Commission.aggregate([
-        { $match: { companyId, status: 'pending', ...dateFilter } },
-        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
-      ]),
-      Commission.aggregate([
-        { $match: { companyId, status: 'approved', ...dateFilter } },
-        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
-      ]),
-      Commission.aggregate([
-        { $match: { companyId, status: 'paid', ...dateFilter } },
-        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
-      ]),
-      Commission.aggregate([
-        { $match: { companyId, status: 'cancelled', ...dateFilter } },
-        { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
-      ]),
+      // By status by currency
       Commission.aggregate([
         { $match: { companyId, ...dateFilter } },
-        { $group: { _id: '$status', count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
+        {
+          $group: {
+            _id: { status: '$status', currency: '$commission.currency' },
+            count: { $sum: 1 },
+            amount: { $sum: '$commission.calculatedAmount' }
+          }
+        }
       ]),
+      // By tier
       Commission.aggregate([
         { $match: { companyId, ...dateFilter } },
         { $group: { _id: '$commission.partnerTier', count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
       ]),
+      // By period
       Commission.aggregate([
         { $match: { companyId, ...dateFilter } },
         {
@@ -1210,6 +1325,39 @@ export const getCommissionReport = async (req, res, next) => {
         { $limit: 12 }
       ])
     ]);
+
+    // Format summary by currency
+    const summaryByCurrencyMap = {};
+    summaryByCurrency.forEach(item => {
+      if (item._id) {
+        summaryByCurrencyMap[item._id] = {
+          totalAmount: item.totalAmount || 0,
+          count: item.count || 0,
+          pendingAmount: item.pendingAmount || 0,
+          pendingCount: item.pendingCount || 0,
+          approvedAmount: item.approvedAmount || 0,
+          approvedCount: item.approvedCount || 0,
+          paidAmount: item.paidAmount || 0,
+          paidCount: item.paidCount || 0,
+          cancelledAmount: item.cancelledAmount || 0,
+          cancelledCount: item.cancelledCount || 0
+        };
+      }
+    });
+
+    // Format by status by currency
+    const byStatusByCurrencyMap = {};
+    byStatusByCurrency.forEach(item => {
+      const currency = item._id?.currency || 'INR';
+      const status = item._id?.status;
+      if (!byStatusByCurrencyMap[currency]) {
+        byStatusByCurrencyMap[currency] = {};
+      }
+      byStatusByCurrencyMap[currency][status] = {
+        count: item.count || 0,
+        amount: item.amount || 0
+      };
+    });
 
     // Get top partners by commission with pagination
     const totalPartners = await Commission.aggregate([
@@ -1238,7 +1386,8 @@ export const getCommissionReport = async (req, res, next) => {
               $cond: [{ $eq: ['$status', 'pending'] }, '$commission.calculatedAmount', 0]
             }
           },
-          commissionCount: { $sum: 1 }
+          commissionCount: { $sum: 1 },
+          commissions: { $push: '$$ROOT' }
         }
       },
       { $sort: { totalCommissions: -1 } },
@@ -1256,8 +1405,19 @@ export const getCommissionReport = async (req, res, next) => {
       {
         $lookup: {
           from: 'partnercompanies',
-          localField: '_id',
-          foreignField: 'partnerId',
+          let: { partnerId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$partnerId', '$$partnerId'] },
+                    { $eq: ['$companyId', companyId] }
+                  ]
+                }
+              }
+            }
+          ],
           as: 'partnership'
         }
       },
@@ -1270,16 +1430,84 @@ export const getCommissionReport = async (req, res, next) => {
           totalCommissions: 1,
           paidCommissions: 1,
           pendingCommissions: 1,
-          commissionCount: 1
+          commissionCount: 1,
+          commissionsByCurrency: {
+            $arrayToObject: {
+              $map: {
+                input: { $setUnion: ['$commissions.commission.currency', []] },
+                as: 'currency',
+                in: {
+                  k: '$$currency',
+                  v: {
+                    total: {
+                      $sum: {
+                        $map: {
+                          input: {
+                            $filter: {
+                              input: '$commissions',
+                              as: 'c',
+                              cond: { $eq: ['$$c.commission.currency', '$$currency'] }
+                            }
+                          },
+                          as: 'filtered',
+                          in: '$$filtered.commission.calculatedAmount'
+                        }
+                      }
+                    },
+                    paid: {
+                      $sum: {
+                        $map: {
+                          input: {
+                            $filter: {
+                              input: '$commissions',
+                              as: 'c',
+                              cond: {
+                                $and: [
+                                  { $eq: ['$$c.commission.currency', '$$currency'] },
+                                  { $eq: ['$$c.status', 'paid'] }
+                                ]
+                              }
+                            }
+                          },
+                          as: 'filtered',
+                          in: '$$filtered.commission.calculatedAmount'
+                        }
+                      }
+                    },
+                    pending: {
+                      $sum: {
+                        $map: {
+                          input: {
+                            $filter: {
+                              input: '$commissions',
+                              as: 'c',
+                              cond: {
+                                $and: [
+                                  { $eq: ['$$c.commission.currency', '$$currency'] },
+                                  { $eq: ['$$c.status', 'pending'] }
+                                ]
+                              }
+                            }
+                          },
+                          as: 'filtered',
+                          in: '$$filtered.commission.calculatedAmount'
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     ]);
 
-    // Format by status
-    const statusData = byStatus.map(item => ({
-      status: item._id,
-      count: item.count,
-      amount: item.amount || 0
+    // Format by status (for backward compatibility, use INR default)
+    const byStatus = Object.entries(byStatusByCurrencyMap['INR'] || {}).map(([status, data]) => ({
+      status,
+      count: data.count,
+      amount: data.amount
     }));
 
     // Format by tier
@@ -1301,18 +1529,21 @@ export const getCommissionReport = async (req, res, next) => {
       success: true,
       data: {
         summary: {
-          totalAmount: totalAmount[0]?.total || 0,
+          totalAmount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.totalAmount, 0),
           totalCount,
-          pendingAmount: pendingStats[0]?.amount || 0,
-          pendingCount: pendingStats[0]?.count || 0,
-          approvedAmount: approvedStats[0]?.amount || 0,
-          approvedCount: approvedStats[0]?.count || 0,
-          paidAmount: paidStats[0]?.amount || 0,
-          paidCount: paidStats[0]?.count || 0,
-          cancelledAmount: cancelledStats[0]?.amount || 0,
-          cancelledCount: cancelledStats[0]?.count || 0
+          pendingAmount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.pendingAmount, 0),
+          pendingCount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.pendingCount, 0),
+          approvedAmount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.approvedAmount, 0),
+          approvedCount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.approvedCount, 0),
+          paidAmount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.paidAmount, 0),
+          paidCount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.paidCount, 0),
+          cancelledAmount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.cancelledAmount, 0),
+          cancelledCount: Object.values(summaryByCurrencyMap).reduce((sum, s) => sum + s.cancelledCount, 0)
         },
-        byStatus: statusData,
+        summaryByCurrency: summaryByCurrencyMap,
+        byStatusByCurrency: byStatusByCurrencyMap,
+        activeCurrencies: activeCurrencies.length > 0 ? activeCurrencies : ['INR'],
+        byStatus,
         byTier: tierData,
         byPartner: topPartners,
         byPeriod: periodData,
@@ -1321,6 +1552,167 @@ export const getCommissionReport = async (req, res, next) => {
           page: parseInt(page),
           pages: totalPages
         }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get dashboard activity for company (new partners + KYC pending)
+ * @route   GET /api/partner-company/dashboard/activity
+ * @access  Private (Company SuperAdmin, Partner Manager)
+ */
+export const getDashboardActivity = async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const activities = [];
+
+    // Get recent new partners (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const newPartners = await PartnerCompany.find({
+      companyId,
+      createdAt: { $gte: thirtyDaysAgo }
+    })
+      .populate('partnerId', 'firstName lastName email phone')
+      .sort({ createdAt: -1 })
+      .limit(limit);
+
+    // Add new partner activities
+    newPartners.forEach(p => {
+      activities.push({
+        type: 'new_partner',
+        id: p._id,
+        partner: {
+          firstName: p.partnerId?.firstName,
+          lastName: p.partnerId?.lastName,
+          email: p.partnerId?.email
+        },
+        tier: p.tier,
+        status: p.status,
+        createdAt: p.createdAt
+      });
+    });
+
+    // Get recently activated partners (status changed to active in last 30 days)
+    const recentlyActivePartners = await PartnerCompany.find({
+      companyId,
+      status: 'active',
+      updatedAt: { $gte: thirtyDaysAgo },
+      createdAt: { $lt: thirtyDaysAgo } // Not newly created, but status changed
+    })
+      .populate('partnerId', 'firstName lastName email phone')
+      .sort({ updatedAt: -1 })
+      .limit(limit);
+
+    recentlyActivePartners.forEach(p => {
+      activities.push({
+        type: 'partner_activated',
+        id: p._id,
+        partner: {
+          firstName: p.partnerId?.firstName,
+          lastName: p.partnerId?.lastName,
+          email: p.partnerId?.email
+        },
+        tier: p.tier,
+        createdAt: p.updatedAt
+      });
+    });
+
+    // Get recent properties added
+    const Property = (await import('../models/Property.js')).default;
+    const recentProperties = await Property.find({
+      company: companyId,
+      createdAt: { $gte: thirtyDaysAgo }
+    })
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .limit(limit);
+
+    recentProperties.forEach(prop => {
+      activities.push({
+        type: 'property_added',
+        id: prop._id,
+        property: {
+          name: prop.name,
+          type: prop.type,
+          city: prop.location?.city
+        },
+        createdBy: prop.createdBy ? {
+          firstName: prop.createdBy.firstName,
+          lastName: prop.createdBy.lastName
+        } : null,
+        createdAt: prop.createdAt
+      });
+    });
+
+    // Get recent commissions paid
+    const recentCommissions = await Commission.find({
+      company: companyId,
+      status: 'paid',
+      paidAt: { $gte: thirtyDaysAgo }
+    })
+      .populate('partnerId', 'firstName lastName')
+      .populate('propertyId', 'name')
+      .sort({ paidAt: -1 })
+      .limit(limit);
+
+    recentCommissions.forEach(comm => {
+      activities.push({
+        type: 'commission_paid',
+        id: comm._id,
+        partner: comm.partnerId ? {
+          firstName: comm.partnerId.firstName,
+          lastName: comm.partnerId.lastName
+        } : null,
+        property: comm.propertyId ? { name: comm.propertyId.name } : null,
+        amount: comm.commission?.calculatedAmount,
+        currency: comm.currency || 'INR',
+        createdAt: comm.paidAt
+      });
+    });
+
+    // Get recent completed visits
+    const recentVisits = await Visit.find({
+      company: companyId,
+      status: 'completed',
+      updatedAt: { $gte: thirtyDaysAgo }
+    })
+      .populate('partnerId', 'firstName lastName')
+      .populate('propertyId', 'name location.city')
+      .sort({ updatedAt: -1 })
+      .limit(limit);
+
+    recentVisits.forEach(visit => {
+      activities.push({
+        type: 'visit_completed',
+        id: visit._id,
+        partner: visit.partnerId ? {
+          firstName: visit.partnerId.firstName,
+          lastName: visit.partnerId.lastName
+        } : null,
+        property: visit.propertyId ? {
+          name: visit.propertyId.name,
+          city: visit.propertyId.location?.city
+        } : null,
+        createdAt: visit.updatedAt
+      });
+    });
+
+    // Sort all activities by date (most recent first) and limit
+    const sortedActivities = activities
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, limit);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        activities: sortedActivities
       }
     });
   } catch (error) {

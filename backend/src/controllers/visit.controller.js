@@ -3,9 +3,10 @@ import Property from '../models/Property.js';
 import PartnerCompany from '../models/PartnerCompany.js';
 import Company from '../models/Company.js';
 import Commission from '../models/Commission.js';
+import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { sendVisitApprovedEmail, sendVisitRejectedEmail } from '../services/email.service.js';
-import { createNotification } from './notification.controller.js';
+import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
 
 // Default tier percentages (what % of property's base commission each tier gets)
 const DEFAULT_TIER_PERCENTAGES = {
@@ -164,6 +165,21 @@ export const bookVisit = async (req, res, next) => {
       throw new ApiError(400, 'You already have a visit scheduled at this time');
     }
 
+    // For office visits, check if the slot is already booked by someone else
+    // Each slot has capacity of 1, so if any visit exists for that slot, it's unavailable
+    if (visitType === 'office' && officeLocation) {
+      const slotBooked = await Visit.findOne({
+        officeLocation: officeLocation,
+        scheduledDate: new Date(scheduledDate),
+        scheduledTime,
+        status: { $in: ['pending', 'approved'] }
+      });
+
+      if (slotBooked) {
+        throw new ApiError(400, 'This time slot is already booked. Please select another time slot.');
+      }
+    }
+
     // Create visit
     const visit = await Visit.create({
       companyId: partnership.companyId,
@@ -185,6 +201,36 @@ export const bookVisit = async (req, res, next) => {
       { path: 'companyId', select: 'name logo address' },
       { path: 'officeLocation', select: 'name address phone email' }
     ]);
+
+    // Send notification to company admins and partner managers
+    try {
+      const companyStaff = await User.find({
+        companyId: partnership.companyId,
+        role: { $in: ['company_superadmin', 'partner_manager'] },
+        isActive: true
+      }).select('_id');
+
+      if (companyStaff.length > 0) {
+        const recipientIds = companyStaff.map(staff => staff._id);
+        const partnerName = `${req.user.firstName} ${req.user.lastName}`;
+        const visitTypeDisplay = visitType === 'site' ? 'site visit' : 'office visit';
+
+        await createNotificationsForRecipients({
+          recipientIds,
+          type: 'visit',
+          title: 'New Visit Booking',
+          message: `${partnerName} has booked a ${visitTypeDisplay} for "${property.name}" on ${new Date(scheduledDate).toLocaleDateString()}.`,
+          link: '/partner-manager/visits',
+          data: {
+            visitId: visit._id,
+            propertyId: propertyId,
+            partnershipId: partnershipId
+          }
+        });
+      }
+    } catch (notifError) {
+      console.error('Failed to send visit notification:', notifError.message);
+    }
 
     res.status(201).json({
       success: true,

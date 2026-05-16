@@ -3,6 +3,7 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
+import useDebounce from '../../hooks/useDebounce';
 
 const EmailLogs = () => {
   const { user } = useAuth();
@@ -21,13 +22,16 @@ const EmailLogs = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Debounce search for real-time filtering
+  const debouncedSearch = useDebounce(search, 300);
+
   // Selected email for details
   const [selectedLog, setSelectedLog] = useState(null);
   const [resending, setResending] = useState(false);
 
   useEffect(() => {
     fetchLogs();
-  }, [pagination.page, statusFilter, typeFilter, startDate, endDate]);
+  }, [pagination.page, statusFilter, typeFilter, startDate, endDate, debouncedSearch]);
 
   const fetchLogs = async () => {
     try {
@@ -39,7 +43,7 @@ const EmailLogs = () => {
       params.append('limit', 20);
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (typeFilter !== 'all') params.append('type', typeFilter);
-      if (search) params.append('search', search);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
 
@@ -56,12 +60,6 @@ const EmailLogs = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setPagination(prev => ({ ...prev, page: 1 }));
-    fetchLogs();
   };
 
   const handleResend = async (logId) => {
@@ -186,21 +184,18 @@ const EmailLogs = () => {
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
         <div className="flex flex-col lg:flex-row gap-4">
-          <form onSubmit={handleSearch} className="flex-1 flex gap-2">
+          <div className="relative flex-1">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by email..."
-              className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full py-2 pl-10 pr-4 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 whitespace-nowrap"
-            >
-              Search
-            </button>
-          </form>
+          </div>
 
           <div className="flex flex-wrap gap-2">
             <select

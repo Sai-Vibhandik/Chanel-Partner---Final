@@ -716,3 +716,152 @@ const checkAllKYCVerified = (partner) => {
 
   return true;
 };
+
+/**
+ * @desc    Get recent activities for partner manager dashboard
+ * @route   GET /api/partners/recent-activities
+ * @access  Private (Partner Manager, Company SuperAdmin)
+ */
+export const getRecentActivities = async (req, res, next) => {
+  try {
+    const PartnerCompany = (await import('../models/PartnerCompany.js')).default;
+    const Visit = (await import('../models/Visit.js')).default;
+    const Commission = (await import('../models/Commission.js')).default;
+    const AgreementSignature = (await import('../models/AgreementSignature.js')).default;
+
+    const companyId = req.user.companyId;
+    const limit = parseInt(req.query.limit) || 10;
+    const activities = [];
+
+    // Get recent partner registrations (last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const newPartners = await PartnerCompany.find({
+      companyId,
+      createdAt: { $gte: sevenDaysAgo }
+    })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('partnerId', 'firstName lastName email');
+
+    newPartners.forEach(partnership => {
+      if (partnership.partnerId) {
+        activities.push({
+          type: 'partner_registered',
+          title: 'New Partner Registered',
+          description: `${partnership.partnerId.firstName} ${partnership.partnerId.lastName} joined as a partner`,
+          timestamp: partnership.createdAt,
+          partnerId: partnership.partnerId._id,
+          partnershipId: partnership._id
+        });
+      }
+    });
+
+    // Get recent visits (scheduled, completed, cancelled in last 7 days)
+    const recentVisits = await Visit.find({
+      companyId,
+      updatedAt: { $gte: sevenDaysAgo }
+    })
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .populate('partner', 'firstName lastName')
+      .populate('property', 'name');
+
+    recentVisits.forEach(visit => {
+      if (visit.partner && visit.property) {
+        const statusText = visit.status === 'completed' ? 'completed' :
+                          visit.status === 'cancelled' ? 'cancelled' :
+                          visit.status === 'approved' ? 'approved' : 'scheduled';
+        activities.push({
+          type: 'visit',
+          title: `Visit ${statusText}`,
+          description: `${visit.partner.firstName} ${visit.partner.lastName}'s visit to ${visit.property.name} was ${statusText}`,
+          timestamp: visit.updatedAt,
+          visitId: visit._id
+        });
+      }
+    });
+
+    // Get recent KYC verifications
+    const recentKYC = await PartnerCompany.find({
+      companyId,
+      kycStatus: 'verified',
+      updatedAt: { $gte: sevenDaysAgo }
+    })
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .populate('partnerId', 'firstName lastName');
+
+    recentKYC.forEach(partnership => {
+      if (partnership.partnerId) {
+        activities.push({
+          type: 'kyc_verified',
+          title: 'KYC Verified',
+          description: `${partnership.partnerId.firstName} ${partnership.partnerId.lastName}'s KYC was verified`,
+          timestamp: partnership.updatedAt,
+          partnerId: partnership.partnerId._id,
+          partnershipId: partnership._id
+        });
+      }
+    });
+
+    // Get recently signed agreements
+    const recentAgreements = await AgreementSignature.find({
+      companyId,
+      status: 'signed',
+      updatedAt: { $gte: sevenDaysAgo }
+    })
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .populate('partnerId', 'firstName lastName');
+
+    recentAgreements.forEach(agreement => {
+      if (agreement.partnerId) {
+        activities.push({
+          type: 'agreement_signed',
+          title: 'Agreement Signed',
+          description: `${agreement.partnerId.firstName} ${agreement.partnerId.lastName} signed the agreement`,
+          timestamp: agreement.updatedAt,
+          agreementId: agreement._id
+        });
+      }
+    });
+
+    // Get recent commission approvals
+    const recentCommissions = await Commission.find({
+      companyId,
+      status: { $in: ['approved', 'paid'] },
+      updatedAt: { $gte: sevenDaysAgo }
+    })
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .populate('partner', 'firstName lastName');
+
+    recentCommissions.forEach(commission => {
+      if (commission.partner) {
+        const statusText = commission.status === 'paid' ? 'paid' : 'approved';
+        activities.push({
+          type: 'commission',
+          title: `Commission ${statusText}`,
+          description: `Commission of ${commission.commission?.currency || 'INR'} ${commission.commission?.calculatedAmount?.toLocaleString() || 0} for ${commission.partner.firstName} ${commission.partner.lastName} was ${statusText}`,
+          timestamp: commission.updatedAt,
+          commissionId: commission._id
+        });
+      }
+    });
+
+    // Sort all activities by timestamp and limit
+    activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const limitedActivities = activities.slice(0, limit);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        activities: limitedActivities
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};

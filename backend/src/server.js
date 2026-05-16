@@ -64,6 +64,7 @@ import chatRoutes from './routes/chat.routes.js';
 import loginLogRoutes from './routes/loginLog.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import emailLogRoutes from './routes/emailLog.routes.js';
+import landingPageRoutes from './routes/landingPage.routes.js';
 import { verifyEmailConnection } from './services/email.service.js';
 
 // Import middleware
@@ -121,6 +122,7 @@ app.get('/api/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/landing', landingPageRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/partner-company', partnerCompanyRoutes);

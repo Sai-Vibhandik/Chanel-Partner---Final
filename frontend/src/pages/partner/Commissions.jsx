@@ -12,6 +12,7 @@ const Commissions = () => {
 
   const [commissions, setCommissions] = useState([]);
   const [stats, setStats] = useState(null);
+  const [activeCurrencies, setActiveCurrencies] = useState(['INR']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -29,6 +30,7 @@ const Commissions = () => {
       const response = await api.get(`/commissions/my?${params.toString()}`);
       setCommissions(response.data.data.commissions);
       setStats(response.data.data.stats);
+      setActiveCurrencies(response.data.data.activeCurrencies || ['INR']);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load commissions');
     } finally {
@@ -66,6 +68,10 @@ const Commissions = () => {
     return `${symbol}${amount?.toLocaleString() || '0'}`;
   };
 
+  const getCurrencyLabel = (currency) => {
+    return currency === 'INR' ? '₹ (INR)' : 'AED';
+  };
+
   const formatDate = (date) => {
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -96,76 +102,84 @@ const Commissions = () => {
         <p className="text-gray-600 mt-1">Track and manage your earned commissions</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Total Earned</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">
-                {formatCurrency(stats?.paid?.amount || 0)}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">{stats?.paid?.count || 0} payouts</p>
+      {/* Stats Cards by Currency */}
+      {activeCurrencies.map(currency => (
+        <div key={currency} className="mb-6">
+          <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            {getCurrencyLabel(currency)}
+            <span className="text-sm font-normal text-gray-500">(Commissions in {currency === 'INR' ? 'Indian Rupees' : 'UAE Dirhams'})</span>
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Total Earned</p>
+                  <p className="text-xl font-bold text-green-600 mt-1">
+                    {formatCurrency(stats?.[currency]?.paid?.amount || 0, currency)}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">{stats?.[currency]?.paid?.count || 0} payouts</p>
+                </div>
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Pending</p>
-              <p className="text-2xl font-bold text-yellow-600 mt-1">
-                {formatCurrency(stats?.pending?.amount || 0)}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">{stats?.pending?.count || 0} requests</p>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Pending</p>
+                  <p className="text-xl font-bold text-yellow-600 mt-1">
+                    {formatCurrency(stats?.[currency]?.pending?.amount || 0, currency)}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">{stats?.[currency]?.pending?.count || 0} requests</p>
+                </div>
+                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Approved</p>
-              <p className="text-2xl font-bold text-blue-600 mt-1">
-                {formatCurrency(stats?.approved?.amount || 0)}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Awaiting payout</p>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Approved</p>
+                  <p className="text-xl font-bold text-blue-600 mt-1">
+                    {formatCurrency(stats?.[currency]?.approved?.amount || 0, currency)}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">Awaiting payout</p>
+                </div>
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Total Commissions</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">
-                {commissions.length}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">All time</p>
-            </div>
-            <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Commissions</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">
+                    {commissions.filter(c => c.commission?.currency === currency).length}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">Total records</p>
+                </div>
+                <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ))}
 
       {/* Commission Overview */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">

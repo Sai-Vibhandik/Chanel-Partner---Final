@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Property from '../models/Property.js';
 import Company from '../models/Company.js';
 import PartnerCompany from '../models/PartnerCompany.js';
@@ -58,6 +59,8 @@ export const createProperty = async (req, res, next) => {
       }
     });
 
+    console.log('Creating property with visibility:', JSON.stringify(visibility, null, 2));
+
     const property = await Property.create({
       companyId: req.user.companyId,
       name,
@@ -69,7 +72,15 @@ export const createProperty = async (req, res, next) => {
       details,
       indiaDetails: region === 'india' ? indiaDetails : undefined,
       dubaiDetails: region === 'dubai' ? dubaiDetails : undefined,
-      visibility: visibility || { type: 'all', showPrice: true, showContact: true, partnerIds: [] },
+      visibility: {
+        type: visibility?.type || 'all',
+        showPrice: visibility?.showPrice ?? true,
+        showContact: visibility?.showContact ?? true,
+        partnerIds: (visibility?.partnerIds || []).map(id => {
+          // Convert to ObjectId if string, otherwise use as is
+          return typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
+        })
+      },
       commission: {
         basePercentage: parseFloat(commission?.basePercentage) || 0,
         isFixed: Boolean(commission?.isFixed),
@@ -225,6 +236,9 @@ export const getProperties = async (req, res, next) => {
             { 'visibility.type': 'hidden', 'visibility.partnerIds': { $ne: req.user._id } }
           ]
         });
+
+        console.log('Partner properties query for user:', req.user._id.toString());
+        console.log('Visibility filter:', JSON.stringify(query.$and, null, 2));
       } else {
         // Company staff see their company's properties
         query.companyId = req.user.companyId;
@@ -409,6 +423,19 @@ export const updateProperty = async (req, res, next) => {
               : null
           };
           console.log('Commission after update:', property[field]);
+        } else if (field === 'visibility') {
+          // Handle visibility specifically to ensure partnerIds are ObjectIds
+          const visibilityData = req.body[field];
+          property[field] = {
+            type: visibilityData?.type || 'all',
+            showPrice: visibilityData?.showPrice ?? true,
+            showContact: visibilityData?.showContact ?? true,
+            partnerIds: (visibilityData?.partnerIds || []).map(id => {
+              // Convert to ObjectId if string, otherwise use as is
+              return typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
+            })
+          };
+          console.log('Visibility after update:', property[field]);
         } else {
           property[field] = req.body[field];
         }
@@ -845,6 +872,18 @@ export const getPropertiesForPartnership = async (req, res, next) => {
       status: { $in: ['active', 'sold_out'] }
     };
 
+    // Add visibility filter for partner
+    // 'all' = show to all, 'selected' = show to selected partners, 'hidden' = hide from selected partners
+    query.$and = query.$and || [];
+    query.$and.push({
+      $or: [
+        { 'visibility.type': 'all' },
+        { 'visibility.type': { $exists: false } }, // Backward compatibility
+        { 'visibility.type': 'selected', 'visibility.partnerIds': req.user._id },
+        { 'visibility.type': 'hidden', 'visibility.partnerIds': { $ne: req.user._id } }
+      ]
+    });
+
     // Filters
     if (type) query.type = type;
     if (region) query.region = region;
@@ -873,6 +912,7 @@ export const getPropertiesForPartnership = async (req, res, next) => {
     }
 
     console.log('Query for partnership properties:', JSON.stringify(query, null, 2));
+    console.log('Visibility filter applied for partner:', req.user._id.toString());
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await Property.countDocuments(query);
@@ -907,6 +947,351 @@ export const getPropertiesForPartnership = async (req, res, next) => {
           pages: Math.ceil(total / parseInt(limit))
         }
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get property performance report
+ * @route   GET /api/properties/reports/performance
+ * @access  Private (Property Manager, Company SuperAdmin)
+ */
+export const getPropertyPerformanceReport = async (req, res, next) => {
+  try {
+    const { period = 'month', sortBy = 'totalVisits', sortOrder = 'desc', page = 1, limit = 10 } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    let startDate = new Date();
+
+    switch (period) {
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'quarter':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default: // month
+        startDate.setMonth(now.getMonth() - 1);
+    }
+
+    // Get all properties for the company
+    const properties = await Property.find({ companyId: req.user.companyId })
+      .select('_id name type status location city')
+      .lean();
+
+    // Get visit counts for each property
+    const Visit = (await import('../models/Visit.js')).default;
+
+    const visitStats = await Visit.aggregate([
+      {
+        $match: {
+          companyId: req.user.companyId,
+          scheduledDate: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$property',
+          totalVisits: { $sum: 1 },
+          pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+          approved: { $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] } },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } }
+        }
+      }
+    ]);
+
+    // Create a map of property visit stats
+    const visitMap = {};
+    visitStats.forEach(stat => {
+      visitMap[stat._id.toString()] = stat;
+    });
+
+    // Merge property data with visit stats
+    const propertyData = properties.map(prop => {
+      const stats = visitMap[prop._id.toString()] || { totalVisits: 0, pending: 0, approved: 0, completed: 0, cancelled: 0 };
+      return {
+        _id: prop._id,
+        name: prop.name,
+        type: prop.type,
+        status: prop.status,
+        city: prop.location?.city || '',
+        totalViews: prop.stats?.totalViews || 0,
+        totalVisits: stats.totalVisits,
+        pending: stats.pending,
+        approved: stats.approved,
+        completed: stats.completed,
+        cancelled: stats.cancelled
+      };
+    });
+
+    // Sort
+    propertyData.sort((a, b) => {
+      const aVal = a[sortBy] || 0;
+      const bVal = b[sortBy] || 0;
+      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+
+    // Summary
+    const summary = {
+      totalProperties: properties.length,
+      totalVisits: propertyData.reduce((sum, p) => sum + p.totalVisits, 0),
+      totalViews: propertyData.reduce((sum, p) => sum + p.totalViews, 0),
+      avgVisitsPerProperty: properties.length > 0
+        ? (propertyData.reduce((sum, p) => sum + p.totalVisits, 0) / properties.length).toFixed(1)
+        : 0
+    };
+
+    // Pagination
+    const total = propertyData.length;
+    const pages = Math.ceil(total / parseInt(limit));
+    const startIndex = (parseInt(page) - 1) * parseInt(limit);
+    const paginatedData = propertyData.slice(startIndex, startIndex + parseInt(limit));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        summary,
+        properties: paginatedData,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get visit analytics
+ * @route   GET /api/properties/reports/visit-analytics
+ * @access  Private (Property Manager, Company SuperAdmin)
+ */
+export const getVisitAnalytics = async (req, res, next) => {
+  try {
+    const { period = 'month' } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    let startDate = new Date();
+
+    switch (period) {
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'quarter':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default: // month
+        startDate.setMonth(now.getMonth() - 1);
+    }
+
+    const Visit = (await import('../models/Visit.js')).default;
+
+    // Visit trends over time
+    const visitTrends = await Visit.aggregate([
+      {
+        $match: {
+          companyId: req.user.companyId,
+          scheduledDate: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$scheduledDate' } },
+          total: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // Visits by status
+    const visitsByStatus = await Visit.aggregate([
+      {
+        $match: {
+          companyId: req.user.companyId,
+          scheduledDate: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Visits by property type
+    const visitsByPropertyType = await Visit.aggregate([
+      {
+        $match: {
+          companyId: req.user.companyId,
+          scheduledDate: { $gte: startDate }
+        }
+      },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'property',
+          foreignField: '_id',
+          as: 'propertyData'
+        }
+      },
+      { $unwind: '$propertyData' },
+      {
+        $group: {
+          _id: '$propertyData.type',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Top performing properties
+    const topProperties = await Visit.aggregate([
+      {
+        $match: {
+          companyId: req.user.companyId,
+          scheduledDate: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$property',
+          totalVisits: { $sum: 1 }
+        }
+      },
+      { $sort: { totalVisits: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'propertyData'
+        }
+      },
+      { $unwind: '$propertyData' },
+      {
+        $project: {
+          _id: 1,
+          name: '$propertyData.name',
+          type: '$propertyData.type',
+          totalVisits: 1
+        }
+      }
+    ]);
+
+    // Format data
+    const visitsByStatusFormatted = visitsByStatus.reduce((acc, item) => {
+      acc[item._id] = item.count;
+      return acc;
+    }, {});
+
+    const visitsByPropertyTypeFormatted = visitsByPropertyType.reduce((acc, item) => {
+      acc[item._id || 'unknown'] = item.count;
+      return acc;
+    }, {});
+
+    res.status(200).json({
+      success: true,
+      data: {
+        visitTrends,
+        visitsByStatus: visitsByStatusFormatted,
+        visitsByPropertyType: visitsByPropertyTypeFormatted,
+        topProperties
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Export property report
+ * @route   GET /api/properties/reports/export
+ * @access  Private (Property Manager, Company SuperAdmin)
+ */
+export const exportPropertyReport = async (req, res, next) => {
+  try {
+    const { period = 'month' } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    let startDate = new Date();
+
+    switch (period) {
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'quarter':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default: // month
+        startDate.setMonth(now.getMonth() - 1);
+    }
+
+    // Get all properties for the company
+    const properties = await Property.find({ companyId: req.user.companyId })
+      .select('_id name type status location')
+      .lean();
+
+    const Visit = (await import('../models/Visit.js')).default;
+
+    // Get visit counts for each property
+    const visitStats = await Visit.aggregate([
+      {
+        $match: {
+          companyId: req.user.companyId,
+          scheduledDate: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$property',
+          totalVisits: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } }
+        }
+      }
+    ]);
+
+    // Create a map of property visit stats
+    const visitMap = {};
+    visitStats.forEach(stat => {
+      visitMap[stat._id.toString()] = stat;
+    });
+
+    // Prepare report data
+    const report = properties.map(prop => {
+      const stats = visitMap[prop._id.toString()] || { totalVisits: 0, completed: 0 };
+      return {
+        name: prop.name,
+        type: prop.type,
+        status: prop.status,
+        city: prop.location?.city || '',
+        totalViews: prop.stats?.totalViews || 0,
+        totalVisits: stats.totalVisits,
+        completed: stats.completed
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { report }
     });
   } catch (error) {
     next(error);

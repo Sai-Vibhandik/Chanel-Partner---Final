@@ -7,7 +7,8 @@ import {
   approveCommission,
   markAsPaid,
   cancelCommission,
-  getCommissionStats
+  getCommissionStats,
+  getCommissionReports
 } from '../controllers/commission.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
 import {
@@ -46,6 +47,27 @@ router.get(
   '/stats',
   restrictTo('finance_manager', 'company_superadmin', 'partner_manager', 'viewer'),
   getCommissionStats
+);
+
+// Get commission reports (finance_manager, company_superadmin)
+router.get(
+  '/reports/overview',
+  restrictTo('finance_manager', 'company_superadmin', 'partner_manager'),
+  getCommissionReports
+);
+
+// Get commission reports (finance_manager, company_superadmin)
+router.get(
+  '/reports/payouts',
+  restrictTo('finance_manager', 'company_superadmin', 'partner_manager'),
+  getCommissionReports
+);
+
+// Export commissions report
+router.get(
+  '/reports/export',
+  restrictTo('finance_manager', 'company_superadmin', 'partner_manager'),
+  getCommissionReports
 );
 
 // ==================== PARTNER ROUTES ====================

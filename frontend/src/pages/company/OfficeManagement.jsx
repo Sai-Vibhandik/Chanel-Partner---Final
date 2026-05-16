@@ -32,7 +32,6 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
     },
     slotDuration: 30,
     bufferTime: 0,
-    maxVisitsPerSlot: 3,
     blockedDates: []
   });
 
@@ -98,9 +97,29 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
           workingHours: avail.workingHours || availabilityForm.workingHours,
           slotDuration: avail.slotDuration || 30,
           bufferTime: avail.bufferTime || 0,
-          maxVisitsPerSlot: avail.maxVisitsPerSlot || 3,
           blockedDates: formattedBlockedDates
         });
+      } else {
+        // No custom availability exists - use office's operating hours as defaults
+        // Find the selected office to get its operating hours
+        const office = offices.find(o => o._id === officeId);
+        if (office?.operatingHours) {
+          const { start, end } = office.operatingHours;
+          setAvailabilityForm({
+            workingHours: {
+              monday: { start: start || '09:00', end: end || '18:00', isActive: true },
+              tuesday: { start: start || '09:00', end: end || '18:00', isActive: true },
+              wednesday: { start: start || '09:00', end: end || '18:00', isActive: true },
+              thursday: { start: start || '09:00', end: end || '18:00', isActive: true },
+              friday: { start: start || '09:00', end: end || '18:00', isActive: true },
+              saturday: { start: start || '09:00', end: start || '14:00', isActive: false },
+              sunday: { start: start || '09:00', end: start || '14:00', isActive: false }
+            },
+            slotDuration: 30,
+            bufferTime: 0,
+            blockedDates: []
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to load availability');
@@ -651,7 +670,7 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
               </div>
 
               {/* Slot Settings */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Slot Duration</label>
                   <select
@@ -685,22 +704,10 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                     <option value={30}>30 minutes</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Max Per Slot</label>
-                  <input
-                    type="number"
-                    value={availabilityForm.maxVisitsPerSlot}
-                    onChange={(e) => setAvailabilityForm(prev => ({
-                      ...prev,
-                      maxVisitsPerSlot: parseInt(e.target.value) || 1
-                    }))}
-                    min="1"
-                    max="20"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Max visits per time slot</p>
-                </div>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Each time slot allows only 1 booking. Once a slot is booked, it becomes unavailable for other partners.
+              </p>
 
               {/* Blocked Dates */}
               <div>

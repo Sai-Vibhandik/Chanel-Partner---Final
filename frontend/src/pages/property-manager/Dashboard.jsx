@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
@@ -6,6 +7,7 @@ import api from '../../utils/api';
 
 const PropertyManagerDashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const config = sidebarConfig.property_manager;
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -13,19 +15,17 @@ const PropertyManagerDashboard = () => {
     active: 0,
     draft: 0,
     soldOut: 0,
-    residential: 0,
-    commercial: 0,
-    industrial: 0,
-    land: 0
+    byType: {}
   });
+  const [recentProperties, setRecentProperties] = useState([]);
 
   useEffect(() => {
     fetchStats();
+    fetchRecentProperties();
   }, []);
 
   const fetchStats = async () => {
     try {
-      setLoading(true);
       const res = await api.get('/properties/stats');
       const data = res.data.data || {};
 
@@ -34,16 +34,45 @@ const PropertyManagerDashboard = () => {
         active: data.overview?.active || 0,
         draft: data.overview?.draft || 0,
         soldOut: data.overview?.soldOut || 0,
-        residential: data.byType?.residential || 0,
-        commercial: data.byType?.commercial || 0,
-        industrial: data.byType?.industrial || 0,
-        land: data.byType?.land || 0
+        byType: data.byType || {}
       });
     } catch (error) {
       console.error('Error fetching property stats:', error);
+    }
+  };
+
+  const fetchRecentProperties = async () => {
+    try {
+      const res = await api.get('/properties?limit=5&sort=-createdAt');
+      const properties = res.data?.data?.properties || [];
+      setRecentProperties(properties);
+    } catch (error) {
+      console.error('Error fetching recent properties:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Property type display names and colors
+  const typeConfig = {
+    apartment: { label: 'Apartment', color: 'orange' },
+    villa: { label: 'Villa', color: 'amber' },
+    plot: { label: 'Plot', color: 'purple' },
+    commercial: { label: 'Commercial', color: 'blue' },
+    office: { label: 'Office', color: 'cyan' },
+    retail: { label: 'Retail', color: 'pink' },
+    warehouse: { label: 'Warehouse', color: 'emerald' },
+    land: { label: 'Land', color: 'green' }
+  };
+
+  const getStatusBadge = (status) => {
+    const statusStyles = {
+      active: 'bg-green-100 text-green-700',
+      draft: 'bg-yellow-100 text-yellow-700',
+      sold_out: 'bg-red-100 text-red-700',
+      off_market: 'bg-gray-100 text-gray-700'
+    };
+    return statusStyles[status] || 'bg-gray-100 text-gray-700';
   };
 
   return (
@@ -121,36 +150,117 @@ const PropertyManagerDashboard = () => {
       {/* Property Types */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Properties by Type</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
-            <p className="text-sm text-gray-500">Residential</p>
-            <p className="text-2xl font-bold text-gray-900">{loading ? '...' : stats.residential}</p>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
           </div>
-          <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-            <p className="text-sm text-gray-500">Commercial</p>
-            <p className="text-2xl font-bold text-gray-900">{loading ? '...' : stats.commercial}</p>
+        ) : Object.keys(stats.byType).length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <p>No properties added yet</p>
           </div>
-          <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-            <p className="text-sm text-gray-500">Industrial</p>
-            <p className="text-2xl font-bold text-gray-900">{loading ? '...' : stats.industrial}</p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Object.entries(stats.byType).map(([type, count]) => {
+              const config = typeConfig[type] || { label: type, color: 'gray' };
+              return (
+                <div key={type} className={`p-4 bg-${config.color}-50 rounded-lg border border-${config.color}-100`}>
+                  <p className="text-sm text-gray-500">{config.label}</p>
+                  <p className="text-2xl font-bold text-gray-900">{count}</p>
+                </div>
+              );
+            })}
           </div>
-          <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-            <p className="text-sm text-gray-500">Land/Plots</p>
-            <p className="text-2xl font-bold text-gray-900">{loading ? '...' : stats.land}</p>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Recent Activity */}
+      {/* Recent Properties */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Properties</h3>
-        <div className="text-center py-8 text-gray-500">
-          <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-          </svg>
-          <p>No properties added yet</p>
-          <p className="text-sm mt-1">Add your first property to get started</p>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Recent Properties</h3>
+          <button
+            onClick={() => navigate('/property-manager/properties')}
+            className="text-sm text-orange-600 hover:text-orange-700 font-medium"
+          >
+            View All
+          </button>
         </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+          </div>
+        ) : recentProperties.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            <p>No properties added yet</p>
+            <button
+              onClick={() => navigate('/property-manager/properties/new')}
+              className="mt-2 text-sm text-orange-600 hover:text-orange-700 font-medium"
+            >
+              Add your first property
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Property</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Views</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {recentProperties.map((property) => (
+                  <tr
+                    key={property._id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => navigate(`/property-manager/properties/${property._id}`)}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        {property.images?.[0]?.url ? (
+                          <img
+                            src={property.images[0].url}
+                            alt={property.name}
+                            className="w-10 h-10 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                            </svg>
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-900">{property.name}</p>
+                          <p className="text-sm text-gray-500">{property.pricing?.currency === 'AED' ? 'AED' : '₹'}{property.pricing?.basePrice?.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="capitalize text-gray-900">{typeConfig[property.type]?.label || property.type}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {property.location?.city}, {property.location?.state || property.location?.emirate || ''}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusBadge(property.status)}`}>
+                        {property.status?.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-900">
+                      {property.stats?.totalViews || 0}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

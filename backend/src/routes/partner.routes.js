@@ -10,7 +10,8 @@ import {
   uploadKYCDocument,
   deleteKYCDocument,
   verifyKYCDocument,
-  getKYCSummary
+  getKYCSummary,
+  getRecentActivities
 } from '../controllers/partner.controller.js';
 import { protect, restrictTo, hasPermission } from '../middlewares/auth.middleware.js';
 
@@ -24,6 +25,13 @@ router.get(
   '/stats',
   restrictTo('platform_admin', 'company_superadmin', 'partner_manager', 'viewer'),
   getPartnerStats
+);
+
+// Get recent activities - accessible by partner manager and company superadmin
+router.get(
+  '/recent-activities',
+  restrictTo('company_superadmin', 'partner_manager'),
+  getRecentActivities
 );
 
 // Get all partners - accessible by company roles

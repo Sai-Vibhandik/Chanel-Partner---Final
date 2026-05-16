@@ -1,6 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 
+// Landing Page
+import Landing from './pages/Landing';
+
 // Auth Pages
 import Login from './pages/auth/Login';
 import RegisterCompany from './pages/auth/RegisterCompany';
@@ -16,6 +19,7 @@ import PlatformDashboard from './pages/platform/Dashboard';
 import Companies from './pages/platform/Companies';
 import CompanyDetails from './pages/platform/CompanyDetails';
 import PlatformPartners from './pages/platform/Partners';
+import LandingPageSettings from './pages/platform/LandingPageSettings';
 
 // Company SuperAdmin Pages
 import CompanyDashboard from './pages/company/Dashboard';
@@ -38,19 +42,23 @@ import PartnerManagerPartnershipDetails from './pages/partner-manager/Partnershi
 import PartnerManagerVisits from './pages/partner-manager/Visits';
 import PartnerManagerVisitDetails from './pages/partner-manager/VisitDetails';
 import PartnerManagerOfficeManagement from './pages/partner-manager/OfficeManagement';
+import PartnerManagerReports from './pages/partner-manager/Reports';
 
 // Property Manager Pages
 import PropertyManagerDashboard from './pages/property-manager/Dashboard';
 import Properties from './pages/property-manager/Properties';
 import PropertyDetails from './pages/property-manager/PropertyDetails';
 import PropertyForm from './pages/property-manager/PropertyForm';
+import PropertyManagerReports from './pages/property-manager/Reports';
 
 // Finance Manager Pages
 import FinanceManagerDashboard from './pages/finance-manager/Dashboard';
 import FinanceManagerCommissions from './pages/finance-manager/Commissions';
 import FinanceManagerCommissionForm from './pages/finance-manager/CommissionForm';
 import FinanceManagerCommissionDetails from './pages/finance-manager/CommissionDetails';
+import FinanceManagerReports from './pages/finance-manager/Reports';
 import ViewerDashboard from './pages/viewer/Dashboard';
+import ViewerReports from './pages/viewer/Reports';
 
 // Partner Pages
 import PartnerDashboard from './pages/partner/Dashboard';
@@ -142,6 +150,9 @@ const PublicRoute = ({ children }) => {
 function App() {
   return (
     <Routes>
+      {/* Landing Page - No auth required */}
+      <Route path="/" element={<Landing />} />
+
       {/* Public Routes */}
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/register/company" element={<PublicRoute><RegisterCompany /></PublicRoute>} />
@@ -191,6 +202,14 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={['platform_admin']}>
             <PlatformPartners />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/platform/landing"
+        element={
+          <ProtectedRoute allowedRoles={['platform_admin']}>
+            <LandingPageSettings />
           </ProtectedRoute>
         }
       />
@@ -263,7 +282,7 @@ function App() {
       <Route
         path="/company/partners"
         element={
-          <ProtectedRoute allowedRoles={['company_superadmin']}>
+          <ProtectedRoute allowedRoles={['company_superadmin', 'partner_manager']}>
             <CompanyPartners />
           </ProtectedRoute>
         }
@@ -271,7 +290,7 @@ function App() {
       <Route
         path="/company/partners/:id"
         element={
-          <ProtectedRoute allowedRoles={['company_superadmin']}>
+          <ProtectedRoute allowedRoles={['company_superadmin', 'partner_manager']}>
             <CompanyPartnerDetails />
           </ProtectedRoute>
         }
@@ -430,6 +449,14 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/partner-manager/reports"
+        element={
+          <ProtectedRoute allowedRoles={['partner_manager']}>
+            <PartnerManagerReports />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Property Manager Routes */}
       <Route
@@ -472,6 +499,14 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/property-manager/reports"
+        element={
+          <ProtectedRoute allowedRoles={['property_manager']}>
+            <PropertyManagerReports />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Finance Manager Routes */}
       <Route
@@ -506,6 +541,14 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/finance-manager/reports"
+        element={
+          <ProtectedRoute allowedRoles={['finance_manager']}>
+            <FinanceManagerReports />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Viewer Routes */}
       <Route
@@ -513,6 +556,14 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={['viewer']}>
             <ViewerDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/viewer/reports"
+        element={
+          <ProtectedRoute allowedRoles={['viewer']}>
+            <ViewerReports />
           </ProtectedRoute>
         }
       />

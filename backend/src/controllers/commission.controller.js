@@ -1,10 +1,11 @@
+import mongoose from 'mongoose';
 import Commission from '../models/Commission.js';
 import Property from '../models/Property.js';
 import PartnerCompany from '../models/PartnerCompany.js';
 import Company from '../models/Company.js';
 import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
-import { createNotification } from './notification.controller.js';
+import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
 
 // Default tier percentages (what % of property's base commission each tier gets)
 // Example: If property has 5% base commission, Gold tier (50%) gets 2.5%
@@ -73,6 +74,30 @@ export const createCommission = async (req, res, next) => {
       throw new ApiError(404, 'Partnership not found');
     }
 
+    // Validate partner exists
+    if (!partnership.partnerId) {
+      throw new ApiError(400, 'Partnership does not have an associated partner');
+    }
+
+    // Extract partner ObjectId - handle both populated and non-populated cases
+    // If populated (User object), extract _id and convert to ObjectId
+    // If not populated, it's already an ObjectId
+    let partnerId;
+    if (partnership.partnerId._id) {
+      // Populated case - extract _id string and convert to ObjectId
+      partnerId = new mongoose.Types.ObjectId(partnership.partnerId._id.toString());
+    } else {
+      // Non-populated case - already an ObjectId
+      partnerId = partnership.partnerId;
+    }
+
+    console.log('Partnership partnerId extraction:', {
+      rawPartnerId: partnership.partnerId,
+      hasId: !!partnership.partnerId._id,
+      extractedPartnerId: partnerId,
+      partnerIdType: typeof partnerId
+    });
+
     if (partnership.companyId.toString() !== req.user.companyId.toString()) {
       throw new ApiError(403, 'Access denied - partnership does not belong to your company');
     }
@@ -96,40 +121,56 @@ export const createCommission = async (req, res, next) => {
       throw new ApiError(400, 'This property has already been sold');
     }
 
-    // Get property's base commission percentage
-    const propertyBasePercentage = property.commission?.basePercentage || 0;
+    // Get property's commission settings
     const currency = property.pricing?.currency || 'INR';
+    let finalCommissionData;
 
-    // Calculate commission
-    const commissionData = await calculateCommission(
-      saleDetails.salePrice,
-      partnership.tier,
-      req.user.companyId,
-      propertyBasePercentage,
-      currency
-    );
-
-    // If partner has override, recalculate using override percentage
-    let finalCommissionData = commissionData;
-    if (partnership.commissionOverride?.percentage) {
-      const overridePercentage = partnership.commissionOverride.percentage;
-      const calculatedAmount = Math.round(saleDetails.salePrice * (overridePercentage / 100));
+    // Check if property has fixed commission
+    if (property.commission?.isFixed && property.commission?.fixedAmount) {
+      // Property has fixed commission amount
+      const fixedAmount = property.commission.fixedAmount;
       finalCommissionData = {
-        propertyBasePercentage,
-        partnerTierPercentage: overridePercentage,
+        propertyBasePercentage: 0,
+        partnerTierPercentage: 0,
         partnerTier: partnership.tier,
-        effectivePercentage: overridePercentage,
-        overridePercentage: overridePercentage,
-        calculatedAmount,
+        effectivePercentage: 0,
+        isFixed: true,
+        fixedAmount: fixedAmount,
+        calculatedAmount: fixedAmount,
         currency
       };
+    } else {
+      // Property has percentage-based commission
+      const propertyBasePercentage = property.commission?.basePercentage || 0;
+
+      // Calculate commission based on percentage
+      const commissionData = await calculateCommission(
+        saleDetails.salePrice,
+        partnership.tier,
+        req.user.companyId,
+        propertyBasePercentage,
+        currency
+      );
+
+      finalCommissionData = commissionData;
     }
 
     // Create commission
+    console.log('Creating commission with data:', {
+      companyId: req.user.companyId,
+      partnershipId,
+      partner: partnerId,
+      property: propertyId,
+      visit: visitId || null,
+      source,
+      saleDetails,
+      commission: finalCommissionData
+    });
+
     const commission = await Commission.create({
       companyId: req.user.companyId,
       partnershipId,
-      partner: partnership.partnerId,
+      partner: partnerId,
       property: propertyId,
       visit: visitId || null,
       source: {
@@ -156,6 +197,26 @@ export const createCommission = async (req, res, next) => {
     property.salePrice = saleDetails.salePrice;
     property.commissionId = commission._id;
     await property.save();
+
+    // Notify partner about new commission
+    const formattedAmount = finalCommissionData.isFixed
+      ? `${currency === 'INR' ? '₹' : 'AED '}${finalCommissionData.fixedAmount.toLocaleString()} (Fixed)`
+      : `${currency === 'INR' ? '₹' : 'AED '}${finalCommissionData.calculatedAmount.toLocaleString()}`;
+
+    createNotification({
+      recipientId: partnerId,
+      type: 'commission_created',
+      title: 'New Commission Created',
+      message: `A commission of ${formattedAmount} has been created for "${property.name}". It will be processed after approval.`,
+      data: {
+        commissionId: commission._id,
+        propertyId: propertyId,
+        companyId: req.user.companyId
+      },
+      link: '/partner/commissions'
+    }).catch(err => {
+      console.error('Failed to create commission notification:', err.message);
+    });
 
     // Populate for response
     await commission.populate([
@@ -247,33 +308,30 @@ export const getCommissionStats = async (req, res, next) => {
       return res.status(200).json({
         success: true,
         data: {
-          overview: { total: 0, pending: 0, approved: 0, paid: 0 },
-          statusCounts: {
-            pending: { count: 0, amount: 0 },
-            approved: { count: 0, amount: 0 },
-            paid: { count: 0, amount: 0 },
-            cancelled: { count: 0, amount: 0 }
+          overview: { total: 0 },
+          statusCountsByCurrency: {
+            INR: { pending: { count: 0, amount: 0 }, approved: { count: 0, amount: 0 }, paid: { count: 0, amount: 0 }, cancelled: { count: 0, amount: 0 } }
           },
-          pending: { count: 0, amount: 0 },
-          monthlyPaid: { monthlyPaidAmount: 0, monthlyPaidCount: 0 },
-          totalAmount: 0,
-          total: 0
+          monthlyPaidByCurrency: { INR: { monthlyPaidAmount: 0, monthlyPaidCount: 0 } },
+          activeCurrencies: ['INR'],
+          recentTransactions: []
         }
       });
     }
 
+    // Get stats grouped by status and currency
     const stats = await Commission.aggregate([
       { $match: { companyId: companyId } },
       {
         $group: {
-          _id: '$status',
+          _id: { status: '$status', currency: '$commission.currency' },
           count: { $sum: 1 },
           totalAmount: { $sum: '$commission.calculatedAmount' }
         }
       }
     ]);
 
-    // Get current month stats
+    // Get current month stats grouped by currency
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -287,45 +345,101 @@ export const getCommissionStats = async (req, res, next) => {
       },
       {
         $group: {
-          _id: null,
+          _id: '$commission.currency',
           monthlyPaidAmount: { $sum: '$commission.calculatedAmount' },
           monthlyPaidCount: { $sum: 1 }
         }
       }
     ]);
 
-    // Format stats
-    const statusCounts = {
-      pending: { count: 0, amount: 0 },
-      approved: { count: 0, amount: 0 },
-      paid: { count: 0, amount: 0 },
-      cancelled: { count: 0, amount: 0 }
-    };
+    // Get recent transactions (last 10)
+    const recentTransactions = await Commission.aggregate([
+      { $match: { companyId: companyId } },
+      { $sort: { createdAt: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'partner',
+          foreignField: '_id',
+          as: 'partnerUser'
+        }
+      },
+      { $unwind: '$partnerUser' },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'property',
+          foreignField: '_id',
+          as: 'propertyData'
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          status: 1,
+          amount: '$commission.calculatedAmount',
+          currency: '$commission.currency',
+          createdAt: 1,
+          partnerName: { $concat: ['$partnerUser.firstName', ' ', '$partnerUser.lastName'] },
+          propertyName: { $arrayElemAt: ['$propertyData.name', 0] }
+        }
+      }
+    ]);
 
+    // Get unique currencies
+    const activeCurrencies = await Commission.distinct('commission.currency', { companyId: companyId });
+    const currencies = activeCurrencies.length > 0 ? activeCurrencies : ['INR'];
+
+    // Format stats by currency
+    const statusCountsByCurrency = {};
+    currencies.forEach(currency => {
+      statusCountsByCurrency[currency] = {
+        pending: { count: 0, amount: 0 },
+        approved: { count: 0, amount: 0 },
+        paid: { count: 0, amount: 0 },
+        cancelled: { count: 0, amount: 0 }
+      };
+    });
+
+    // Populate stats from aggregation results
     stats.forEach(s => {
-      if (statusCounts[s._id] !== undefined) {
-        statusCounts[s._id] = {
+      const status = s._id.status;
+      const currency = s._id.currency || 'INR';
+      if (statusCountsByCurrency[currency] && statusCountsByCurrency[currency][status] !== undefined) {
+        statusCountsByCurrency[currency][status] = {
           count: s.count,
           amount: s.totalAmount || 0
         };
       }
     });
 
+    // Format monthly stats by currency
+    const monthlyPaidByCurrency = {};
+    currencies.forEach(currency => {
+      monthlyPaidByCurrency[currency] = { monthlyPaidAmount: 0, monthlyPaidCount: 0 };
+    });
+    monthlyStats.forEach(s => {
+      const currency = s._id || 'INR';
+      if (monthlyPaidByCurrency[currency]) {
+        monthlyPaidByCurrency[currency] = {
+          monthlyPaidAmount: s.monthlyPaidAmount || 0,
+          monthlyPaidCount: s.monthlyPaidCount || 0
+        };
+      }
+    });
+
+    // Calculate total count (all currencies combined)
     const total = stats.reduce((sum, s) => sum + s.count, 0);
 
     res.status(200).json({
       success: true,
       data: {
-        overview: {
-          total,
-          pending: statusCounts.pending.count,
-          approved: statusCounts.approved?.count || 0,
-          paid: statusCounts.paid.count
-        },
-        statusCounts,
-        pending: statusCounts.pending,
-        monthlyPaid: monthlyStats[0] || { monthlyPaidAmount: 0, monthlyPaidCount: 0 },
-        total
+        overview: { total },
+        statusCountsByCurrency,
+        monthlyPaidByCurrency,
+        activeCurrencies: currencies,
+        recentTransactions
       }
     });
   } catch (error) {
@@ -454,6 +568,26 @@ export const approveCommission = async (req, res, next) => {
     };
     commission.updatedBy = req.user._id;
     await commission.save();
+
+    // Notify partner about commission approval
+    const formattedAmount = commission.commission?.calculatedAmount
+      ? `${commission.commission.currency === 'INR' ? '₹' : 'AED '}${commission.commission.calculatedAmount.toLocaleString()}`
+      : 'Commission';
+
+    createNotification({
+      recipientId: commission.partner,
+      type: 'commission_approved',
+      title: 'Commission Approved',
+      message: `Your commission of ${formattedAmount} for "${commission.property?.name || 'Property'}" has been approved and will be processed for payment.`,
+      data: {
+        commissionId: commission._id,
+        propertyId: commission.property,
+        companyId: commission.companyId
+      },
+      link: '/partner/commissions'
+    }).catch(err => {
+      console.error('Failed to create commission approval notification:', err.message);
+    });
 
     await commission.populate([
       { path: 'partner', select: 'firstName lastName email phone' },
@@ -628,6 +762,7 @@ export const getPartnerCommissions = async (req, res, next) => {
 
     const commissions = await Commission.find(query)
       .populate('property', 'name type location pricing')
+      .populate('visit', 'visitType scheduledDate scheduledTime clientDetails status')
       .populate('partnershipId', 'tier status companyId')
       .populate({
         path: 'partnershipId',
@@ -637,35 +772,50 @@ export const getPartnerCommissions = async (req, res, next) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Get stats for partner
+    // Get stats for partner - grouped by status and currency
     const stats = await Commission.aggregate([
       { $match: { partner: req.user._id } },
       {
         $group: {
-          _id: '$status',
+          _id: { status: '$status', currency: '$commission.currency' },
           count: { $sum: 1 },
           totalAmount: { $sum: '$commission.calculatedAmount' }
         }
       }
     ]);
 
-    const statusStats = {
-      pending: { count: 0, amount: 0 },
-      paid: { count: 0, amount: 0 },
-      cancelled: { count: 0, amount: 0 }
-    };
+    // Format stats by currency
+    const currencies = ['INR', 'AED'];
+    const statusStats = {};
 
+    // Initialize stats for each currency
+    currencies.forEach(currency => {
+      statusStats[currency] = {
+        pending: { count: 0, amount: 0 },
+        approved: { count: 0, amount: 0 },
+        paid: { count: 0, amount: 0 },
+        cancelled: { count: 0, amount: 0 }
+      };
+    });
+
+    // Populate stats from aggregation results
     stats.forEach(s => {
-      if (statusStats[s._id]) {
-        statusStats[s._id] = { count: s.count, amount: s.totalAmount };
+      const status = s._id.status;
+      const currency = s._id.currency || 'INR';
+      if (statusStats[currency] && statusStats[currency][status]) {
+        statusStats[currency][status] = { count: s.count, amount: s.totalAmount };
       }
     });
+
+    // Get unique currencies that have commissions
+    const activeCurrencies = await Commission.distinct('commission.currency', { partner: req.user._id });
 
     res.status(200).json({
       success: true,
       data: {
         commissions,
         stats: statusStats,
+        activeCurrencies: activeCurrencies.length > 0 ? activeCurrencies : ['INR'],
         pagination: {
           total,
           page: parseInt(page),
@@ -673,6 +823,318 @@ export const getPartnerCommissions = async (req, res, next) => {
         }
       }
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get commission reports (overview, by status, by tier, by currency)
+ * @route   GET /api/commissions/reports/overview
+ * @access  Private (finance_manager, company_superadmin, partner_manager)
+ */
+export const getCommissionReports = async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const { period = 'month' } = req.query;
+
+    // Get date range based on period
+    const now = new Date();
+    let startDate = new Date();
+    switch (period) {
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case 'quarter':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        startDate.setMonth(now.getMonth() - 1);
+    }
+
+    // Aggregate by status AND currency
+    const byStatusRaw = await Commission.aggregate([
+      { $match: { companyId } },
+      {
+        $group: {
+          _id: { status: '$status', currency: '$commission.currency' },
+          count: { $sum: 1 },
+          amount: { $sum: '$commission.calculatedAmount' }
+        }
+      }
+    ]);
+
+    // Format byStatus with currency breakdown
+    const statusMap = {};
+    byStatusRaw.forEach(s => {
+      const status = s._id.status || 'pending';
+      const currency = s._id.currency || 'INR';
+      if (!statusMap[status]) {
+        statusMap[status] = { status, count: 0, byCurrency: {} };
+      }
+      statusMap[status].count += s.count;
+      statusMap[status].byCurrency[currency] = {
+        count: s.count,
+        amount: s.amount || 0
+      };
+    });
+    const statusData = Object.values(statusMap);
+
+    // Aggregate by tier AND currency
+    const byTierRaw = await Commission.aggregate([
+      { $match: { companyId } },
+      {
+        $group: {
+          _id: { tier: '$commission.partnerTier', currency: '$commission.currency' },
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$commission.calculatedAmount' },
+          paidAmount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'paid'] }, '$commission.calculatedAmount', 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    // Format byTier with currency breakdown
+    const tierMap = {};
+    byTierRaw.forEach(t => {
+      const tier = t._id.tier || 'bronze';
+      const currency = t._id.currency || 'INR';
+      if (!tierMap[tier]) {
+        tierMap[tier] = { tier, count: 0, byCurrency: {} };
+      }
+      tierMap[tier].count += t.count;
+      tierMap[tier].byCurrency[currency] = {
+        count: t.count,
+        totalAmount: t.totalAmount || 0,
+        paidAmount: t.paidAmount || 0
+      };
+    });
+    const tierData = Object.values(tierMap);
+
+    // Aggregate by currency
+    const byCurrency = await Commission.aggregate([
+      { $match: { companyId } },
+      {
+        $group: {
+          _id: '$commission.currency',
+          count: { $sum: 1 },
+          amount: { $sum: '$commission.calculatedAmount' }
+        }
+      }
+    ]);
+
+    // Monthly trend with currency breakdown
+    const monthlyTrendRaw = await Commission.aggregate([
+      {
+        $match: {
+          companyId,
+          createdAt: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+            currency: '$commission.currency'
+          },
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$commission.calculatedAmount' }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    // Format monthly trend with currency breakdown
+    const trendMap = {};
+    monthlyTrendRaw.forEach(t => {
+      const period = `${t._id.year}-${String(t._id.month).padStart(2, '0')}`;
+      const currency = t._id.currency || 'INR';
+      if (!trendMap[period]) {
+        trendMap[period] = { period, count: 0, byCurrency: {} };
+      }
+      trendMap[period].count += t.count;
+      trendMap[period].byCurrency[currency] = {
+        count: t.count,
+        amount: t.totalAmount || 0
+      };
+    });
+    const formattedTrend = Object.values(trendMap);
+
+    // Top partners with per-currency breakdown
+    const topPartnersRaw = await Commission.aggregate([
+      { $match: { companyId } },
+      {
+        $group: {
+          _id: { partner: '$partner', currency: '$commission.currency' },
+          totalCommission: { $sum: '$commission.calculatedAmount' },
+          paidCommission: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'paid'] }, '$commission.calculatedAmount', 0]
+            }
+          },
+          approvedCommission: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'approved'] }, '$commission.calculatedAmount', 0]
+            }
+          },
+          pendingCommission: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'pending'] }, '$commission.calculatedAmount', 0]
+            }
+          },
+          commissionCount: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.partner',
+          commissionsByCurrency: {
+            $push: {
+              currency: '$_id.currency',
+              totalCommission: '$totalCommission',
+              paidCommission: '$paidCommission',
+              approvedCommission: '$approvedCommission',
+              pendingCommission: '$pendingCommission',
+              count: '$commissionCount'
+            }
+          },
+          totalCommission: { $sum: '$totalCommission' },
+          commissionCount: { $sum: '$commissionCount' }
+        }
+      },
+      { $sort: { totalCommission: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'partnerUser'
+        }
+      },
+      { $unwind: '$partnerUser' },
+      {
+        $lookup: {
+          from: 'partnercompanies',
+          localField: '_id',
+          foreignField: 'partnerId',
+          as: 'partnership'
+        }
+      },
+      {
+        $project: {
+          partnerId: '$_id',
+          partnerName: { $concat: ['$partnerUser.firstName', ' ', '$partnerUser.lastName'] },
+          partnerEmail: '$partnerUser.email',
+          tier: { $arrayElemAt: ['$partnership.tier', 0] },
+          commissionsByCurrency: 1,
+          totalCommission: 1,
+          commissionCount: 1
+        }
+      }
+    ]);
+
+    // Calculate per-currency totals for summary
+    const currencyData = {};
+    byCurrency.forEach(c => {
+      if (c._id) {
+        currencyData[c._id] = {
+          count: c.count,
+          amount: c.amount || 0
+        };
+      }
+    });
+
+    // Get active currencies
+    const activeCurrencies = byCurrency.map(c => c._id).filter(Boolean);
+    if (activeCurrencies.length === 0) activeCurrencies.push('INR');
+
+    // Calculate per-currency status totals
+    const statusTotalsByCurrency = {};
+    activeCurrencies.forEach(currency => {
+      statusTotalsByCurrency[currency] = {
+        paid: 0,
+        approved: 0,
+        pending: 0,
+        cancelled: 0
+      };
+    });
+    byStatusRaw.forEach(s => {
+      const currency = s._id.currency || 'INR';
+      const status = s._id.status || 'pending';
+      if (statusTotalsByCurrency[currency] && statusTotalsByCurrency[currency][status] !== undefined) {
+        statusTotalsByCurrency[currency][status] += s.amount || 0;
+      }
+    });
+
+    // Format response based on request path
+    const path = req.path;
+
+    if (path.includes('/payouts')) {
+      // Payout report format - calculate per-currency totals
+      const payoutSummaryByCurrency = {};
+      activeCurrencies.forEach(currency => {
+        payoutSummaryByCurrency[currency] = {
+          pendingPayouts: statusTotalsByCurrency[currency]?.pending || 0,
+          approvedPayouts: statusTotalsByCurrency[currency]?.approved || 0,
+          totalPayouts: currencyData[currency]?.amount || 0
+        };
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          summaryByCurrency: payoutSummaryByCurrency,
+          activeCurrencies,
+          partners: topPartnersRaw,
+          pagination: {
+            total: topPartnersRaw.length,
+            page: 1,
+            pages: 1
+          }
+        }
+      });
+    } else if (path.includes('/export')) {
+      // Export format
+      res.status(200).json({
+        success: true,
+        data: {
+          report: topPartnersRaw.map(p => ({
+            partnerName: p.partnerName,
+            partnerEmail: p.partnerEmail,
+            tier: p.tier || 'N/A',
+            commissionsByCurrency: p.commissionsByCurrency,
+            totalCommission: p.totalCommission,
+            commissionCount: p.commissionCount
+          }))
+        }
+      });
+    } else {
+      // Overview format
+      res.status(200).json({
+        success: true,
+        data: {
+          byStatus: statusData,
+          byTier: tierData,
+          byCurrency: currencyData,
+          statusTotalsByCurrency,
+          monthlyTrend: formattedTrend,
+          topPartners: topPartnersRaw,
+          activeCurrencies,
+          period
+        }
+      });
+    }
   } catch (error) {
     next(error);
   }

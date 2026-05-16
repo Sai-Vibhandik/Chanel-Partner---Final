@@ -86,14 +86,16 @@ const commissionSchema = new mongoose.Schema(
     // ========== COMMISSION CALCULATION ==========
     commission: {
       // Property's base commission percentage (e.g., 5%)
+      // Not applicable if isFixed is true
       propertyBasePercentage: {
         type: Number,
-        required: true
+        required: false
       },
       // Partner's tier percentage share (e.g., Gold = 50%)
+      // Not applicable if isFixed is true
       partnerTierPercentage: {
         type: Number,
-        required: true
+        required: false
       },
       // Partner's tier name for reference
       partnerTier: {
@@ -103,12 +105,20 @@ const commissionSchema = new mongoose.Schema(
       },
       // Effective percentage (propertyBase × partnerTier / 100)
       // e.g., 5% × 50% = 2.5%
+      // Not applicable if isFixed is true
       effectivePercentage: {
         type: Number,
-        required: true
+        required: false
       },
-      // Override percentage if set specifically for this partner-property
-      overridePercentage: Number,
+      // Whether this is a fixed amount commission (from property)
+      isFixed: {
+        type: Boolean,
+        default: false
+      },
+      // Fixed commission amount (when isFixed is true)
+      fixedAmount: {
+        type: Number
+      },
       // Final calculated amount
       calculatedAmount: {
         type: Number,

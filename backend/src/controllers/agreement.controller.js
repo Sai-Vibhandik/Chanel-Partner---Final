@@ -635,7 +635,7 @@ export const signAgreement = async (req, res, next) => {
             companyId: partnership.companyId,
             signatureId: signature._id
           },
-          link: '/partner-manager/partners'
+          link: '/company/signed-agreements'
         }).catch(err => console.error('Failed to create agreement signed notification:', err.message));
       }
     } catch (notifyError) {

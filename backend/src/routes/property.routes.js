@@ -11,7 +11,10 @@ import {
   uploadPropertyBrochure,
   getPropertyStats,
   getPublicProperties,
-  getPropertiesForPartnership
+  getPropertiesForPartnership,
+  getPropertyPerformanceReport,
+  getVisitAnalytics,
+  exportPropertyReport
 } from '../controllers/property.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
 import {
@@ -32,6 +35,11 @@ router.use(protect);
 
 // Get properties for a specific partnership (Partner only)
 router.get('/partnership/:partnershipId', getPropertiesForPartnership);
+
+// Property reports (Property Manager, Company SuperAdmin)
+router.get('/reports/performance', restrictTo('company_superadmin', 'property_manager'), getPropertyPerformanceReport);
+router.get('/reports/visit-analytics', restrictTo('company_superadmin', 'property_manager'), getVisitAnalytics);
+router.get('/reports/export', restrictTo('company_superadmin', 'property_manager'), exportPropertyReport);
 
 // Get property statistics (company staff and viewer)
 router.get('/stats', restrictTo('company_superadmin', 'partner_manager', 'property_manager', 'finance_manager', 'viewer'), getPropertyStats);
