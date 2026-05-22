@@ -56,7 +56,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Don't try to refresh for auth endpoints (login, register, etc.)
       // Also include /auth/me - it's expected to return 401 for unauthenticated users
-      const authEndpoints = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/auth/refresh-token', '/auth/me'];
+      // Also include /legal - public pages that don't need auth
+      const authEndpoints = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/auth/refresh-token', '/auth/me', '/legal'];
       const isAuthEndpoint = authEndpoints.some(endpoint => originalRequest.url?.includes(endpoint));
 
       if (isAuthEndpoint) {
@@ -97,7 +98,7 @@ api.interceptors.response.use(
         localStorage.removeItem('user');
 
         // Only redirect if not already on public pages
-        const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/'];
+        const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/', '/privacy-policy', '/terms-of-service', '/cookie-policy'];
         const isPublicPath = publicPaths.some(path => window.location.pathname === path || window.location.pathname.startsWith(path + '/'));
 
         if (!isPublicPath) {

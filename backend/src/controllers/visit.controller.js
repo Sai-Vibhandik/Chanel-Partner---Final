@@ -126,6 +126,29 @@ export const bookVisit = async (req, res, next) => {
       throw new ApiError(403, 'Your partnership is not active');
     }
 
+    // Check if company has active subscription
+    const company = await Company.findById(partnership.companyId);
+    if (!company) {
+      throw new ApiError(404, 'Company not found');
+    }
+
+    const subscriptionStatus = company.subscription?.status;
+    const now = new Date();
+    let hasActiveSubscription = false;
+
+    if (subscriptionStatus === 'active') {
+      hasActiveSubscription = true;
+    } else if (subscriptionStatus === 'trial') {
+      const trialEnds = company.subscription?.trialEndsAt;
+      if (trialEnds && new Date(trialEnds) > now) {
+        hasActiveSubscription = true;
+      }
+    }
+
+    if (!hasActiveSubscription) {
+      throw new ApiError(403, 'Unable to book visit. The company subscription is not active.');
+    }
+
     // Verify property exists and belongs to the partnership's company
     const property = await Property.findById(propertyId);
     if (!property) {

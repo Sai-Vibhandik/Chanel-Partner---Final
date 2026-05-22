@@ -384,9 +384,21 @@ const BookVisitModal = ({
               onBlur={() => { setTouched(prev => ({ ...prev, officeLocation: true })); if (!bookingForm.officeLocation) setFormErrors(prev => ({ ...prev, officeLocation: 'Please select an office' })); }}
               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${touched.officeLocation && formErrors.officeLocation ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
               required
+              disabled={!selectedPartnership}
             >
               <option value="">Choose an office location</option>
-              {offices.map((office) => (<option key={office._id} value={office._id}>{office.name} - {office.address?.city}</option>))}
+              {offices
+                .filter(office => {
+                  // Filter offices by selected partnership's company
+                  const selectedPartnershipData = partnerships.find(p => p._id === selectedPartnership);
+                  if (!selectedPartnershipData || !selectedPartnershipData.companyId) return true;
+                  const selectedCompanyId = selectedPartnershipData.companyId._id || selectedPartnershipData.companyId;
+                  return office.companyId?._id === selectedCompanyId || office.companyId === selectedCompanyId;
+                })
+                .map((office) => (
+                  <option key={office._id} value={office._id}>{office.name} - {office.address?.city}</option>
+                ))
+              }
             </select>
             {touched.officeLocation && formErrors.officeLocation && <p className="text-sm text-red-600 mt-1">{formErrors.officeLocation}</p>}
             {offices.length === 0 && <p className="text-sm text-amber-600 mt-1">No offices available for booking</p>}

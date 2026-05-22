@@ -17,6 +17,7 @@ import {
   exportPropertyReport
 } from '../controllers/property.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
+import { requireActiveSubscription, checkPropertyLimit } from '../middlewares/planLimits.middleware.js';
 import {
   validateCreateProperty,
   validateUpdateProperty,
@@ -46,20 +47,26 @@ router.get('/stats', restrictTo('company_superadmin', 'partner_manager', 'proper
 
 // Property CRUD (company staff)
 // Note: Access control is handled within each controller
-router.post('/', validateCreateProperty, createProperty);
+
+// Create property - check subscription and property limit
+router.post('/', requireActiveSubscription, checkPropertyLimit, validateCreateProperty, createProperty);
+
+// Read operations - allowed even for expired subscriptions (company can view their own data)
 router.get('/', validateListProperties, getProperties);
 router.get('/:id', validateGetProperty, getProperty);
-router.put('/:id', validateUpdateProperty, updateProperty);
-router.delete('/:id', validateGetProperty, deleteProperty);
 
-// Property status
-router.put('/:id/status', validateUpdatePropertyStatus, updatePropertyStatus);
+// Write operations - require active subscription
+router.put('/:id', requireActiveSubscription, validateUpdateProperty, updateProperty);
+router.delete('/:id', requireActiveSubscription, validateGetProperty, deleteProperty);
 
-// Property images
-router.post('/:id/images', validateGetProperty, uploadPropertyImages);
-router.delete('/:id/images/:imageId', validateGetProperty, deletePropertyImage);
+// Property status - require active subscription
+router.put('/:id/status', requireActiveSubscription, validateUpdatePropertyStatus, updatePropertyStatus);
 
-// Property brochure
-router.post('/:id/brochure', validateGetProperty, uploadPropertyBrochure);
+// Property images - require active subscription
+router.post('/:id/images', requireActiveSubscription, validateGetProperty, uploadPropertyImages);
+router.delete('/:id/images/:imageId', requireActiveSubscription, validateGetProperty, deletePropertyImage);
+
+// Property brochure - require active subscription
+router.post('/:id/brochure', requireActiveSubscription, validateGetProperty, uploadPropertyBrochure);
 
 export default router;

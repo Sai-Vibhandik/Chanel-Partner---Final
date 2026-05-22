@@ -7,95 +7,11 @@ import { handleValidationErrors } from '../middlewares/validation.middleware.js'
 
 // Company Registration Validation
 export const validateRegisterCompany = [
-  // Company Information
-  body('companyName')
+  // Payment token is now required for all registrations
+  body('paymentToken')
     .trim()
-    .notEmpty().withMessage('Company name is required')
-    .isLength({ min: 2, max: 100 }).withMessage('Company name must be between 2 and 100 characters')
-    .escape(),
-
-  body('email')
-    .trim()
-    .notEmpty().withMessage('Email is required')
-    .isEmail().withMessage('Please enter a valid email address')
-    .normalizeEmail()
-    .isLength({ max: 255 }).withMessage('Email cannot exceed 255 characters'),
-
-  body('phone')
-    .trim()
-    .notEmpty().withMessage('Phone number is required')
-    .matches(/^[6-9]\d{9}$|^\+[1-9]\d{9,14}$/).withMessage('Please enter a valid phone number'),
-
-  body('website')
-    .optional()
-    .trim()
-    .isURL().withMessage('Please enter a valid website URL')
-    .isLength({ max: 255 }).withMessage('Website URL cannot exceed 255 characters'),
-
-  body('regions')
-    .optional()
-    .isArray().withMessage('Regions must be an array')
-    .custom((value) => {
-      const validRegions = ['india', 'dubai'];
-      if (value && value.length > 0) {
-        for (const region of value) {
-          if (!validRegions.includes(region)) {
-            throw new Error('Each region must be either "india" or "dubai"');
-          }
-        }
-      }
-      return true;
-    }),
-
-  body('defaultCurrency')
-    .optional()
-    .isIn(['INR', 'AED', 'USD']).withMessage('Currency must be INR, AED, or USD'),
-
-  // Address validation
-  body('address.street')
-    .optional()
-    .trim()
-    .isLength({ max: 200 }).withMessage('Street address cannot exceed 200 characters'),
-
-  body('address.city')
-    .optional()
-    .trim()
-    .isLength({ max: 100 }).withMessage('City cannot exceed 100 characters'),
-
-  body('address.state')
-    .optional()
-    .trim()
-    .isLength({ max: 100 }).withMessage('State cannot exceed 100 characters'),
-
-  body('address.country')
-    .optional()
-    .trim()
-    .isLength({ max: 100 }).withMessage('Country cannot exceed 100 characters'),
-
-  body('address.zipCode')
-    .optional()
-    .trim()
-    .matches(/^[0-9A-Z]{4,10}$/i).withMessage('Please enter a valid zip code'),
-
-  // Admin/First User Information
-  body('firstName')
-    .trim()
-    .notEmpty().withMessage('First name is required')
-    .isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters')
-    .matches(/^[a-zA-Z\s'-]+$/).withMessage('First name can only contain letters, spaces, hyphens, and apostrophes'),
-
-  body('lastName')
-    .trim()
-    .notEmpty().withMessage('Last name is required')
-    .isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters')
-    .matches(/^[a-zA-Z\s'-]+$/).withMessage('Last name can only contain letters, spaces, hyphens, and apostrophes'),
-
-  body('password')
-    .notEmpty().withMessage('Password is required')
-    .isLength({ min: 8, max: 128 }).withMessage('Password must be between 8 and 128 characters')
-    .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
-    .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
-    .matches(/[0-9]/).withMessage('Password must contain at least one number'),
+    .notEmpty().withMessage('Payment token is required')
+    .isJWT().withMessage('Invalid payment token'),
 
   handleValidationErrors
 ];

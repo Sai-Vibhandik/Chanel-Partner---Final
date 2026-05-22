@@ -430,3 +430,7 @@ input:focus, select:focus, textarea:focus {
     display: block !important;
   }
 }
+
+html {
+  scroll-behavior: smooth;
+}

@@ -6,3 +6,4 @@ export { default as FormField, Input, Select, Textarea, Checkbox, FormRow, FormA
 export { default as Filters, SearchInput, FilterSelect, FilterDate, FilterDateRange, FilterToggle } from './Filters';
 export { default as Pagination } from './Pagination';
 export { default as ExportButton } from './ExportButton';
+export { default as SubscriptionWarning } from './SubscriptionWarning';

@@ -30,10 +30,11 @@ export const updateLandingPage = async (req, res, next) => {
       hero,
       features,
       howItWorks,
-      pricing,
       cta,
       footer,
       navigation,
+      testimonials,
+      faqs,
       seo
     } = req.body;
 
@@ -49,9 +50,6 @@ export const updateLandingPage = async (req, res, next) => {
     if (howItWorks) {
       landingPage.howItWorks = { ...landingPage.howItWorks.toObject(), ...howItWorks };
     }
-    if (pricing) {
-      landingPage.pricing = { ...landingPage.pricing.toObject(), ...pricing };
-    }
     if (cta) {
       landingPage.cta = { ...landingPage.cta.toObject(), ...cta };
     }
@@ -60,6 +58,12 @@ export const updateLandingPage = async (req, res, next) => {
     }
     if (navigation) {
       landingPage.navigation = { ...landingPage.navigation.toObject(), ...navigation };
+    }
+    if (testimonials) {
+      landingPage.testimonials = { ...landingPage.testimonials.toObject(), ...testimonials };
+    }
+    if (faqs) {
+      landingPage.faqs = { ...landingPage.faqs.toObject(), ...faqs };
     }
     if (seo) {
       landingPage.seo = { ...landingPage.seo.toObject(), ...seo };

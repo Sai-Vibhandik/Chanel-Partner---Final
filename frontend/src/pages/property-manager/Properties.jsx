@@ -12,6 +12,7 @@ const Properties = () => {
   const navigate = useNavigate();
   const [properties, setProperties] = useState([]);
   const [stats, setStats] = useState(null);
+  const [limits, setLimits] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -60,6 +61,7 @@ const Properties = () => {
   useEffect(() => {
     fetchProperties();
     fetchStats();
+    fetchLimits();
   }, [debouncedSearch, statusFilter, typeFilter, regionFilter]);
 
   const fetchProperties = async () => {
@@ -87,6 +89,53 @@ const Properties = () => {
     } catch (err) {
       console.error('Failed to load stats:', err);
     }
+  };
+
+  const fetchLimits = async () => {
+    try {
+      const response = await api.get('/companies/my-limits');
+      setLimits(response.data.data);
+    } catch (err) {
+      console.error('Failed to load limits:', err);
+    }
+  };
+
+  // Check if user can add more properties
+  const canAddProperty = () => {
+    if (!limits) return true; // Allow if limits not loaded yet
+    if (!limits.subscription?.isActive) return false;
+    if (limits.limits?.properties?.limit === 'unlimited' || limits.limits?.properties?.limit === -1) return true;
+    const used = limits.limits?.properties?.used || 0;
+    const limit = limits.limits?.properties?.limit || 0;
+    return used < limit;
+  };
+
+  const getLimitMessage = () => {
+    if (!limits) return null;
+    if (!limits.subscription?.isActive) {
+      return {
+        type: 'error',
+        title: 'Subscription Inactive',
+        message: 'Your subscription is not active. Please renew to add more properties.',
+        action: { label: 'View Plans', path: '/company/subscription' }
+      };
+    }
+    if (!canAddProperty()) {
+      return {
+        type: 'warning',
+        title: 'Property Limit Reached',
+        message: `You've reached your plan limit of ${limits.limits?.properties?.limit} properties. Upgrade your plan to add more.`,
+        action: { label: 'Upgrade Plan', path: '/company/subscription' }
+      };
+    }
+    return null;
+  };
+
+  const handleAddProperty = () => {
+    if (!canAddProperty()) {
+      return; // Should not happen if button is disabled
+    }
+    navigate(`${basePath}/new?fresh=true`);
   };
 
   const formatPrice = (property) => {
@@ -127,11 +176,49 @@ const Properties = () => {
     );
   });
 
+  const limitMessage = getLimitMessage();
+
   return (
     <DashboardLayout sidebarLinks={config.links} title="Properties" subtitle="Manage your properties" color={config.color}>
       {/* Error */}
       {error && (
         <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+      )}
+
+      {/* Limit Warning */}
+      {limitMessage && (
+        <div className={`mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg ${
+          limitMessage.type === 'error'
+            ? 'bg-red-50 border border-red-200'
+            : 'bg-amber-50 border border-amber-200'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h4 className={`font-medium ${
+                limitMessage.type === 'error' ? 'text-red-800' : 'text-amber-800'
+              }`}>
+                {limitMessage.title}
+              </h4>
+              <p className={`text-sm ${
+                limitMessage.type === 'error' ? 'text-red-700' : 'text-amber-700'
+              }`}>
+                {limitMessage.message}
+              </p>
+            </div>
+            {limitMessage.action && (
+              <button
+                onClick={() => navigate(limitMessage.action.path)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                  limitMessage.type === 'error'
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-amber-600 text-white hover:bg-amber-700'
+                }`}
+              >
+                {limitMessage.action.label}
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Stats Cards */}
@@ -140,6 +227,11 @@ const Properties = () => {
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
             <p className="text-xs sm:text-sm text-gray-500">Total Properties</p>
             <p className="text-xl sm:text-3xl font-bold text-gray-900 mt-1">{stats.overview.total}</p>
+            {limits?.limits?.properties && limits.limits.properties.limit !== 'unlimited' && limits.limits.properties.limit !== -1 && (
+              <p className="text-xs text-gray-500 mt-1">
+                of {limits.limits.properties.limit} allowed
+              </p>
+            )}
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
             <p className="text-xs sm:text-sm text-gray-500">Active</p>
@@ -173,8 +265,14 @@ const Properties = () => {
               />
             </div>
             <button
-              onClick={() => navigate(`${basePath}/new?fresh=true`)}
-              className="px-4 sm:px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm whitespace-nowrap"
+              onClick={handleAddProperty}
+              disabled={!canAddProperty()}
+              className={`px-4 sm:px-6 py-2 rounded-lg transition-colors text-sm whitespace-nowrap ${
+                canAddProperty()
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              title={!canAddProperty() ? 'Property limit reached or subscription inactive' : ''}
             >
               + Add Property
             </button>
@@ -232,8 +330,13 @@ const Properties = () => {
           <p className="text-gray-500 mb-2">No properties found</p>
           <p className="text-sm text-gray-400 mb-4">Add your first property to get started</p>
           <button
-            onClick={() => navigate(`${basePath}/new?fresh=true`)}
-            className="px-4 sm:px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+            onClick={handleAddProperty}
+            disabled={!canAddProperty()}
+            className={`px-4 sm:px-6 py-2 rounded-lg text-sm ${
+              canAddProperty()
+                ? 'bg-green-600 text-white hover:bg-green-700'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
           >
             Add Property
           </button>

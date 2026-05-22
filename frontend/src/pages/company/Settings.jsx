@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
 import { validatePhone, handlePhoneInput } from '../../utils/validation';
+import { CreditCard, ExternalLink } from 'lucide-react';
 
 const CompanySettings = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const config = sidebarConfig.company_superadmin;
   const [company, setCompany] = useState(null);
   const [settings, setSettings] = useState(null);
@@ -271,6 +274,16 @@ const CompanySettings = () => {
               }`}
             >
               Email Branding
+            </button>
+            <button
+              onClick={() => setActiveTab('subscription')}
+              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'subscription'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Subscription
             </button>
           </nav>
         </div>
@@ -939,6 +952,71 @@ const CompanySettings = () => {
               </button>
             </div>
           </form>
+        )}
+
+        {/* Subscription Tab */}
+        {activeTab === 'subscription' && (
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Subscription & Billing</h3>
+            <p className="text-gray-600 mb-6">
+              Manage your subscription plan, view billing history, and update payment details.
+            </p>
+
+            {/* Current Plan */}
+            <div className="bg-gray-50 rounded-xl p-6 mb-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                    <CreditCard className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm text-gray-500">Current Plan</h4>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {company?.subscription?.planId?.name || company?.subscription?.plan || 'Trial'}
+                    </p>
+                  </div>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  company?.subscription?.status === 'active' ? 'bg-green-100 text-green-800' :
+                  company?.subscription?.status === 'trial' ? 'bg-blue-100 text-blue-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {company?.subscription?.status || 'trial'}
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div className="space-y-4">
+              <button
+                onClick={() => navigate('/company/subscription')}
+                className="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <CreditCard className="w-5 h-5 text-gray-400" />
+                  <div className="text-left">
+                    <p className="font-medium text-gray-900">Manage Subscription</p>
+                    <p className="text-sm text-gray-500">View plan details, upgrade, or cancel</p>
+                  </div>
+                </div>
+                <ExternalLink className="w-5 h-5 text-gray-400" />
+              </button>
+
+              <button
+                onClick={() => navigate('/company/payment')}
+                className="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <CreditCard className="w-5 h-5 text-gray-400" />
+                  <div className="text-left">
+                    <p className="font-medium text-gray-900">Change Plan</p>
+                    <p className="text-sm text-gray-500">Upgrade or downgrade your subscription</p>
+                  </div>
+                </div>
+                <ExternalLink className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </DashboardLayout>

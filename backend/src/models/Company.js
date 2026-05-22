@@ -92,21 +92,25 @@ const companySchema = new mongoose.Schema(
 
     // Subscription
     subscription: {
-      plan: {
-        type: String,
-        enum: ['trial', 'basic', 'professional', 'enterprise'],
-        default: 'trial'
+      planId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Plan'
+      },
+      subscriptionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Subscription'
       },
       status: {
         type: String,
-        enum: ['active', 'inactive', 'suspended', 'trial'],
+        enum: ['trial', 'active', 'inactive', 'suspended', 'expired', 'cancelled'],
         default: 'trial'
       },
       trialEndsAt: Date,
       currentPeriodStart: Date,
       currentPeriodEnd: Date,
-      stripeCustomerId: String,
-      stripeSubscriptionId: String
+      // Razorpay
+      razorpayCustomerId: String,
+      razorpaySubscriptionId: String
     },
 
     // Settings
@@ -143,7 +147,7 @@ const companySchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ['pending', 'active', 'suspended', 'cancelled'],
+      enum: ['pending', 'pending_verification', 'active', 'suspended'],
       default: 'pending'
     },
 

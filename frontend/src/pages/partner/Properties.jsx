@@ -102,8 +102,12 @@ const Properties = () => {
         }
       }
 
-      // Auto-select first active partnership if none selected
-      if (active.length > 0 && !selectedPartnership) {
+      // Auto-select first active partnership with active subscription
+      const activeWithSubscription = active.find(p => p.companySubscriptionActive !== false);
+      if (activeWithSubscription) {
+        setSelectedPartnership(activeWithSubscription);
+      } else if (active.length > 0 && !selectedPartnership) {
+        // Fallback to first partnership if none with active subscription
         setSelectedPartnership(active[0]);
       }
     } catch (err) {
@@ -210,6 +214,23 @@ const Properties = () => {
       {/* Error */}
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
+      )}
+
+      {/* Subscription Inactive Warning */}
+      {selectedPartnership && selectedPartnership.companySubscriptionActive === false && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+              <p className="text-amber-800 font-medium">Properties Temporarily Unavailable</p>
+              <p className="text-amber-700 text-sm mt-1">
+                Properties are temporarily unavailable. Please contact the company administrator.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* No Active Partnerships */}
@@ -331,10 +352,21 @@ const Properties = () => {
               <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
-              <p className="text-gray-500 mb-2">No properties available</p>
-              <p className="text-sm text-gray-400">
-                {selectedPartnership?.companyId?.name || 'This company'} hasn't listed any properties yet
-              </p>
+              {selectedPartnership?.companySubscriptionActive === false ? (
+                <>
+                  <p className="text-gray-500 mb-2">Properties Temporarily Unavailable</p>
+                  <p className="text-sm text-gray-400">
+                    Properties are temporarily unavailable. Please contact the company administrator.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-500 mb-2">No properties available</p>
+                  <p className="text-sm text-gray-400">
+                    {selectedPartnership?.companyId?.name || 'This company'} hasn't listed any properties yet
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

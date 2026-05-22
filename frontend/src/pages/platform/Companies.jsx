@@ -47,20 +47,83 @@ const Companies = () => {
   const getStatusBadge = (status) => {
     const styles = {
       pending: 'bg-yellow-100 text-yellow-800',
+      pending_verification: 'bg-orange-100 text-orange-800',
       active: 'bg-green-100 text-green-800',
-      suspended: 'bg-red-100 text-red-800',
-      cancelled: 'bg-gray-100 text-gray-800'
+      suspended: 'bg-red-100 text-red-800'
     };
     return styles[status] || 'bg-gray-100 text-gray-800';
   };
 
-  const getSubscriptionBadge = (plan) => {
-    const styles = {
+  const getPlanBadge = (subscription) => {
+    const planName = subscription?.planId?.name?.toLowerCase();
+    const status = subscription?.status;
+
+    // If subscription is not active/trial, show status-based styling
+    if (status === 'expired' || status === 'cancelled') {
+      return 'bg-red-100 text-red-800';
+    }
+    if (status === 'suspended' || status === 'inactive') {
+      return 'bg-orange-100 text-orange-800';
+    }
+
+    // Style based on plan tier
+    const planStyles = {
       free: 'bg-gray-100 text-gray-800',
+      starter: 'bg-blue-100 text-blue-800',
       basic: 'bg-blue-100 text-blue-800',
-      premium: 'bg-purple-100 text-purple-800'
+      professional: 'bg-purple-100 text-purple-800',
+      premium: 'bg-purple-100 text-purple-800',
+      enterprise: 'bg-indigo-100 text-indigo-800'
     };
-    return styles[plan] || 'bg-gray-100 text-gray-800';
+    return planStyles[planName] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getPlanDisplayName = (subscription) => {
+    if (!subscription) return 'No Plan';
+
+    const planName = subscription.planId?.displayName || subscription.planId?.name;
+    const status = subscription.status;
+
+    // Show plan name
+    if (planName) {
+      return planName;
+    }
+
+    // Fallback based on status
+    if (status === 'trial') return 'Trial';
+    if (status === 'expired') return 'Expired';
+    if (status === 'cancelled') return 'Cancelled';
+    if (status === 'suspended') return 'Suspended';
+
+    return 'No Plan';
+  };
+
+  const getSubscriptionStatusBadge = (subscription) => {
+    const status = subscription?.status;
+
+    const styles = {
+      trial: 'bg-yellow-100 text-yellow-800',
+      active: 'bg-green-100 text-green-800',
+      inactive: 'bg-gray-100 text-gray-800',
+      suspended: 'bg-orange-100 text-orange-800',
+      expired: 'bg-red-100 text-red-800'
+    };
+
+    return styles[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getSubscriptionStatusDisplay = (subscription) => {
+    const status = subscription?.status;
+
+    const displays = {
+      trial: 'Trial',
+      active: 'Active',
+      inactive: 'Inactive',
+      suspended: 'Suspended',
+      expired: 'Expired'
+    };
+
+    return displays[status] || 'Unknown';
   };
 
   return (
@@ -97,7 +160,6 @@ const Companies = () => {
             <option value="pending">Pending</option>
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
-            <option value="cancelled">Cancelled</option>
           </select>
         </div>
       </div>
@@ -132,6 +194,7 @@ const Companies = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Region</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subscription</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -170,8 +233,13 @@ const Companies = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSubscriptionBadge(company.subscription?.plan)}`}>
-                        {company.subscription?.plan?.charAt(0).toUpperCase() + company.subscription?.plan?.slice(1) || 'Trial'}
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPlanBadge(company.subscription)}`}>
+                        {getPlanDisplayName(company.subscription)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSubscriptionStatusBadge(company.subscription)}`}>
+                        {getSubscriptionStatusDisplay(company.subscription)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

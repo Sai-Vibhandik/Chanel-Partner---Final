@@ -169,7 +169,7 @@ const MyCompanies = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{partnership.companyId?.name}</h3>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusBadge(partnership.status)}`}>
                           {partnership.status.replace('_', ' ')}
                         </span>
@@ -203,13 +203,18 @@ const MyCompanies = () => {
                     >
                       View Details
                     </button>
-                    {partnership.status === 'active' && (
+                    {partnership.status === 'active' && partnership.companySubscriptionActive !== false && (
                       <button
                         onClick={() => navigate(`/partner/properties?partnership=${partnership._id}`)}
                         className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 text-sm"
                       >
                         View Properties
                       </button>
+                    )}
+                    {partnership.status === 'active' && partnership.companySubscriptionActive === false && (
+                      <span className="px-4 py-2 bg-gray-100 text-gray-400 rounded-lg text-sm cursor-not-allowed" title="Properties temporarily unavailable">
+                        Properties Unavailable
+                      </span>
                     )}
                   </div>
                 </div>

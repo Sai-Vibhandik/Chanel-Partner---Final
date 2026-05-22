@@ -25,6 +25,8 @@ const PropertyForm = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [limits, setLimits] = useState(null);
+  const [limitsLoading, setLimitsLoading] = useState(true);
 
   // Check for fresh=true and clear draft once
   const shouldClearDraft = searchParams.get('fresh') === 'true';
@@ -235,7 +237,30 @@ const PropertyForm = () => {
     if (isEdit) {
       fetchProperty();
     }
+    fetchLimits();
   }, [id]);
+
+  const fetchLimits = async () => {
+    try {
+      setLimitsLoading(true);
+      const response = await api.get('/companies/my-limits');
+      setLimits(response.data.data);
+    } catch (err) {
+      console.error('Failed to load limits:', err);
+    } finally {
+      setLimitsLoading(false);
+    }
+  };
+
+  // Check if user can add more properties
+  const canAddProperty = () => {
+    if (!limits) return true;
+    if (!limits.subscription?.isActive) return false;
+    if (limits.limits?.properties?.limit === 'unlimited' || limits.limits?.properties?.limit === -1) return true;
+    const used = limits.limits?.properties?.used || 0;
+    const limit = limits.limits?.properties?.limit || 0;
+    return used < limit;
+  };
 
   // Save draft to localStorage for new properties
   useEffect(() => {
@@ -433,6 +458,15 @@ const PropertyForm = () => {
     setError('');
     setFieldErrors({});
 
+    // Check limits for new properties
+    if (!isEdit && !canAddProperty()) {
+      const errorMsg = !limits?.subscription?.isActive
+        ? 'Your subscription is not active. Please renew to add more properties.'
+        : 'You have reached your property limit. Please upgrade your plan to add more properties.';
+      setError(errorMsg);
+      return;
+    }
+
     // Basic validation - only check required fields when publishing
     if (publishStatus === 'active') {
       const errors = {};
@@ -527,6 +561,33 @@ const PropertyForm = () => {
       subtitle={isEdit ? 'Update property details' : 'Create a new property listing'}
       color={config.color}
     >
+      {/* Limit Warning for New Properties */}
+      {!isEdit && limits && !canAddProperty() && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <h4 className="text-red-800 font-medium">
+                {!limits?.subscription?.isActive ? 'Subscription Inactive' : 'Property Limit Reached'}
+              </h4>
+              <p className="text-red-700 text-sm mt-1">
+                {!limits?.subscription?.isActive
+                  ? 'Your subscription is not active. Please renew to add more properties.'
+                  : `You've reached your plan limit of ${limits.limits?.properties?.limit} properties. Upgrade your plan to add more.`}
+              </p>
+              <button
+                onClick={() => navigate('/company/subscription')}
+                className="mt-2 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+              >
+                {!limits?.subscription?.isActive ? 'Renew Subscription' : 'Upgrade Plan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
       )}

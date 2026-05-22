@@ -124,40 +124,6 @@ const defaultLandingPageData = {
       }
     ]
   },
-  pricing: {
-    badge: 'Pricing Plans',
-    title: 'Choose the plan that fits your ambition',
-    subtitle: 'Transparent pricing with no hidden fees. All plans include core features and premium support.',
-    plans: [
-      {
-        name: 'Essential',
-        price: '₹9,999',
-        period: '/month',
-        description: 'Perfect for emerging real estate ventures',
-        features: ['50 Property Listings', '10 Partner Accounts', 'Core Analytics Suite', 'Priority Email Support', 'Single Market Access'],
-        popular: false,
-        buttonText: 'Start Essential'
-      },
-      {
-        name: 'Pro',
-        price: '₹24,999',
-        period: '/month',
-        description: 'The ultimate growth accelerator',
-        features: ['Unlimited Properties', '50 Partner Accounts', 'Advanced AI Analytics', '24/7 Priority Support', 'Multi-Region Access', 'Custom Agreement Builder', 'Full API Integration'],
-        popular: true,
-        buttonText: 'Go Pro'
-      },
-      {
-        name: 'Enterprise',
-        price: 'Custom',
-        period: '',
-        description: 'Tailored solutions for industry leaders',
-        features: ['Everything in Pro', 'Unlimited Partners', 'Dedicated Success Manager', 'Custom Development', 'White-Label Solution', 'SLA Guarantee', 'On-Premise Option'],
-        popular: false,
-        buttonText: 'Contact Sales'
-      }
-    ]
-  },
   cta: {
     badge: 'Join the revolution',
     title: 'Ready to transform your real estate business?',
@@ -165,8 +131,73 @@ const defaultLandingPageData = {
     primaryCta: 'Start Free Trial',
     secondaryCta: 'Talk to Sales'
   },
+  testimonials: {
+    badge: 'Testimonials',
+    title: 'Trusted by industry leaders',
+    subtitle: 'See what our partners say about their experience with ChannelPartner.',
+    items: [
+      {
+        quote: 'ChannelPartner transformed our partner management. We saw 3x growth in just 6 months. The platform is intuitive and the support team is incredibly responsive.',
+        author: 'Rahul Sharma',
+        role: 'CEO',
+        company: 'PropertyPro India'
+      },
+      {
+        quote: 'The commission tracking alone saved us countless hours every week. Our partners love the transparency and real-time updates.',
+        author: 'Priya Patel',
+        role: 'Operations Head',
+        company: 'RealtyGroup'
+      },
+      {
+        quote: 'We expanded from Mumbai to Dubai in record time. The multi-market support and automated workflows made it seamless.',
+        author: 'Ahmed Khan',
+        role: 'Managing Director',
+        company: 'Global Properties'
+      }
+    ]
+  },
+  faqs: {
+    badge: 'FAQs',
+    title: 'Frequently asked questions',
+    subtitle: 'Everything you need to know about ChannelPartner.',
+    items: [
+      {
+        question: 'What is ChannelPartner and how can it help my business?',
+        answer: 'ChannelPartner is a comprehensive real estate partner management platform that helps you onboard partners, manage properties, track commissions, and grow your business across India and Dubai markets. Our platform streamlines operations, reduces manual work, and provides real-time insights.',
+        category: 'general'
+      },
+      {
+        question: 'How does the pricing work?',
+        answer: 'We offer flexible pricing plans starting from ₹9,999/month for the Essential plan with 50 property listings and 10 partner accounts. The Pro plan at ₹24,999/month includes unlimited properties, advanced analytics, and priority support. Enterprise plans are custom-tailored to your needs.',
+        category: 'pricing'
+      },
+      {
+        question: 'Can I switch between plans?',
+        answer: 'Yes, you can upgrade or downgrade your plan at any time. When upgrading, you\'ll be charged the prorated difference. When downgrading, the credit will be applied to your next billing cycle.',
+        category: 'pricing'
+      },
+      {
+        question: 'Is my data secure on ChannelPartner?',
+        answer: 'Absolutely. We use enterprise-grade AES-256 encryption, regular security audits, and comply with industry standards. Your data is stored in secure data centers with 99.9% uptime guarantee and regular backups.',
+        category: 'security'
+      },
+      {
+        question: 'What kind of support do you offer?',
+        answer: 'All plans include email support. Pro and Enterprise plans include priority support with faster response times. Enterprise customers also get a dedicated success manager and custom onboarding.',
+        category: 'support'
+      },
+      {
+        question: 'How long does it take to get started?',
+        answer: 'Most companies are up and running within 24 hours. Our onboarding team will help you import your existing data, set up your team, and configure your commission structures.',
+        category: 'general'
+      }
+    ]
+  },
   footer: {
+    brandName: 'Channel',
+    brandHighlight: 'Partner',
     description: 'The complete real estate partner management platform for modern businesses.',
+    copyright: 'ChannelPartner. All rights reserved.',
     productLinks: ['Features', 'Pricing', 'Solutions', 'Integrations'],
     companyLinks: ['About', 'Blog', 'Careers', 'Press'],
     legalLinks: ['Privacy', 'Terms', 'Security', 'Cookies'],
@@ -180,13 +211,13 @@ const defaultLandingPageData = {
   navigation: {
     brandName: 'Channel',
     brandHighlight: 'Partner',
+    loginText: 'Sign In',
+    ctaText: 'Get Started',
     links: [
       { label: 'Features', href: 'features' },
       { label: 'Solutions', href: 'solutions' },
       { label: 'Pricing', href: 'pricing' }
-    ],
-    loginText: 'Sign In',
-    ctaText: 'Get Started'
+    ]
   },
   seo: {
     title: 'ChannelPartner - Real Estate Partner Management Platform',
@@ -225,11 +256,13 @@ async function seedLandingPage() {
     console.log('   - Hero section with stats');
     console.log('   - 6 feature items');
     console.log('   - 4 how-it-works steps');
-    console.log('   - 3 pricing plans');
     console.log('   - CTA section');
-    console.log('   - Footer with links');
-    console.log('   - Navigation links');
+    console.log('   - 3 testimonials');
+    console.log('   - 6 FAQs');
+    console.log('   - Footer with brand, links & social');
+    console.log('   - Navigation with brand & links');
     console.log('   - SEO metadata');
+    console.log('\n💡 Note: Plans are managed separately via Platform Admin > Plans');
 
     process.exit(0);
   } catch (error) {

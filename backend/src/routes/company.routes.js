@@ -9,7 +9,9 @@ import {
   getMyCompanySettings,
   deleteCompany,
   getCompanyStats,
-  getActiveCompaniesForRegistration
+  getActiveCompaniesForRegistration,
+  getMyPlanLimits,
+  getSubscriptionStatus
 } from '../controllers/company.controller.js';
 import { protect, restrictTo, platformAdminOnly, checkCompanyAccess } from '../middlewares/auth.middleware.js';
 
@@ -23,6 +25,8 @@ router.use(protect);
 
 // My company settings (must come before /:id routes)
 router.get('/my-settings', getMyCompanySettings);
+router.get('/my-limits', getMyPlanLimits);
+router.get('/subscription-status', getSubscriptionStatus);
 
 // Platform Admin only routes
 router.get('/stats', platformAdminOnly, getCompanyStats);

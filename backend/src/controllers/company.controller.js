@@ -1,6 +1,7 @@
 import Company from '../models/Company.js';
 import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
+import { getLimitsAndUsage, isSubscriptionActive } from '../services/planLimits.service.js';
 
 /**
  * Generate slug from company name
@@ -37,6 +38,7 @@ export const getCompanies = async (req, res, next) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await Company.countDocuments(query);
     const companies = await Company.find(query)
+      .populate('subscription.planId', 'name displayName price')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -115,7 +117,7 @@ export const updateCompanyStatus = async (req, res, next) => {
       throw new ApiError(404, 'Company not found');
     }
 
-    const validStatuses = ['pending', 'active', 'suspended', 'cancelled'];
+    const validStatuses = ['pending', 'active', 'suspended'];
     if (!validStatuses.includes(status)) {
       throw new ApiError(400, 'Invalid status');
     }
@@ -319,8 +321,8 @@ export const deleteCompany = async (req, res, next) => {
       throw new ApiError(400, 'Cannot delete company with active partners');
     }
 
-    // Soft delete - just mark as cancelled
-    company.status = 'cancelled';
+    // Soft delete - mark as suspended
+    company.status = 'suspended';
     await company.save();
 
     // Deactivate all company users
@@ -346,10 +348,19 @@ export const deleteCompany = async (req, res, next) => {
 export const getActiveCompaniesForRegistration = async (req, res, next) => {
   try {
     const { search, region } = req.query;
+    const now = new Date();
 
-    // Build query - only active companies accepting partners
+    // Build query - only active companies with active subscriptions accepting partners
     const query = {
-      status: 'active'
+      status: 'active',
+      // Subscription must be active or trial (and not expired)
+      $or: [
+        { 'subscription.status': 'active' },
+        {
+          'subscription.status': 'trial',
+          'subscription.trialEndsAt': { $gt: now }
+        }
+      ]
     };
 
     if (search) {
@@ -425,6 +436,59 @@ export const getCompanyStats = async (req, res, next) => {
           return acc;
         }, {}),
         recent: recentCompanies
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get company plan limits and usage
+ * @route   GET /api/companies/my-limits
+ * @access  Private (Company users)
+ */
+export const getMyPlanLimits = async (req, res, next) => {
+  try {
+    if (!req.user.companyId) {
+      throw new ApiError(400, 'You are not associated with any company');
+    }
+
+    const limitsAndUsage = await getLimitsAndUsage(req.user.companyId);
+
+    res.status(200).json({
+      success: true,
+      data: limitsAndUsage
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Check if company subscription is active
+ * @route   GET /api/companies/subscription-status
+ * @access  Private (Company users)
+ */
+export const getSubscriptionStatus = async (req, res, next) => {
+  try {
+    if (!req.user.companyId) {
+      throw new ApiError(400, 'You are not associated with any company');
+    }
+
+    const isActive = await isSubscriptionActive(req.user.companyId);
+    const company = await Company.findById(req.user.companyId)
+      .populate('subscription.planId')
+      .select('subscription');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        isActive,
+        status: company.subscription?.status || 'trial',
+        plan: company.subscription?.planId || null,
+        trialEndsAt: company.subscription?.trialEndsAt,
+        currentPeriodEnd: company.subscription?.currentPeriodEnd
       }
     });
   } catch (error) {

@@ -65,7 +65,11 @@ import loginLogRoutes from './routes/loginLog.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import emailLogRoutes from './routes/emailLog.routes.js';
 import landingPageRoutes from './routes/landingPage.routes.js';
+import paymentRoutes from './routes/payment.routes.js';
+import planRoutes from './routes/plan.routes.js';
+import legalRoutes from './routes/legal.routes.js';
 import { verifyEmailConnection } from './services/email.service.js';
+import { initializeDefaultPages } from './controllers/legal.controller.js';
 
 // Import middleware
 import { errorHandler, notFound } from './middlewares/error.middleware.js';
@@ -123,6 +127,9 @@ app.get('/api/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/landing', landingPageRoutes);
+app.use('/api/legal', legalRoutes); // Public routes - must be before /api wildcard routes
+app.use('/api/payments', paymentRoutes);
+app.use('/api/plans', planRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/partner-company', partnerCompanyRoutes);
@@ -169,6 +176,9 @@ const startServer = async () => {
     if (process.env.MONGODB_URI) {
       await mongoose.connect(process.env.MONGODB_URI);
       console.log('✅ Connected to MongoDB');
+
+      // Initialize default legal pages
+      await initializeDefaultPages();
     } else {
       console.log('⚠️ No MongoDB URI provided, running without database');
     }

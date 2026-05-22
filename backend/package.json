@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node src/config/seed.js",
-    "seed:landing": "node src/scripts/seedLandingPage.js"
+    "seed:landing": "node src/scripts/seedLandingPage.js",
+    "seed:plans": "node src/scripts/seedPlans.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

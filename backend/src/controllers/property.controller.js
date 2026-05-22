@@ -207,9 +207,9 @@ export const getProperties = async (req, res, next) => {
           status: 'active'
         }).select('companyId');
 
-        const companyIds = activePartnerships.map(p => p.companyId);
+        const partneredCompanyIds = activePartnerships.map(p => p.companyId);
 
-        if (companyIds.length === 0) {
+        if (partneredCompanyIds.length === 0) {
           // No active partnerships, return empty result
           return res.status(200).json({
             success: true,
@@ -224,7 +224,38 @@ export const getProperties = async (req, res, next) => {
           });
         }
 
-        query.companyId = { $in: companyIds };
+        // Filter out companies with expired subscriptions
+        const now = new Date();
+        const activeCompanies = await Company.find({
+          _id: { $in: partneredCompanyIds },
+          status: 'active',
+          $or: [
+            { 'subscription.status': 'active' },
+            {
+              'subscription.status': 'trial',
+              'subscription.trialEndsAt': { $gt: now }
+            }
+          ]
+        }).select('_id');
+
+        const activeCompanyIds = activeCompanies.map(c => c._id);
+
+        if (activeCompanyIds.length === 0) {
+          // No companies with active subscriptions, return empty result
+          return res.status(200).json({
+            success: true,
+            data: {
+              properties: [],
+              pagination: {
+                total: 0,
+                page: parseInt(page),
+                pages: 0
+              }
+            }
+          });
+        }
+
+        query.companyId = { $in: activeCompanyIds };
         query.status = { $in: ['active', 'sold_out'] }; // Show active and sold properties to partners
         // Visibility logic: 'all' = show to all, 'selected' = show to selected partners, 'hidden' = hide from selected partners
         query.$and = query.$and || [];
@@ -312,7 +343,7 @@ export const getProperties = async (req, res, next) => {
 export const getProperty = async (req, res, next) => {
   try {
     const property = await Property.findById(req.params.id)
-      .populate('companyId', 'name logo regions address settings')
+      .populate('companyId', 'name logo regions address settings subscription')
       .populate('createdBy', 'firstName lastName');
 
     if (!property) {
@@ -335,6 +366,25 @@ export const getProperty = async (req, res, next) => {
 
       if (!activePartnership) {
         throw new ApiError(403, 'You do not have access to this property');
+      }
+
+      // Check if company has active subscription
+      const company = property.companyId;
+      const subscriptionStatus = company.subscription?.status;
+      const now = new Date();
+      let hasActiveSubscription = false;
+
+      if (subscriptionStatus === 'active') {
+        hasActiveSubscription = true;
+      } else if (subscriptionStatus === 'trial') {
+        const trialEnds = company.subscription?.trialEndsAt;
+        if (trialEnds && new Date(trialEnds) > now) {
+          hasActiveSubscription = true;
+        }
+      }
+
+      if (!hasActiveSubscription) {
+        throw new ApiError(403, 'This property is not available');
       }
 
       // Check visibility
@@ -778,9 +828,25 @@ export const getPublicProperties = async (req, res, next) => {
       page = 1, limit = 10, search
     } = req.query;
 
+    // Get list of companies with active subscriptions
+    const now = new Date();
+    const activeCompanyIds = await Company.find({
+      status: 'active',
+      $or: [
+        { 'subscription.status': 'active' },
+        {
+          'subscription.status': 'trial',
+          'subscription.trialEndsAt': { $gt: now }
+        }
+      ]
+    }).select('_id');
+
+    const activeCompanyIdsList = activeCompanyIds.map(c => c._id);
+
     const query = {
       status: 'active',
-      'visibility.type': 'all'
+      'visibility.type': 'all',
+      companyId: { $in: activeCompanyIdsList }
     };
 
     if (companyId) query.companyId = companyId;
@@ -863,6 +929,40 @@ export const getPropertiesForPartnership = async (req, res, next) => {
 
     if (partnership.status !== 'active') {
       throw new ApiError(403, 'Your partnership is not active');
+    }
+
+    // Check if company has active subscription
+    const company = await Company.findById(partnership.companyId);
+    if (!company) {
+      throw new ApiError(404, 'Company not found');
+    }
+
+    const subscriptionStatus = company.subscription?.status;
+    const now = new Date();
+    let hasActiveSubscription = false;
+
+    if (subscriptionStatus === 'active') {
+      hasActiveSubscription = true;
+    } else if (subscriptionStatus === 'trial') {
+      const trialEnds = company.subscription?.trialEndsAt;
+      if (trialEnds && new Date(trialEnds) > now) {
+        hasActiveSubscription = true;
+      }
+    }
+
+    // If company subscription is expired, return empty properties
+    if (!hasActiveSubscription) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          properties: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page),
+            pages: 0
+          }
+        }
+      });
     }
 
     // Build query for properties from this company

@@ -12,7 +12,9 @@ const landingPageSchema = new mongoose.Schema(
       highlightWord: { type: String, default: 'partner' },
       subtitle: { type: String, default: 'The complete real estate partner management platform. Onboard partners, manage properties, track commissions, and grow your business across India and Dubai markets.' },
       primaryCta: { type: String, default: 'Start Free Trial' },
+      primaryCtaLink: { type: String, default: '' },
       secondaryCta: { type: String, default: 'Access Dashboard' },
+      secondaryCtaLink: { type: String, default: '' },
       stats: [{
         value: { type: String },
         label: { type: String },
@@ -46,51 +48,76 @@ const landingPageSchema = new mongoose.Schema(
       }]
     },
 
-    // Pricing Section
-    pricing: {
-      badge: { type: String, default: 'Pricing Plans' },
-      title: { type: String, default: 'Choose the plan that fits your ambition' },
-      subtitle: { type: String, default: 'Transparent pricing with no hidden fees. All plans include core features and premium support.' },
-      plans: [{
-        name: { type: String },
-        price: { type: String },
-        period: { type: String },
-        description: { type: String },
-        features: [{ type: String }],
-        popular: { type: Boolean, default: false },
-        buttonText: { type: String },
-        gradient: { type: String }
-      }]
-    },
-
     // CTA Section
     cta: {
       badge: { type: String, default: 'Join the revolution' },
       title: { type: String, default: 'Ready to redefine your real estate journey' },
       subtitle: { type: String, default: 'Join hundreds of forward-thinking real estate companies already scaling with ChannelPartner.' },
       primaryCta: { type: String, default: 'Start Free Trial' },
-      secondaryCta: { type: String, default: 'Talk to Sales' }
+      primaryCtaLink: { type: String, default: '' },
+      secondaryCta: { type: String, default: 'Talk to Sales' },
+      secondaryCtaLink: { type: String, default: '' }
     },
 
     // Footer Section
     footer: {
-      description: { type: String, default: 'The complete real estate partner management platform for modern businesses.' },
-      productLinks: [{ type: String }],
-      companyLinks: [{ type: String }],
-      legalLinks: [{ type: String }],
-      socialLinks: {
-        twitter: { type: String, default: '' },
-        linkedin: { type: String, default: '' },
-        facebook: { type: String, default: '' },
-        instagram: { type: String, default: '' }
-      }
+      brandName: { type: String, default: 'Channel' },
+      brandHighlight: { type: String, default: 'Partner' },
+      tagline: { type: String, default: 'The complete real estate partner management platform for modern businesses.' },
+      supportEmail: { type: String, default: 'support@channelpartner.com' },
+      copyright: { type: String, default: '© 2024 ChannelPartner. All rights reserved.' },
+      // Quick Links - array of {label, url}
+      quickLinks: [{
+        label: { type: String },
+        url: { type: String }
+      }],
+      // Legal Links - array of {label, url}
+      legalLinks: [{
+        label: { type: String },
+        url: { type: String }
+      }],
+      // Dynamic social links - each has platform and url
+      socialLinks: [{
+        platform: { type: String, enum: ['twitter', 'linkedin', 'facebook', 'instagram', 'youtube', 'github'] },
+        url: { type: String }
+      }]
     },
 
     // Navigation
     navigation: {
+      brandName: { type: String, default: 'Channel' },
+      brandHighlight: { type: String, default: 'Partner' },
+      loginText: { type: String, default: 'Sign in' },
+      ctaText: { type: String, default: 'Get Started' },
       links: [{
         label: { type: String },
         href: { type: String }
+      }]
+    },
+
+    // Testimonials Section
+    testimonials: {
+      badge: { type: String, default: 'Testimonials' },
+      title: { type: String, default: 'Trusted by industry leaders' },
+      subtitle: { type: String, default: 'See what our partners say about their experience.' },
+      items: [{
+        quote: { type: String },
+        author: { type: String },
+        role: { type: String },
+        company: { type: String },
+        avatar: { type: String }
+      }]
+    },
+
+    // FAQs Section
+    faqs: {
+      badge: { type: String, default: 'FAQs' },
+      title: { type: String, default: 'Frequently asked questions' },
+      subtitle: { type: String, default: 'Everything you need to know about ChannelPartner.' },
+      items: [{
+        question: { type: String },
+        answer: { type: String },
+        category: { type: String, default: 'general' }
       }]
     },
 

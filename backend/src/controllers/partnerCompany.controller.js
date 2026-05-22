@@ -30,7 +30,26 @@ export const applyToCompany = async (req, res, next) => {
       throw new ApiError(404, 'Company not found');
     }
     if (company.status !== 'active') {
-      throw new ApiError(400, 'This company is not accepting applications');
+      throw new ApiError(400, 'This company is not accepting applications at this time');
+    }
+
+    // Check if company has active subscription
+    const subscriptionStatus = company.subscription?.status;
+    const now = new Date();
+    let hasActiveSubscription = false;
+
+    if (subscriptionStatus === 'active') {
+      hasActiveSubscription = true;
+    } else if (subscriptionStatus === 'trial') {
+      // Check if trial is still valid
+      const trialEnds = company.subscription?.trialEndsAt;
+      if (trialEnds && new Date(trialEnds) > now) {
+        hasActiveSubscription = true;
+      }
+    }
+
+    if (!hasActiveSubscription) {
+      throw new ApiError(400, 'This company is not accepting applications at this time');
     }
 
     // Check if already applied/joined
@@ -97,10 +116,11 @@ export const getMyCompanies = async (req, res, next) => {
     const partnerId = req.user._id;
 
     const partnerships = await PartnerCompany.find({ partnerId })
-      .populate('companyId', 'name slug logo regions address settings.tierPercentages')
+      .populate('companyId', 'name slug logo regions address settings.tierPercentages subscription')
       .sort({ createdAt: -1 });
 
-    // Check for unsigned agreements for each partnership
+    // Check for unsigned agreements and subscription status for each partnership
+    const now = new Date();
     const partnershipsAgreements = await Promise.all(
       partnerships.map(async (partnership) => {
         // Get all required agreement templates for this company
@@ -137,9 +157,24 @@ export const getMyCompanies = async (req, res, next) => {
           return true;
         });
 
+        // Check company subscription status
+        const company = partnership.companyId;
+        const subscriptionStatus = company.subscription?.status;
+        let hasActiveSubscription = false;
+
+        if (subscriptionStatus === 'active') {
+          hasActiveSubscription = true;
+        } else if (subscriptionStatus === 'trial') {
+          const trialEnds = company.subscription?.trialEndsAt;
+          if (trialEnds && new Date(trialEnds) > now) {
+            hasActiveSubscription = true;
+          }
+        }
+
         return {
           ...partnership.toObject(),
-          hasUnsignedAgreements
+          hasUnsignedAgreements,
+          companySubscriptionActive: hasActiveSubscription
         };
       })
     );
@@ -588,13 +623,17 @@ export const getKYCForPartnership = async (req, res, next) => {
       verifiedBy: doc.verifiedBy
     }));
 
-    // Get required document types
+    // Get required document types (only required ones, not optional)
     const requiredTypes = requiredDocs.filter(d => d.required).map(d => d.type);
 
     // Count verified required documents (only count required docs for verification progress)
     const verifiedRequiredDocs = uploadedDocs.filter(
       doc => requiredTypes.includes(doc.type) && doc.status === 'verified'
     );
+
+    // If company has only one region, be flexible with region matching
+    const companyRegions = company?.regions || ['india'];
+    const singleRegion = companyRegions.length === 1 ? companyRegions[0] : null;
 
     // Build summary
     const summary = {
@@ -605,7 +644,18 @@ export const getKYCForPartnership = async (req, res, next) => {
       pending: uploadedDocs.filter(d => d.status === 'pending').length,
       rejected: uploadedDocs.filter(d => d.status === 'rejected').length,
       requiredDocuments: requiredDocs.map(reqDoc => {
-        const uploaded = uploadedDocs.find(d => d.type === reqDoc.type && d.region === reqDoc.region);
+        // Find matching document - be flexible with region for single-region companies
+        let uploaded;
+        if (singleRegion) {
+          // Single region - match by type only, or by type and matching region
+          uploaded = uploadedDocs.find(d =>
+            d.type === reqDoc.type &&
+            (!d.region || d.region === singleRegion)
+          );
+        } else {
+          // Multi-region - strict matching by type and region
+          uploaded = uploadedDocs.find(d => d.type === reqDoc.type && d.region === reqDoc.region);
+        }
         return {
           ...reqDoc,
           uploaded: !!uploaded,
@@ -665,7 +715,7 @@ export const verifyKYCForPartnership = async (req, res, next) => {
     const company = await Company.findById(partnership.companyId);
     const regions = company?.regions || ['india'];
 
-    // Define required documents per region
+    // Define required documents per region (only required docs, matching the KYC summary)
     const requiredDocsPerRegion = {
       india: ['pan_card', 'gst_certificate', 'address_proof', 'cancelled_cheque'],
       dubai: ['trade_license', 'rera_registration_card', 'emirates_id', 'passport_copy']
@@ -674,12 +724,27 @@ export const verifyKYCForPartnership = async (req, res, next) => {
     // Check if all required documents for each region are verified
     let allRequiredVerified = true;
 
+    // If company has only one region, be flexible with region matching
+    // (for backward compatibility with documents that may not have region set)
+    const singleRegion = regions.length === 1 ? regions[0] : null;
+
     for (const region of regions) {
       const requiredTypes = requiredDocsPerRegion[region] || [];
       for (const type of requiredTypes) {
-        const doc = partnership.kycDocuments.find(
-          d => d.type === type && d.region === region && d.status === 'verified'
-        );
+        let doc;
+        if (singleRegion) {
+          // Single region company - be flexible with region matching
+          // Check for document with matching type and status, regardless of region
+          // OR document with matching type, region, and status
+          doc = partnership.kycDocuments.find(
+            d => d.type === type && d.status === 'verified' && (!d.region || d.region === singleRegion)
+          );
+        } else {
+          // Multi-region company - strict region matching required
+          doc = partnership.kycDocuments.find(
+            d => d.type === type && d.region === region && d.status === 'verified'
+          );
+        }
         if (!doc) {
           allRequiredVerified = false;
           break;
@@ -799,13 +864,29 @@ export const getKYCReviews = async (req, res, next) => {
     }
 
     // Build KYC review list
+    // If company has only one region, be flexible with region matching
+    const singleRegion = regions.length === 1 ? regions[0] : null;
+
     const kycReviews = filteredPartnerships.map(partnership => {
       const partner = partnership.partnerId;
       const docs = partnership.kycDocuments || [];
 
       // Build document status
       const documents = requiredDocs.map(reqDoc => {
-        const uploaded = docs.find(d => d.type === reqDoc.type && d.region === reqDoc.region);
+        // Find matching document - be flexible with region for single-region companies
+        let uploaded;
+        if (singleRegion) {
+          // Single region - match by type only, or by type and matching region
+          uploaded = docs.find(d =>
+            d.type === reqDoc.type &&
+            d.status &&
+            (!d.region || d.region === singleRegion)
+          );
+        } else {
+          // Multi-region - strict matching by type and region
+          uploaded = docs.find(d => d.type === reqDoc.type && d.region === reqDoc.region);
+        }
+
         return {
           type: reqDoc.type,
           name: reqDoc.name,

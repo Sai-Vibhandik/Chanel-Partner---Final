@@ -4,6 +4,11 @@ import { useAuth } from './context/AuthContext';
 // Landing Page
 import Landing from './pages/Landing';
 
+// Legal Pages (Public)
+import Privacy from './pages/public/Privacy';
+import Terms from './pages/public/Terms';
+import CookiePolicy from './pages/public/CookiePolicy';
+
 // Auth Pages
 import Login from './pages/auth/Login';
 import RegisterCompany from './pages/auth/RegisterCompany';
@@ -20,10 +25,14 @@ import Companies from './pages/platform/Companies';
 import CompanyDetails from './pages/platform/CompanyDetails';
 import PlatformPartners from './pages/platform/Partners';
 import LandingPageSettings from './pages/platform/LandingPageSettings';
+import Plans from './pages/platform/Plans';
+import LegalPages from './pages/platform/LegalPages';
 
 // Company SuperAdmin Pages
 import CompanyDashboard from './pages/company/Dashboard';
 import CompanySettings from './pages/company/Settings';
+import CompanySubscription from './pages/company/Subscription';
+import CompanyPayment from './pages/company/Payment';
 import CompanyPartners from './pages/company/Partners';
 import CompanyPartnerDetails from './pages/company/PartnerDetails';
 import CompanyTeam from './pages/company/Team';
@@ -162,12 +171,27 @@ function App() {
       <Route path="/reset-password/:token" element={<PublicRoute><ResetPassword /></PublicRoute>} />
       <Route path="/verify-email/:token" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
 
+      {/* Legal Pages - Public */}
+      <Route path="/privacy-policy" element={<Privacy />} />
+      <Route path="/terms-of-service" element={<Terms />} />
+      <Route path="/cookie-policy" element={<CookiePolicy />} />
+
       {/* Profile Settings - All authenticated users */}
       <Route
         path="/profile"
         element={
           <ProtectedRoute allowedRoles={null}>
             <ProfileSettings />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Payment Page - Accessible after registration */}
+      <Route
+        path="/payment"
+        element={
+          <ProtectedRoute allowedRoles={['company_superadmin']}>
+            <CompanyPayment />
           </ProtectedRoute>
         }
       />
@@ -210,6 +234,22 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={['platform_admin']}>
             <LandingPageSettings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/platform/plans"
+        element={
+          <ProtectedRoute allowedRoles={['platform_admin']}>
+            <Plans />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/platform/legal"
+        element={
+          <ProtectedRoute allowedRoles={['platform_admin']}>
+            <LegalPages />
           </ProtectedRoute>
         }
       />
@@ -276,6 +316,22 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={['company_superadmin']}>
             <CompanySettings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/company/subscription"
+        element={
+          <ProtectedRoute allowedRoles={['company_superadmin']}>
+            <CompanySubscription />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/company/payment"
+        element={
+          <ProtectedRoute allowedRoles={['company_superadmin']}>
+            <CompanyPayment />
           </ProtectedRoute>
         }
       />

@@ -2,17 +2,22 @@ import jwt from 'jsonwebtoken';
 
 /**
  * Generate JWT token
+ * @param {Object} payload - Token payload
+ * @param {string} expiresIn - Token expiry time (default from env or '7d')
  */
-export const generateToken = (payload) => {
+export const generateToken = (payload, expiresIn = null) => {
+  const tokenPayload = {
+    userId: payload.userId,
+    companyId: payload.companyId,
+    role: payload.role,
+    ...payload // Include any additional fields like pendingRegId, orderId, type, etc.
+  };
+
   return jwt.sign(
-    {
-      userId: payload.userId,
-      companyId: payload.companyId,
-      role: payload.role
-    },
+    tokenPayload,
     process.env.JWT_SECRET,
     {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+      expiresIn: expiresIn || process.env.JWT_EXPIRES_IN || '7d'
     }
   );
 };

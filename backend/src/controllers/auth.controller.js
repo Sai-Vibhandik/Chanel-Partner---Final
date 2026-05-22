@@ -4,6 +4,9 @@ import Company from '../models/Company.js';
 import AgreementTemplate from '../models/AgreementTemplate.js';
 import LoginLog from '../models/LoginLog.js';
 import PartnerCompany from '../models/PartnerCompany.js';
+import Plan from '../models/Plan.js';
+import PendingRegistration from '../models/PendingRegistration.js';
+import Subscription from '../models/Subscription.js';
 import { generateToken, verifyToken } from '../utils/token.js';
 import {
   generateAccessToken,
@@ -436,66 +439,116 @@ Date: _________________________`
  * @desc    Register new company (self-registration)
  * @route   POST /api/auth/register/company
  * @access  Public
+ *
+ * NEW FLOW: Requires paymentToken from verified payment.
+ * Company is created ONLY after successful payment verification.
  */
 export const registerCompany = async (req, res, next) => {
   try {
-    const {
-      companyName,
-      email,
-      phone,
-      website,
-      regions,
-      defaultCurrency,
-      address,
-      // SuperAdmin account
-      firstName,
-      lastName,
-      password
-    } = req.body;
+    const { paymentToken } = req.body;
 
-    // Check if company email already exists
-    const existingCompany = await Company.findOne({ email });
+    // Payment token is required
+    if (!paymentToken) {
+      throw new ApiError(400, 'Payment token is required. Please complete payment first.');
+    }
+
+    // Verify the payment token
+    const decodedToken = verifyToken(paymentToken);
+    if (!decodedToken || decodedToken.type !== 'payment_verification') {
+      throw new ApiError(400, 'Invalid or expired payment token');
+    }
+
+    // Find the pending registration
+    const pendingReg = await PendingRegistration.findOne({
+      _id: decodedToken.pendingRegId,
+      paymentToken,
+      status: 'payment_completed'
+    }).populate('planId');
+
+    if (!pendingReg) {
+      throw new ApiError(400, 'Registration not found or payment not verified. Please try again.');
+    }
+
+    if (pendingReg.isExpired()) {
+      pendingReg.status = 'expired';
+      await pendingReg.save();
+      throw new ApiError(400, 'Registration session expired. Please start over.');
+    }
+
+    // Double-check email availability (edge case: email taken during payment)
+    const existingCompany = await Company.findOne({ email: pendingReg.companyData.email });
     if (existingCompany) {
       throw new ApiError(400, 'Company with this email already exists');
     }
 
-    // Check if user email already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: pendingReg.adminData.email });
     if (existingUser) {
       throw new ApiError(400, 'User with this email already exists');
     }
 
-    // Generate slug and check if it already exists
-    const slug = generateSlug(companyName);
-    const existingSlug = await Company.findOne({ slug });
+    // Double-check slug availability
+    const existingSlug = await Company.findOne({ slug: pendingReg.companyData.slug });
     if (existingSlug) {
-      throw new ApiError(400, 'A company with a similar name already exists. Please use a different name.');
+      throw new ApiError(400, 'A company with a similar name already exists');
     }
 
-    // Create company
+    // Create company with pending_verification status
     const company = await Company.create({
-      name: companyName,
-      slug,
-      email,
-      phone,
-      website,
-      regions: regions || ['india'],
-      defaultCurrency: defaultCurrency || 'INR',
-      address,
-      status: 'active' // Auto-approve new companies
+      name: pendingReg.companyData.name,
+      slug: pendingReg.companyData.slug,
+      email: pendingReg.companyData.email,
+      phone: pendingReg.companyData.phone,
+      website: pendingReg.companyData.website,
+      regions: pendingReg.companyData.regions,
+      defaultCurrency: pendingReg.companyData.defaultCurrency,
+      address: pendingReg.companyData.address,
+      status: 'pending_verification', // Will be activated after email verification
+      subscription: {
+        planId: pendingReg.planId._id,
+        status: 'active', // Payment is already done
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: calculateSubscriptionEnd(pendingReg.billingPeriod)
+      }
     });
 
     // Create company superadmin
     const user = await User.create({
       companyId: company._id,
-      email,
-      password,
-      firstName,
-      lastName,
-      phone,
+      email: pendingReg.adminData.email,
+      password: pendingReg.adminData.password, // Password is already hashed by PendingRegistration middleware
+      firstName: pendingReg.adminData.firstName,
+      lastName: pendingReg.adminData.lastName,
+      phone: pendingReg.adminData.phone,
       role: 'company_superadmin',
       isEmailVerified: false
     });
+
+    // Create subscription record
+    const subscription = await Subscription.create({
+      companyId: company._id,
+      planId: pendingReg.planId._id,
+      razorpayOrderId: pendingReg.razorpayOrderId,
+      razorpayPaymentId: pendingReg.razorpayPaymentId,
+      razorpaySignature: pendingReg.razorpaySignature,
+      status: 'active',
+      amount: pendingReg.paymentAmount,
+      currency: pendingReg.paymentCurrency,
+      billingPeriod: pendingReg.billingPeriod,
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: calculateSubscriptionEnd(pendingReg.billingPeriod),
+      payments: [{
+        razorpayPaymentId: pendingReg.razorpayPaymentId,
+        razorpayOrderId: pendingReg.razorpayOrderId,
+        amount: pendingReg.paymentAmount,
+        currency: pendingReg.paymentCurrency,
+        status: 'completed',
+        paidAt: new Date()
+      }]
+    });
+
+    // Update company with subscription reference
+    company.subscription.subscriptionId = subscription._id;
+    await company.save();
 
     // Create default agreement templates for the new company
     await createDefaultAgreementTemplates(company._id, user._id);
@@ -507,7 +560,12 @@ export const registerCompany = async (req, res, next) => {
     // Send verification email
     await sendVerificationEmail(user, verificationToken);
 
-    // Don't return token - user must verify email first
+    // Mark pending registration as completed and delete
+    pendingReg.status = 'registration_completed';
+    await pendingReg.save();
+    await PendingRegistration.deleteOne({ _id: pendingReg._id });
+
+    // Response
     res.status(201).json({
       success: true,
       message: 'Registration successful! Please check your email to verify your account before logging in.',
@@ -524,6 +582,11 @@ export const registerCompany = async (req, res, next) => {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role
+        },
+        subscription: {
+          plan: pendingReg.planId.name,
+          status: 'active',
+          currentPeriodEnd: company.subscription.currentPeriodEnd
         }
       }
     });
@@ -540,6 +603,22 @@ export const registerCompany = async (req, res, next) => {
     }
     next(error);
   }
+};
+
+/**
+ * Helper: Calculate subscription end date
+ */
+const calculateSubscriptionEnd = (billingPeriod) => {
+  const now = new Date();
+  const endDate = new Date(now);
+
+  if (billingPeriod === 'yearly') {
+    endDate.setFullYear(endDate.getFullYear() + 1);
+  } else {
+    endDate.setMonth(endDate.getMonth() + 1);
+  }
+
+  return endDate;
 };
 
 /**
@@ -712,6 +791,16 @@ export const login = async (req, res, next) => {
         });
         throw new ApiError(401, 'Company not found');
       }
+      if (company.status === 'pending_verification') {
+        await logLoginAttempt({
+          email,
+          user,
+          status: 'failed',
+          failureReason: 'email_not_verified',
+          req
+        });
+        throw new ApiError(401, 'Please verify your email address to activate your account. Check your inbox for the verification link.');
+      }
       if (company.status !== 'active') {
         await logLoginAttempt({
           email,
@@ -720,7 +809,7 @@ export const login = async (req, res, next) => {
           failureReason: 'account_suspended',
           req
         });
-        throw new ApiError(401, 'Company account is not active');
+        throw new ApiError(401, 'Company account is not active. Please contact support.');
       }
     }
 
@@ -942,6 +1031,13 @@ export const verifyEmail = async (req, res, next) => {
     user.emailVerificationToken = undefined;
     user.emailVerificationExpire = undefined;
     await user.save({ validateBeforeSave: false });
+
+    // If user has a company, update company status to active
+    if (user.companyId) {
+      await Company.findByIdAndUpdate(user.companyId, {
+        status: 'active'
+      });
+    }
 
     res.status(200).json({
       success: true,

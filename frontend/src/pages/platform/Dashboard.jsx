@@ -24,7 +24,7 @@ const PlatformDashboard = () => {
       setLoading(true);
 
       // Fetch company stats
-      const companyRes = await api.get('/company/stats');
+      const companyRes = await api.get('/companies/stats');
       const companyData = companyRes.data.data || {};
 
       // Fetch partner stats
@@ -32,9 +32,9 @@ const PlatformDashboard = () => {
       const partnerData = partnerRes.data.data || {};
 
       setStats({
-        totalCompanies: companyData.total || 0,
-        activeCompanies: companyData.active || 0,
-        totalPartners: partnerData.total || 0,
+        totalCompanies: companyData.overview?.total || 0,
+        activeCompanies: companyData.overview?.active || 0,
+        totalPartners: partnerData.overview?.total || 0,
         platformRevenue: 0 // Platform revenue not implemented yet
       });
     } catch (error) {

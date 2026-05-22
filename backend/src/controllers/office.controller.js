@@ -465,7 +465,7 @@ export const getAvailableOffices = async (req, res, next) => {
       companyId: { $in: companyIds },
       isActive: true,
     })
-      .select("name address phone email googleMapsUrl operatingHours isActive")
+      .select("name address phone email googleMapsUrl operatingHours isActive companyId")
       .sort({ displayOrder: 1, name: 1 });
 
     console.log('Found offices:', offices.length);

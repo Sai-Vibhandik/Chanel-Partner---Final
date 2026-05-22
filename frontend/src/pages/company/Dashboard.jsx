@@ -4,7 +4,7 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
-import { StatCard } from '../../components/common';
+import { StatCard, SubscriptionWarning } from '../../components/common';
 
 const CompanyDashboard = () => {
   const { user } = useAuth();
@@ -241,6 +241,9 @@ const CompanyDashboard = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Company Dashboard" subtitle="Manage your company's partner network" color={config.color}>
+      {/* Subscription Warning */}
+      <SubscriptionWarning />
+
       {/* Welcome Section */}
       <div className="mb-6 sm:mb-8">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Welcome back, {user?.firstName}!</h2>
