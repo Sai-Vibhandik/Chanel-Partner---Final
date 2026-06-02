@@ -30,6 +30,12 @@ const agreementSignatureSchema = new mongoose.Schema(
       required: true
     },
 
+    // Content snapshot at the time of signing (preserves original content)
+    contentSnapshot: {
+      type: String,
+      required: true
+    },
+
     // Signature details
     signedAt: {
       type: Date,

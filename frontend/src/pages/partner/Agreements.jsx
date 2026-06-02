@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 
 const Agreements = () => {
   const navigate = useNavigate();
   const config = sidebarConfig.partner;
+  const toast = useToast();
 
   const [partnerships, setPartnerships] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchPartnerships();
@@ -19,12 +20,11 @@ const Agreements = () => {
   const fetchPartnerships = async () => {
     try {
       setLoading(true);
-      setError('');
 
       const response = await api.get('/partner-company/my-companies');
       setPartnerships(response.data.data.partnerships);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partnerships');
+      toast.error(err.response?.data?.message || 'Failed to load partnerships');
     } finally {
       setLoading(false);
     }
@@ -86,13 +86,6 @@ const Agreements = () => {
       subtitle="View and sign your agreements"
       color={config.color}
     >
-      {/* Error Message */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
-      )}
-
       {/* Info Banner */}
       <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
         <div className="flex items-start gap-3">

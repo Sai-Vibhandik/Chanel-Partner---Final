@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
 
 const PropertyManagerDashboard = () => {
   const { user } = useAuth();
@@ -206,6 +207,7 @@ const PropertyManagerDashboard = () => {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sr. No.</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Property</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
@@ -214,12 +216,15 @@ const PropertyManagerDashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {recentProperties.map((property) => (
+                {recentProperties.map((property, index) => (
                   <tr
                     key={property._id}
                     className="hover:bg-gray-50 cursor-pointer"
                     onClick={() => navigate(`/property-manager/properties/${property._id}`)}
                   >
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {index + 1}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {property.images?.[0]?.url ? (
@@ -237,7 +242,7 @@ const PropertyManagerDashboard = () => {
                         )}
                         <div>
                           <p className="font-medium text-gray-900">{property.name}</p>
-                          <p className="text-sm text-gray-500">{property.pricing?.currency === 'AED' ? 'AED' : '₹'}{property.pricing?.basePrice?.toLocaleString()}</p>
+                          <p className="text-sm text-gray-500">{formatCurrency(property.pricing?.basePrice, property.pricing?.currency || 'INR')}</p>
                         </div>
                       </div>
                     </td>

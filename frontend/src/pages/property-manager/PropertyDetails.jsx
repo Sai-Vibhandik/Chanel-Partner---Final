@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import api, { getDocumentViewUrl } from '../../utils/api';
 import { sidebarConfig } from '../../config/sidebar';
+import { formatCurrency } from '../../utils/currency';
 
 const PropertyDetails = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { user } = useAuth();
+  const toast = useToast();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -33,7 +36,9 @@ const PropertyDetails = () => {
       setProperty(response.data?.data?.property || null);
     } catch (err) {
       console.error('Error fetching property:', err);
-      setError(err.response?.data?.message || 'Failed to load property');
+      const errorMessage = err.response?.data?.message || 'Failed to load property';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -43,27 +48,16 @@ const PropertyDetails = () => {
     try {
       await api.put(`/properties/${id}/status`, { status: newStatus });
       setProperty(prev => prev ? { ...prev, status: newStatus } : prev);
+      toast.success('Status updated successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update status');
+      toast.error(err.response?.data?.message || 'Failed to update status');
     }
   };
 
   const formatPrice = (prop) => {
     if (!prop) return '';
     if (prop.pricing?.priceOnRequest) return 'Price on Request';
-
-    const price = prop.pricing?.basePrice || 0;
-    const currency = prop.pricing?.currency === 'AED' ? 'AED ' : '₹';
-
-    if (prop.region === 'dubai') {
-      if (price >= 1000000) return `${currency}${(price / 1000000).toFixed(2)}M`;
-      if (price >= 1000) return `${currency}${(price / 1000).toFixed(0)}K`;
-      return `${currency}${price.toLocaleString()}`;
-    } else {
-      if (price >= 10000000) return `${currency}${(price / 10000000).toFixed(2)} Cr`;
-      if (price >= 100000) return `${currency}${(price / 100000).toFixed(2)} Lac`;
-      return `${currency}${price.toLocaleString()}`;
-    }
+    return formatCurrency(prop.pricing?.basePrice || 0, prop.pricing?.currency || 'INR');
   };
 
   const propertyTypes = {
@@ -122,13 +116,6 @@ const PropertyDetails = () => {
       subtitle="View property details"
       color={config.color}
     >
-      {/* Error Message */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-wrap gap-4 mb-6">
         <button
@@ -245,7 +232,7 @@ const PropertyDetails = () => {
             <p className="font-medium">{property.location?.state || property.location?.emirate || 'N/A'}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">ZIP Code</p>
+            <p className="text-sm text-gray-500">Postal Code</p>
             <p className="font-medium">{property.location?.zipCode || 'N/A'}</p>
           </div>
           <div>
@@ -314,7 +301,7 @@ const PropertyDetails = () => {
             {property.indiaDetails.reraWebsite && (
               <div>
                 <p className="text-sm text-gray-500">RERA Website</p>
-                <a href={property.indiaDetails.reraWebsite} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline">{property.indiaDetails.reraWebsite}</a>
+                <a href={property.indiaDetails.reraWebsite} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline break-all">{property.indiaDetails.reraWebsite}</a>
               </div>
             )}
             {property.indiaDetails.gstNumber && (
@@ -338,7 +325,12 @@ const PropertyDetails = () => {
             {property.indiaDetails.possessionStatus && (
               <div>
                 <p className="text-sm text-gray-500">Possession Status</p>
-                <p className="font-medium capitalize">{property.indiaDetails.possessionStatus.replace('_', ' ')}</p>
+                <p className="font-medium">
+                  {property.indiaDetails.possessionStatus === 'readytomove' ? 'Ready to Move' :
+                   property.indiaDetails.possessionStatus === 'underconstruction' ? 'Under Construction' :
+                   property.indiaDetails.possessionStatus === 'ocreceived' ? 'OC Received' :
+                   property.indiaDetails.possessionStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </p>
               </div>
             )}
             {property.indiaDetails.possessionDate && (
@@ -369,7 +361,7 @@ const PropertyDetails = () => {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {property.dubaiDetails.dldPermitNumber && (
               <div>
-                <p className="text-sm text-gray-500">DLD Permit</p>
+                <p className="text-sm text-gray-500">DLD Permit Number</p>
                 <p className="font-medium">{property.dubaiDetails.dldPermitNumber}</p>
               </div>
             )}
@@ -561,7 +553,7 @@ const PropertyDetails = () => {
             <p className="text-sm text-gray-500">Commission</p>
             <p className="font-medium">
               {property.commission?.isFixed
-                ? (property.commission.fixedAmount ? `${property.pricing?.currency === 'AED' ? 'د.إ' : '₹'}${property.commission.fixedAmount}` : 'Not set')
+                ? (property.commission.fixedAmount ? `${property.pricing?.currency === 'AED' ? 'AED ' : '₹'}${property.commission.fixedAmount}` : 'Not set')
                 : (property.commission?.basePercentage ? `${property.commission.basePercentage}%` : 'Not set')}
             </p>
           </div>

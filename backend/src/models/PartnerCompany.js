@@ -16,12 +16,20 @@ const partnerCompanySchema = new mongoose.Schema(
 
     // ========== STATUS ==========
     // Simplified status: pending -> active -> suspended
+    // rejected: application denied, suspended: temporarily disabled
     // Use kycStatus for document verification tracking
     status: {
       type: String,
-      enum: ['pending', 'active', 'suspended'],
+      enum: ['pending', 'active', 'suspended', 'rejected'],
       default: 'pending'
     },
+
+    // ========== OPERATING REGIONS ==========
+    // Partner-specific regions - subset of company's regions
+    regions: [{
+      type: String,
+      enum: ['india', 'dubai']
+    }],
 
     // ========== TIER & COMMISSION ==========
     tier: {

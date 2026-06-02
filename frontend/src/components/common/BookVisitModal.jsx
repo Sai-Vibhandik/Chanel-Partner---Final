@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import DatePicker, { registerLocale } from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import api from '../../utils/api';
-import { validateRequired, validatePhone, validateEmail, validateFutureDate, validateMinLength, handlePhoneInput } from '../../utils/validation';
+import { validateRequired, validatePhoneWithCountry, validateEmail, validateFutureDate, validateMinLength } from '../../utils/validation';
+import PhoneInput from './PhoneInput';
 
 const BookVisitModal = ({
   show,
@@ -35,6 +38,7 @@ const BookVisitModal = ({
     timeSlot: '',
     clientName: '',
     clientPhone: '',
+    clientPhoneCountryCode: 'IN',
     clientEmail: '',
     clientNotes: '',
     partnerNotes: ''
@@ -48,18 +52,18 @@ const BookVisitModal = ({
   const validateField = (name, value) => {
     switch (name) {
       case 'purpose':
-        if (!value || value.trim() === '') return 'Purpose is required';
-        if (value.length < 3) return 'Purpose must be at least 3 characters';
+        if (!value || value.trim() === '') return 'Purpose is required.';
+        if (value.length < 3) return 'Purpose must be at least 3 characters.';
         return '';
       case 'clientName':
         if (bookingForm.hasClient) {
-          if (!value || value.trim() === '') return 'Client name is required';
+          if (!value || value.trim() === '') return 'Client Name is required.';
         }
         return '';
       case 'clientPhone':
         if (bookingForm.hasClient) {
-          if (!value || value.trim() === '') return 'Phone number is required';
-          return validatePhone(value);
+          if (!value || value.trim() === '') return 'Contact Number is required.';
+          return validatePhoneWithCountry(value, bookingForm.clientPhoneCountryCode);
         }
         return '';
       case 'clientEmail':
@@ -68,7 +72,7 @@ const BookVisitModal = ({
         }
         return '';
       case 'scheduledDate':
-        if (!value) return 'Please select a date';
+        if (!value) return 'Please select a Date.';
         return validateFutureDate(value, 'Visit date') || '';
       default:
         return '';
@@ -96,10 +100,10 @@ const BookVisitModal = ({
   const validateForm = () => {
     const errors = {};
 
-    if (!selectedPartnership) errors.partnership = 'Please select a company';
-    if (!selectedProperty) errors.property = 'Please select a property';
-    if (!bookingForm.officeLocation) errors.officeLocation = 'Please select an office';
-    if (!bookingForm.timeSlot) errors.timeSlot = 'Please select a time slot';
+    if (!selectedPartnership) errors.partnership = 'Please select a Company.';
+    if (!selectedProperty) errors.property = 'Please select a Property.';
+    if (!bookingForm.officeLocation) errors.officeLocation = 'Please select an Office.';
+    if (!bookingForm.timeSlot) errors.timeSlot = 'Please select a Time Slot.';
 
     const purposeError = validateField('purpose', bookingForm.purpose);
     if (purposeError) errors.purpose = purposeError;
@@ -138,9 +142,28 @@ const BookVisitModal = ({
 
   useEffect(() => {
     if (show) {
+      // Reset form state when modal opens
+      setBookingForm({
+        visitType: 'office',
+        purpose: '',
+        hasClient: false,
+        scheduledDate: '',
+        scheduledTime: '10:00',
+        officeLocation: '',
+        timeSlot: '',
+        clientName: '',
+        clientPhone: '',
+        clientPhoneCountryCode: 'IN',
+        clientEmail: '',
+        clientNotes: '',
+        partnerNotes: ''
+      });
       setBookingError('');
       setFormErrors({});
       setTouched({});
+      setAvailableSlots([]);
+      setBlockedDates([]);
+      setBlockedReason('');
       // Only fetch if external data is not provided or empty
       if (!externalPartnerships || externalPartnerships.length === 0) fetchPartnerships();
       if (preSelectedPartnership && (!externalProperties || externalProperties.length === 0)) fetchPropertiesForPartnership(preSelectedPartnership);
@@ -203,14 +226,19 @@ const BookVisitModal = ({
   const fetchBlockedDates = async (officeId) => {
     if (!officeId) { setBlockedDates([]); return; }
     try {
+      console.log('Fetching blocked dates for office:', officeId);
       const response = await api.get(`/offices/${officeId}/availability`);
+      console.log('Availability response:', response.data);
       const availability = response.data.data.availability;
       if (availability?.blockedDates?.length > 0) {
-        setBlockedDates(availability.blockedDates.map(b => ({
+        const formattedBlockedDates = availability.blockedDates.map(b => ({
           date: new Date(b.date).toISOString().split('T')[0],
           reason: b.reason || 'Blocked'
-        })));
+        }));
+        console.log('Formatted blocked dates:', formattedBlockedDates);
+        setBlockedDates(formattedBlockedDates);
       } else {
+        console.log('No blocked dates found');
         setBlockedDates([]);
       }
     } catch (err) {
@@ -223,6 +251,14 @@ const BookVisitModal = ({
     e.preventDefault();
     setSubmitting(true);
     setBookingError('');
+
+    // Check if pre-selected property is sold
+    if (preSelectedProperty && preSelectedProperty.status === 'sold_out') {
+      setBookingError('This property has been sold and is no longer available for visits.');
+      setSubmitting(false);
+      if (modalContentRef.current) modalContentRef.current.scrollTop = 0;
+      return;
+    }
 
     // Validate all fields
     const isValid = validateForm();
@@ -271,8 +307,6 @@ const BookVisitModal = ({
       if (modalContentRef.current) modalContentRef.current.scrollTop = 0;
     } finally { setSubmitting(false); }
   };
-
-  const getMinDate = () => { const today = new Date(); return today.toISOString().split('T')[0]; };
 
   if (!show) return null;
 
@@ -331,7 +365,7 @@ const BookVisitModal = ({
                 disabled={!selectedPartnership}
               >
                 <option value="">Choose a property</option>
-                {properties.map((property) => (<option key={property._id} value={property._id}>{property.name} - {property.location?.city}</option>))}
+                {properties.filter(property => property.status !== 'sold_out').map((property) => (<option key={property._id} value={property._id}>{property.name} - {property.location?.city}</option>))}
               </select>
               {touched.property && formErrors.property && <p className="text-sm text-red-600 mt-1">{formErrors.property}</p>}
             </div>
@@ -341,6 +375,9 @@ const BookVisitModal = ({
             <div className="bg-gray-50 rounded-lg p-4">
               <p className="font-medium text-gray-900">{preSelectedProperty.name}</p>
               <p className="text-sm text-gray-500">{preSelectedProperty.location?.city}</p>
+              {preSelectedProperty.status === 'sold_out' && (
+                <p className="text-sm text-red-600 mt-1">⚠️ This property has been sold and is no longer available for visits.</p>
+              )}
             </div>
           )}
 
@@ -395,43 +432,68 @@ const BookVisitModal = ({
                   const selectedCompanyId = selectedPartnershipData.companyId._id || selectedPartnershipData.companyId;
                   return office.companyId?._id === selectedCompanyId || office.companyId === selectedCompanyId;
                 })
-                .map((office) => (
-                  <option key={office._id} value={office._id}>{office.name} - {office.address?.city}</option>
-                ))
+                .map((office) => {
+                  // Build full address string
+                  const addressParts = [];
+                  if (office.address?.street) addressParts.push(office.address.street);
+                  if (office.address?.city) addressParts.push(office.address.city);
+                  if (office.address?.state) addressParts.push(office.address.state);
+                  if (office.address?.zipCode) addressParts.push(office.address.zipCode);
+                  const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : 'No address';
+
+                  return (
+                    <option key={office._id} value={office._id}>
+                      {office.name} - {fullAddress} {!office.isActive && '(Inactive)'}
+                    </option>
+                  );
+                })
               }
             </select>
             {touched.officeLocation && formErrors.officeLocation && <p className="text-sm text-red-600 mt-1">{formErrors.officeLocation}</p>}
             {offices.length === 0 && <p className="text-sm text-amber-600 mt-1">No offices available for booking</p>}
-            {/* Show blocked dates for selected office */}
-            {bookingForm.officeLocation && blockedDates.length > 0 && (
-              <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="text-xs font-medium text-amber-800 mb-1">Blocked Dates:</p>
-                <div className="flex flex-wrap gap-1">
-                  {blockedDates.slice(0, 5).map((b, idx) => (
-                    <span key={idx} className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded" title={b.reason}>
-                      {new Date(b.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
-                  ))}
-                  {blockedDates.length > 5 && (
-                    <span className="text-xs text-amber-600">+{blockedDates.length - 5} more</span>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Date *</label>
-            <input
-              type="date"
-              value={bookingForm.scheduledDate}
-              onChange={(e) => { handleChange('scheduledDate', e.target.value); setBookingForm(prev => ({ ...prev, scheduledDate: e.target.value, timeSlot: '' })); }}
+            <DatePicker
+              selected={bookingForm.scheduledDate ? new Date(bookingForm.scheduledDate) : null}
+              onChange={(date) => {
+                if (date) {
+                  const dateStr = date.toISOString().split('T')[0];
+                  handleChange('scheduledDate', dateStr);
+                  setBookingForm(prev => ({ ...prev, scheduledDate: dateStr, timeSlot: '' }));
+                  // Clear any previous error
+                  if (formErrors.scheduledDate) {
+                    setFormErrors(prev => ({ ...prev, scheduledDate: '' }));
+                  }
+                }
+              }}
               onBlur={() => handleBlur('scheduledDate')}
-              min={getMinDate()}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${touched.scheduledDate && formErrors.scheduledDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+              minDate={new Date()}
+              excludeDates={blockedDates.map(b => new Date(b.date))}
+              filterDate={(date) => {
+                // Filter out blocked dates
+                const dateStr = date.toISOString().split('T')[0];
+                return !blockedDates.some(b => b.date === dateStr);
+              }}
+              dayClassName={(date) => {
+                const dateStr = date.toISOString().split('T')[0];
+                if (blockedDates.some(b => b.date === dateStr)) {
+                  return 'react-datepicker__day--blocked';
+                }
+                return undefined;
+              }}
+              dateFormat="MMMM d, yyyy"
+              placeholderText="Select a date"
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${formErrors.scheduledDate ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+              wrapperClassName="w-full"
+              disabled={!bookingForm.officeLocation}
               required
             />
-            {touched.scheduledDate && formErrors.scheduledDate && <p className="text-sm text-red-600 mt-1">{formErrors.scheduledDate}</p>}
+            {formErrors.scheduledDate && <p className="text-sm text-red-600 mt-1">{formErrors.scheduledDate}</p>}
+            {bookingForm.officeLocation && blockedDates.length === 0 && (
+              <p className="text-xs text-gray-500 mt-1">All dates are available for booking</p>
+            )}
           </div>
 
           {bookingForm.officeLocation && bookingForm.scheduledDate && (
@@ -509,21 +571,24 @@ const BookVisitModal = ({
                 {touched.clientName && formErrors.clientName && <p className="text-sm text-red-600 mt-1">{formErrors.clientName}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client Phone *</label>
-                <input
-                  type="tel"
+                <PhoneInput
                   value={bookingForm.clientPhone}
-                  onChange={(e) => {
-                    const phoneValue = e.target.value.replace(/[^0-9+\-\s]/g, '').substring(0, 15);
-                    handleChange('clientPhone', phoneValue);
+                  onChange={(value) => {
+                    setBookingForm(prev => ({ ...prev, clientPhone: value }));
+                    if (formErrors.clientPhone) {
+                      setFormErrors(prev => ({ ...prev, clientPhone: '' }));
+                    }
                   }}
-                  onBlur={() => handleBlur('clientPhone')}
-                  placeholder="10-digit mobile number"
-                  maxLength={15}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${touched.clientPhone && formErrors.clientPhone ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                  required
+                  countryCode={bookingForm.clientPhoneCountryCode}
+                  onCountryChange={(code) => setBookingForm(prev => ({ ...prev, clientPhoneCountryCode: code }))}
+                  error={touched.clientPhone ? formErrors.clientPhone : ''}
+                  onError={(error) => {
+                    if (error) {
+                      setFormErrors(prev => ({ ...prev, clientPhone: error }));
+                    }
+                  }}
+                  label="Client Phone"
                 />
-                {touched.clientPhone && formErrors.clientPhone && <p className="text-sm text-red-600 mt-1">{formErrors.clientPhone}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Client Email (Optional)</label>
@@ -540,7 +605,16 @@ const BookVisitModal = ({
             </div>
           )}
 
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label><textarea value={bookingForm.partnerNotes} onChange={(e) => setBookingForm({ ...bookingForm, partnerNotes: e.target.value })} rows={2} placeholder="Any notes for the company..." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" /></div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
+            <textarea
+              value={bookingForm.partnerNotes}
+              onChange={(e) => setBookingForm({ ...bookingForm, partnerNotes: e.target.value })}
+              rows={2}
+              placeholder="Any notes for the company..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-y min-h-[60px] max-h-[120px] overflow-y-auto"
+            />
+          </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>

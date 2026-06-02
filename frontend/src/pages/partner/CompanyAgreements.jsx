@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 
 const CompanyAgreements = () => {
@@ -10,31 +11,83 @@ const CompanyAgreements = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const config = sidebarConfig.partner;
+  const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const [partnership, setPartnership] = useState(null);
   const [pendingAgreements, setPendingAgreements] = useState([]);
-  const [resignAgreements, setResignAgreements] = useState([]);
   const [signedAgreements, setSignedAgreements] = useState([]);
   const [signatureHistory, setSignatureHistory] = useState([]);
 
   // Modal state
   const [selectedAgreement, setSelectedAgreement] = useState(null);
   const [typedName, setTypedName] = useState('');
+  const [signatureError, setSignatureError] = useState('');
   const [viewingSignature, setViewingSignature] = useState(null);
 
   useEffect(() => {
     fetchPartnership();
   }, [partnershipId]);
 
+  // Validate signature name
+  const validateSignature = (name) => {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      return 'Please type your name to sign.';
+    }
+
+    if (trimmedName.length < 2) {
+      return 'Name must be at least 2 characters long.';
+    }
+
+    if (trimmedName.length > 100) {
+      return 'Name must not exceed 100 characters.';
+    }
+
+    const validNameRegex = /^[a-zA-Z\s\-'.]+$/;
+    if (!validNameRegex.test(trimmedName)) {
+      return 'Name can only contain letters, spaces, hyphens, apostrophes, and periods.';
+    }
+
+    if (!/[a-zA-Z]/.test(trimmedName)) {
+      return 'Name must contain at least one letter.';
+    }
+
+    if (/[\-'.]{2,}/.test(trimmedName)) {
+      return 'Name contains invalid consecutive special characters.';
+    }
+
+    return null;
+  };
+
+  const handleSignatureChange = (e) => {
+    let value = e.target.value;
+
+    // Only allow valid characters
+    value = value.replace(/[^a-zA-Z\s\-'.]/g, '');
+
+    // Enforce maximum length of 100 characters
+    if (value.length > 100) {
+      value = value.substring(0, 100);
+    }
+
+    setTypedName(value);
+
+    // Clear error when user types valid input
+    if (signatureError && value.trim().length >= 2) {
+      const error = validateSignature(value);
+      if (!error) {
+        setSignatureError('');
+      }
+    }
+  };
+
   const fetchPartnership = async () => {
     try {
       setLoading(true);
-      setError('');
 
       // Fetch partnership details and agreements
       const [partnershipRes, agreementsRes] = await Promise.all([
@@ -44,35 +97,34 @@ const CompanyAgreements = () => {
 
       setPartnership(partnershipRes.data.data.partnership);
 
-      // Separate agreements into pending, resign, and signed
+      // Separate agreements into pending and signed
       const pending = [];
-      const resign = [];
       const signed = [];
 
       agreementsRes.data.data.agreements.forEach(agreement => {
         if (agreement.isSigned) {
           signed.push(agreement);
-        } else if (agreement.needsResign) {
-          resign.push(agreement);
         } else {
+          // All unsigned agreements are pending (including those that need re-sign)
           pending.push(agreement);
         }
       });
 
       setPendingAgreements(pending);
-      setResignAgreements(resign);
       setSignedAgreements(signed);
       setSignatureHistory(agreementsRes.data.data.signatureHistory || []);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load agreements');
+      toast.error(err.response?.data?.message || 'Failed to load agreements.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignAgreement = async () => {
-    if (!typedName.trim()) {
-      setError('Please type your name to sign');
+    // Validate signature
+    const validationError = validateSignature(typedName);
+    if (validationError) {
+      setSignatureError(validationError);
       return;
     }
 
@@ -80,21 +132,21 @@ const CompanyAgreements = () => {
 
     try {
       setSubmitting(true);
-      setError('');
 
       await api.post(`/agreements/partner/agreements/${selectedAgreement._id}/sign`, {
         partnershipId,
         typedName: typedName.trim()
       });
 
-      setSuccess(`"${selectedAgreement.name}" signed successfully!`);
+      toast.success(`"${selectedAgreement.name}" signed successfully!`);
       setSelectedAgreement(null);
       setTypedName('');
+      setSignatureError('');
 
       // Refresh agreements
       await fetchPartnership();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to sign agreement');
+      toast.error(err.response?.data?.message || 'Failed to sign agreement.');
     } finally {
       setSubmitting(false);
     }
@@ -134,13 +186,13 @@ const CompanyAgreements = () => {
   const openAgreementModal = (agreement) => {
     setSelectedAgreement(agreement);
     setTypedName('');
-    setError('');
+    setSignatureError('');
   };
 
   const closeAgreementModal = () => {
     setSelectedAgreement(null);
     setTypedName('');
-    setError('');
+    setSignatureError('');
   };
 
   const openSignatureModal = async (signature) => {
@@ -151,7 +203,18 @@ const CompanyAgreements = () => {
         return;
       }
 
-      // Otherwise fetch the template content
+      // Use contentSnapshot if available (preserves original content at time of signing)
+      if (signature.contentSnapshot) {
+        setViewingSignature({
+          ...signature,
+          templateContent: signature.contentSnapshot,
+          templateName: signature.agreementTemplateId?.name,
+          templateType: signature.agreementTemplateId?.type
+        });
+        return;
+      }
+
+      // Fallback: fetch the template content (for signatures created before contentSnapshot was added)
       const templateId = signature.agreementTemplateId?._id || signature.agreementTemplateId;
       const response = await api.get(`/agreements/${templateId}`);
       const template = response.data.data.template;
@@ -190,7 +253,7 @@ const CompanyAgreements = () => {
   }
 
   const company = partnership?.companyId;
-  const totalPending = pendingAgreements.length + resignAgreements.length;
+  const totalPending = pendingAgreements.length;
 
   return (
     <DashboardLayout
@@ -209,20 +272,6 @@ const CompanyAgreements = () => {
         </svg>
         Back to Companies
       </button>
-
-      {/* Error Message */}
-      {error && !selectedAgreement && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
-      )}
-
-      {/* Success Message */}
-      {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-          {success}
-        </div>
-      )}
 
       {/* Company Header */}
       {company && (
@@ -298,7 +347,7 @@ const CompanyAgreements = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Total Agreements</p>
-              <p className="text-2xl font-bold text-gray-900">{pendingAgreements.length + resignAgreements.length + signedAgreements.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{pendingAgreements.length + signedAgreements.length}</p>
             </div>
             <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
               <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -329,7 +378,7 @@ const CompanyAgreements = () => {
 
       {/* Agreements Sections */}
       <div className="space-y-6">
-        {/* Pending Agreements (First Time Sign) */}
+        {/* Pending Agreements */}
         {pendingAgreements.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="bg-yellow-50 border-b border-yellow-200 px-6 py-4">
@@ -360,49 +409,6 @@ const CompanyAgreements = () => {
                   <button
                     onClick={() => openAgreementModal(agreement)}
                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
-                  >
-                    Review & Sign
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Resign Required Agreements (Updated Versions) */}
-        {resignAgreements.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="bg-orange-50 border-b border-orange-200 px-6 py-4">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m5.842 0H15" />
-                </svg>
-                <h3 className="font-semibold text-orange-800">Updated Agreements</h3>
-                <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded-full text-sm">
-                  {resignAgreements.length} agreement{resignAgreements.length !== 1 ? 's' : ''} updated - please re-sign
-                </span>
-              </div>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {resignAgreements.map((agreement) => (
-                <div key={agreement._id} className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m5.842 0H15" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900">{agreement.name}</h4>
-                      <p className="text-sm text-gray-500">
-                        {getTypeLabel(agreement.type)} • v{agreement.version}
-                        {agreement.previousVersion && <span className="text-orange-600"> (previously signed v{agreement.previousVersion})</span>}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => openAgreementModal(agreement)}
-                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm font-medium"
                   >
                     Review & Sign
                   </button>
@@ -471,7 +477,7 @@ const CompanyAgreements = () => {
         )}
 
         {/* No Agreements */}
-        {pendingAgreements.length === 0 && resignAgreements.length === 0 && signedAgreements.length === 0 && (
+        {pendingAgreements.length === 0 && signedAgreements.length === 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10 text-center">
             <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -536,13 +542,13 @@ const CompanyAgreements = () => {
                               ? 'bg-green-100 text-green-800'
                               : sig.status === 'expired'
                               ? 'bg-red-100 text-red-800'
-                              : 'bg-yellow-100 text-yellow-800'
+                              : 'bg-gray-100 text-gray-800'
                           }`}>
                             {sig.status === 'signed' && isCurrent
                               ? 'Current'
                               : sig.status === 'expired'
-                              ? 'Outdated'
-                              : sig.status}
+                              ? 'Expired'
+                              : 'Previous Version'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -573,9 +579,6 @@ const CompanyAgreements = () => {
                 <h3 className="text-xl font-semibold text-gray-900">{selectedAgreement.name}</h3>
                 <p className="text-sm text-gray-500">
                   {getTypeLabel(selectedAgreement.type)} • Version {selectedAgreement.version}
-                  {selectedAgreement.needsResign && selectedAgreement.previousVersion && (
-                    <span className="text-orange-600 ml-2">(previously signed v{selectedAgreement.previousVersion})</span>
-                  )}
                 </p>
               </div>
               <button
@@ -590,18 +593,6 @@ const CompanyAgreements = () => {
 
             {/* Content */}
             <div className="p-6 flex-1 overflow-y-auto">
-              {selectedAgreement.needsResign && !selectedAgreement.isSigned && (
-                <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-orange-800">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <span className="font-medium">This agreement has been updated!</span>
-                    <span className="text-orange-700">Please review and sign the new version.</span>
-                  </div>
-                </div>
-              )}
-
               {selectedAgreement.isSigned ? (
                 <div className="mb-4">
                   <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
@@ -628,7 +619,7 @@ const CompanyAgreements = () => {
                       )}
                       <div>
                         <p className="text-green-700">Status</p>
-                        <span className="px-2 py-1 rounded text-xs bg-green-200 text-green-800">Valid</span>
+                        <span className="px-2 py-1 rounded text-xs bg-green-200 text-green-800">Signed</span>
                       </div>
                     </div>
                   </div>
@@ -643,11 +634,6 @@ const CompanyAgreements = () => {
             {/* Signature Section - Only for unsigned agreements */}
             {!selectedAgreement.isSigned && (
               <div className="p-6 border-t border-gray-200 bg-gray-50">
-                {error && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                    {error}
-                  </div>
-                )}
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -656,13 +642,39 @@ const CompanyAgreements = () => {
                     <input
                       type="text"
                       value={typedName}
-                      onChange={(e) => setTypedName(e.target.value)}
+                      onChange={handleSignatureChange}
+                      onBlur={() => {
+                        if (typedName.trim()) {
+                          const error = validateSignature(typedName);
+                          if (error) setSignatureError(error);
+                        }
+                      }}
                       placeholder="Enter your full legal name"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      maxLength={100}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
+                        signatureError
+                          ? 'border-red-300 focus:border-red-500'
+                          : 'border-gray-300 focus:border-indigo-500'
+                      }`}
                       required
                     />
-                    <p className="mt-1 text-xs text-gray-500">
-                      By typing your name, you agree that this electronic signature is as legally binding as a physical signature.
+                    <div className="flex justify-between mt-1">
+                      <div>
+                        {signatureError && (
+                          <p className="text-sm text-red-600">{signatureError}</p>
+                        )}
+                        {!signatureError && (
+                          <p className="text-xs text-gray-500">
+                            By typing your name, you agree that this electronic signature is as legally binding as a physical signature.
+                          </p>
+                        )}
+                      </div>
+                      <span className={`text-xs flex-shrink-0 ml-2 ${typedName.length > 100 ? 'text-red-500' : 'text-gray-400'}`}>
+                        {typedName.length}/100
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">
+                      2-100 characters. Letters, spaces, hyphens, apostrophes, and periods allowed.
                     </p>
                   </div>
 
@@ -676,7 +688,7 @@ const CompanyAgreements = () => {
                     </button>
                     <button
                       onClick={handleSignAgreement}
-                      disabled={submitting || !typedName.trim()}
+                      disabled={submitting}
                       className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {submitting ? 'Signing...' : 'Sign Agreement'}
@@ -748,7 +760,7 @@ const CompanyAgreements = () => {
                   <span className={`px-2 py-1 rounded text-xs ${
                     viewingSignature.status === 'signed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                   }`}>
-                    {viewingSignature.status === 'signed' ? 'Valid' : 'Expired'}
+                    {viewingSignature.status === 'signed' ? 'Signed' : 'Expired'}
                   </span>
                 </div>
               </div>

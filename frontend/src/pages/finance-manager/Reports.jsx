@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
+import Pagination from '../../components/common/Pagination';
 
 const Reports = () => {
   const config = sidebarConfig.finance_manager;
@@ -19,7 +21,7 @@ const Reports = () => {
   const [tierFilter, setTierFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   useEffect(() => {
     if (activeTab === 'overview') {
@@ -33,7 +35,7 @@ const Reports = () => {
     if (activeTab === 'payouts') {
       fetchPayouts();
     }
-  }, [tierFilter, statusFilter, page]);
+  }, [tierFilter, statusFilter, page, itemsPerPage]);
 
   const fetchOverview = async () => {
     try {
@@ -57,7 +59,7 @@ const Reports = () => {
       if (tierFilter) params.append('tier', tierFilter);
       if (statusFilter) params.append('status', statusFilter);
       params.append('page', page);
-      params.append('limit', limit);
+      params.append('limit', itemsPerPage);
 
       const response = await api.get(`/commissions/reports/payouts?${params.toString()}`);
       setPayoutData(response.data?.data);
@@ -101,17 +103,6 @@ const Reports = () => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (!amount) return `${symbol}0`;
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount.toLocaleString()}`;
-  };
-
   const getCurrencyLabel = (currency) => {
     return currency === 'INR' ? '₹ (INR)' : 'AED';
   };
@@ -120,6 +111,11 @@ const Reports = () => {
     setPeriod('month');
     setTierFilter('');
     setStatusFilter('');
+    setPage(1);
+  };
+
+  const handleItemsPerPageChange = (newLimit) => {
+    setItemsPerPage(newLimit);
     setPage(1);
   };
 
@@ -637,31 +633,15 @@ const Reports = () => {
             </div>
           )}
           {/* Pagination */}
-          {pagination && pagination.pages > 1 && (
-            <div className="p-4 border-t border-gray-100 flex items-center justify-between">
-              <p className="text-sm text-gray-500">
-                Showing {((pagination.page - 1) * limit) + 1} to {Math.min(pagination.page * limit, pagination.total)} of {pagination.total} partners
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Previous
-                </button>
-                <span className="px-3 py-1 text-sm text-gray-600">
-                  Page {pagination.page} of {pagination.pages}
-                </span>
-                <button
-                  onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
-                  disabled={page === pagination.pages}
-                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+          {pagination && pagination.total > 0 && (
+            <Pagination
+              currentPage={page}
+              totalPages={pagination.pages}
+              total={pagination.total}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setPage}
+              onItemsPerPageChange={(newLimit) => { setItemsPerPage(newLimit); setPage(1); }}
+            />
           )}
         </div>
       </div>

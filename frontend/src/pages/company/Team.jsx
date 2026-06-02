@@ -1,23 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
 import Modal, { ModalContent, ModalFooter, ModalButton } from '../../components/common/Modal';
 import { FormField, Input, Select, Checkbox, FormRow, FormActions, Button } from '../../components/common/FormFields';
-import { validateEmail, validatePhone, validateName, validateMinLength, handlePhoneInput } from '../../utils/validation';
+import { validateEmail, validatePhoneWithCountry, validateName, validatePassword } from '../../utils/validation';
+import PhoneInput from '../../components/common/PhoneInput';
+import Pagination from '../../components/common/Pagination';
+import useDebounce from '../../hooks/useDebounce';
 
 const Team = () => {
   const { user } = useAuth();
   const config = sidebarConfig.company_superadmin;
+  const toast = useToast();
   const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+  const [page, setPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [pagination, setPagination] = useState({ total: 0, pages: 0 });
+
+  // Debounce search for real-time filtering
+  const debouncedSearch = useDebounce(search, 300);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -33,6 +42,7 @@ const Team = () => {
     lastName: '',
     email: '',
     phone: '',
+    phoneCountryCode: 'IN',
     role: 'viewer',
     password: '',
     sendInvite: true
@@ -63,21 +73,28 @@ const Team = () => {
   };
 
   useEffect(() => {
+    setPage(1); // Reset to first page when filters change
+  }, [debouncedSearch, roleFilter, statusFilter]);
+
+  useEffect(() => {
     fetchTeam();
-  }, []);
+  }, [debouncedSearch, roleFilter, statusFilter, page, itemsPerPage]);
 
   const fetchTeam = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (roleFilter) params.append('role', roleFilter);
       if (statusFilter) params.append('status', statusFilter);
-      if (search) params.append('search', search);
+      params.append('page', page);
+      params.append('limit', itemsPerPage);
 
       const response = await api.get(`/company/${user.companyId}/team?${params.toString()}`);
       setTeam(response.data.data.team);
+      setPagination(response.data.data.pagination);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load team members');
+      toast.error(err.response?.data?.message || 'Failed to load team members');
     } finally {
       setLoading(false);
     }
@@ -86,22 +103,25 @@ const Team = () => {
   const validateForm = () => {
     const errors = {};
 
-    const firstNameError = validateName(formData.firstName, 'First name');
+    const firstNameError = validateName(formData.firstName, 'First Name');
     if (firstNameError) errors.firstName = firstNameError;
 
-    const lastNameError = validateName(formData.lastName, 'Last name');
+    const lastNameError = validateName(formData.lastName, 'Last Name');
     if (lastNameError) errors.lastName = lastNameError;
 
     const emailError = validateEmail(formData.email);
     if (emailError) errors.email = emailError;
 
     if (formData.phone) {
-      const phoneError = validatePhone(formData.phone);
+      const phoneError = validatePhoneWithCountry(formData.phone, formData.phoneCountryCode);
       if (phoneError) errors.phone = phoneError;
     }
 
-    if (formData.password && formData.password.length > 0) {
-      const passwordError = validateMinLength(formData.password, 8, 'Password');
+    // Password is required
+    if (!formData.password) {
+      errors.password = 'Password is required.';
+    } else {
+      const passwordError = validatePassword(formData.password);
       if (passwordError) errors.password = passwordError;
     }
 
@@ -109,10 +129,21 @@ const Team = () => {
     return Object.keys(errors).length === 0;
   };
 
-  const handlePhoneChange = (e) => {
-    const value = handlePhoneInput(e, null, null);
+  const handlePhoneChange = (value) => {
     setFormData(prev => ({ ...prev, phone: value }));
     if (fieldErrors.phone) {
+      setFieldErrors(prev => ({ ...prev, phone: '' }));
+    }
+  };
+
+  const handlePhoneCountryChange = (countryCode) => {
+    setFormData(prev => ({ ...prev, phoneCountryCode: countryCode }));
+  };
+
+  const handlePhoneError = (error) => {
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, phone: error }));
+    } else if (fieldErrors.phone) {
       setFieldErrors(prev => ({ ...prev, phone: '' }));
     }
   };
@@ -126,17 +157,16 @@ const Team = () => {
 
     try {
       setSaving(true);
-      setError('');
       setFieldErrors({});
 
       await api.post(`/company/${user.companyId}/team`, formData);
 
-      setSuccess('Team member added successfully');
+      toast.success('Team member added successfully.');
       setShowAddModal(false);
       resetForm();
       fetchTeam();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to add team member');
+      toast.error(err.response?.data?.message || 'Failed to add team member');
     } finally {
       setSaving(false);
     }
@@ -151,7 +181,6 @@ const Team = () => {
 
     try {
       setSaving(true);
-      setError('');
       setFieldErrors({});
 
       await api.put(`/company/${user.companyId}/team/${selectedMember._id}`, {
@@ -162,12 +191,12 @@ const Team = () => {
         role: formData.role
       });
 
-      setSuccess('Team member updated successfully');
+      toast.success('Team member updated successfully.');
       setShowEditModal(false);
       resetForm();
       fetchTeam();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update team member');
+      toast.error(err.response?.data?.message || 'Failed to update team member');
     } finally {
       setSaving(false);
     }
@@ -179,10 +208,10 @@ const Team = () => {
         isActive: !member.isActive
       });
 
-      setSuccess(`Team member ${member.isActive ? 'deactivated' : 'activated'} successfully`);
+      toast.success(`Team member ${member.isActive ? 'deactivated' : 'activated'} successfully.`);
       fetchTeam();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update status');
+      toast.error(err.response?.data?.message || 'Failed to update status');
     }
   };
 
@@ -190,12 +219,12 @@ const Team = () => {
     try {
       setSaving(true);
       await api.delete(`/company/${user.companyId}/team/${selectedMember._id}`);
-      setSuccess('Team member removed successfully');
+      toast.success('Team member removed successfully.');
       setShowDeleteModal(false);
       setSelectedMember(null);
       fetchTeam();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to remove team member');
+      toast.error(err.response?.data?.message || 'Failed to remove team member');
     } finally {
       setSaving(false);
     }
@@ -204,9 +233,9 @@ const Team = () => {
   const handleResendInvite = async (member) => {
     try {
       await api.post(`/company/${user.companyId}/team/${member._id}/resend-invite`);
-      setSuccess('Invitation resent successfully');
+      toast.success('Invitation resent successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to resend invitation');
+      toast.error(err.response?.data?.message || 'Failed to resend invitation');
     }
   };
 
@@ -235,25 +264,15 @@ const Team = () => {
       lastName: '',
       email: '',
       phone: '',
+      phoneCountryCode: 'IN',
       role: 'viewer',
       password: '',
       sendInvite: true
     });
     setSelectedMember(null);
     setFieldErrors({});
+    setShowPassword(false);
   };
-
-  const filteredTeam = team.filter(member => {
-    const matchesSearch = !search ||
-      member.firstName.toLowerCase().includes(search.toLowerCase()) ||
-      member.lastName.toLowerCase().includes(search.toLowerCase()) ||
-      member.email.toLowerCase().includes(search.toLowerCase());
-    const matchesRole = !roleFilter || member.role === roleFilter;
-    const matchesStatus = !statusFilter ||
-      (statusFilter === 'active' && member.isActive) ||
-      (statusFilter === 'inactive' && !member.isActive);
-    return matchesSearch && matchesRole && matchesStatus;
-  });
 
   if (loading) {
     return (
@@ -267,19 +286,11 @@ const Team = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Team" subtitle="Manage your team members" color={config.color}>
-      {/* Messages - Only show when no modals are open */}
-      {error && !showAddModal && !showEditModal && !showDeleteModal && (
-        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
-      )}
-      {success && (
-        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{success}</div>
-      )}
-
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <p className="text-xs sm:text-sm text-gray-500">Total Team</p>
-          <p className="text-xl sm:text-3xl font-bold text-gray-900 mt-1">{team.length}</p>
+          <p className="text-xl sm:text-3xl font-bold text-gray-900 mt-1">{pagination.total}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <p className="text-xs sm:text-sm text-gray-500">Active</p>
@@ -307,13 +318,28 @@ const Team = () => {
         <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-1">
-              <input
-                type="text"
-                placeholder="Search team..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="px-3 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm w-full sm:w-auto"
-              />
+              <div className="relative w-full sm:w-auto">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search team..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full sm:w-auto py-2 pl-10 pr-4 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               <div className="flex gap-2">
                 <select
                   value={roleFilter}
@@ -353,7 +379,8 @@ const Team = () => {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sr. No.</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team Member</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email Verified</th>
@@ -361,9 +388,9 @@ const Team = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredTeam.length === 0 ? (
+              {team.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
                     <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
@@ -371,8 +398,11 @@ const Team = () => {
                   </td>
                 </tr>
               ) : (
-                filteredTeam.map((member) => (
+                team.map((member, index) => (
                   <tr key={member._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {index + 1}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
@@ -408,35 +438,51 @@ const Team = () => {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={() => openEditModal(member)}
-                          className="px-3 py-1 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                          className="p-2 text-gray-400 hover:text-indigo-600"
+                          title="Edit"
                         >
-                          Edit
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
                         </button>
                         <button
                           onClick={() => handleToggleStatus(member)}
-                          className={`px-3 py-1 text-sm font-medium ${
-                            member.isActive ? 'text-yellow-600 hover:text-yellow-700' : 'text-green-600 hover:text-green-700'
-                          }`}
+                          className={`p-2 ${member.isActive ? 'text-gray-400 hover:text-yellow-600' : 'text-gray-400 hover:text-green-600'}`}
+                          title={member.isActive ? 'Deactivate' : 'Activate'}
                         >
-                          {member.isActive ? 'Deactivate' : 'Activate'}
+                          {member.isActive ? (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
                         </button>
                         {!member.isEmailVerified && (
                           <button
                             onClick={() => handleResendInvite(member)}
-                            className="px-3 py-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                            className="p-2 text-gray-400 hover:text-blue-600"
+                            title="Resend Invite"
                           >
-                            Resend
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
                           </button>
                         )}
-                        {member._id !== user._id && (
+                        {member._id !== user._id && member.role !== 'company_superadmin' && (
                           <button
                             onClick={() => openDeleteModal(member)}
-                            className="px-3 py-1 text-sm text-red-600 hover:text-red-700 font-medium"
+                            className="p-2 text-gray-400 hover:text-red-600"
+                            title="Remove"
                           >
-                            Remove
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
                           </button>
                         )}
                       </div>
@@ -450,7 +496,7 @@ const Team = () => {
 
         {/* Card View - Mobile */}
         <div className="md:hidden divide-y divide-gray-100">
-          {filteredTeam.length === 0 ? (
+          {team.length === 0 ? (
             <div className="p-6 text-center text-gray-500">
               <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -458,7 +504,7 @@ const Team = () => {
               <p>No team members found</p>
             </div>
           ) : (
-            filteredTeam.map((member) => (
+            team.map((member) => (
               <div key={member._id} className="p-4">
                 <div className="flex items-start gap-3 mb-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
@@ -484,35 +530,51 @@ const Team = () => {
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-1">
                   <button
                     onClick={() => openEditModal(member)}
-                    className="px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 rounded-lg"
+                    className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                    title="Edit"
                   >
-                    Edit
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
                   </button>
                   <button
                     onClick={() => handleToggleStatus(member)}
-                    className={`px-3 py-1.5 text-sm rounded-lg ${
-                      member.isActive ? 'text-yellow-600 bg-yellow-50' : 'text-green-600 bg-green-50'
-                    }`}
+                    className={`p-2 rounded-lg ${member.isActive ? 'text-gray-400 hover:text-yellow-600 hover:bg-yellow-50' : 'text-gray-400 hover:text-green-600 hover:bg-green-50'}`}
+                    title={member.isActive ? 'Deactivate' : 'Activate'}
                   >
-                    {member.isActive ? 'Deactivate' : 'Activate'}
+                    {member.isActive ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
                   </button>
                   {!member.isEmailVerified && (
                     <button
                       onClick={() => handleResendInvite(member)}
-                      className="px-3 py-1.5 text-sm text-blue-600 bg-blue-50 rounded-lg"
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                      title="Resend Invite"
                     >
-                      Resend
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
                     </button>
                   )}
-                  {member._id !== user._id && (
+                  {member._id !== user._id && member.role !== 'company_superadmin' && (
                     <button
                       onClick={() => openDeleteModal(member)}
-                      className="px-3 py-1.5 text-sm text-red-600 bg-red-50 rounded-lg"
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                      title="Remove"
                     >
-                      Remove
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
                     </button>
                   )}
                 </div>
@@ -520,17 +582,27 @@ const Team = () => {
             ))
           )}
         </div>
+
+        {/* Pagination */}
+        <div className="px-4 sm:px-6 py-4 border-t border-gray-200">
+          <Pagination
+            currentPage={page}
+            totalPages={pagination.pages}
+            total={pagination.total}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setPage}
+            onItemsPerPageChange={(newLimit) => {
+              setItemsPerPage(newLimit);
+              setPage(1);
+            }}
+          />
+        </div>
       </div>
 
       {/* Add Team Member Modal */}
-      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setError(''); setFieldErrors({}); }} title="Add Team Member" size="md">
-        <form onSubmit={handleAddMember}>
+      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); resetForm(); }} title="Add Team Member" size="md">
+        <form onSubmit={handleAddMember} noValidate>
           <ModalContent>
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                {error}
-              </div>
-            )}
             <FormRow cols={2}>
               <FormField label="First Name" required error={fieldErrors.firstName}>
                 <Input
@@ -551,26 +623,29 @@ const Team = () => {
                 />
               </FormField>
             </FormRow>
-            <FormField label="Email" required className="mt-4" error={fieldErrors.email}>
+            <FormField label="Email ID" required className="mt-4" error={fieldErrors.email}>
               <Input
                 type="email"
                 value={formData.email}
                 onChange={(e) => { setFormData({ ...formData, email: e.target.value }); if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' })); }}
                 maxLength={100}
                 required
+                placeholder="e.g., john.doe@company.com"
                 error={fieldErrors.email}
               />
             </FormField>
-            <FormField label="Phone" className="mt-4" error={fieldErrors.phone}>
-              <Input
-                type="tel"
+            <div className="mt-4">
+              <PhoneInput
                 value={formData.phone}
                 onChange={handlePhoneChange}
-                maxLength={16}
-                placeholder="10-digit mobile number"
+                countryCode={formData.phoneCountryCode}
+                onCountryChange={handlePhoneCountryChange}
                 error={fieldErrors.phone}
+                onError={handlePhoneError}
+                required={false}
+                label="Contact Number"
               />
-            </FormField>
+            </div>
             <FormField label="Role" required className="mt-4">
               <Select
                 value={formData.role}
@@ -582,15 +657,16 @@ const Team = () => {
                 {roleOptions.find(o => o.value === formData.role)?.description}
               </p>
             </FormField>
-            <FormField label="Password (optional)" className="mt-4" error={fieldErrors.password}>
+            <FormField label="Password" required className="mt-4" error={fieldErrors.password}>
               <div className="relative">
-                <Input
+                <input
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={(e) => { setFormData({ ...formData, password: e.target.value }); if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: '' })); }}
                   maxLength={128}
-                  placeholder="Leave empty to auto-generate (min 8 chars)"
-                  error={fieldErrors.password}
+                  required
+                  placeholder="Min 8 chars, uppercase, lowercase, number, special char"
+                  className={`w-full px-4 pr-10 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${fieldErrors.password ? 'border-red-300' : 'border-gray-200'}`}
                 />
                 <button
                   type="button"
@@ -610,13 +686,19 @@ const Team = () => {
                 </button>
               </div>
             </FormField>
-            <div className="mt-4">
-              <Checkbox
-                id="sendInvite"
-                label="Send invitation email to the user"
-                checked={formData.sendInvite}
-                onChange={(e) => setFormData({ ...formData, sendInvite: e.target.checked })}
-              />
+
+            <div className="col-span-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.sendInvite}
+                  onChange={(e) => setFormData({ ...formData, sendInvite: e.target.checked })}
+                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-700">
+                  Send invitation email with login credentials to the team member
+                </span>
+              </label>
             </div>
           </ModalContent>
           <ModalFooter>
@@ -631,14 +713,9 @@ const Team = () => {
       </Modal>
 
       {/* Edit Team Member Modal */}
-      <Modal isOpen={showEditModal} onClose={() => { setShowEditModal(false); setError(''); setFieldErrors({}); }} title="Edit Team Member" size="md">
-        <form onSubmit={handleEditMember}>
+      <Modal isOpen={showEditModal} onClose={() => { setShowEditModal(false); resetForm(); }} title="Edit Team Member" size="md">
+        <form onSubmit={handleEditMember} noValidate>
           <ModalContent>
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                {error}
-              </div>
-            )}
             <FormRow cols={2}>
               <FormField label="First Name" required error={fieldErrors.firstName}>
                 <Input
@@ -659,26 +736,29 @@ const Team = () => {
                 />
               </FormField>
             </FormRow>
-            <FormField label="Email" required className="mt-4" error={fieldErrors.email}>
+            <FormField label="Email ID" required className="mt-4" error={fieldErrors.email}>
               <Input
                 type="email"
                 value={formData.email}
                 onChange={(e) => { setFormData({ ...formData, email: e.target.value }); if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: '' })); }}
                 maxLength={100}
                 required
+                placeholder="e.g., john.doe@company.com"
                 error={fieldErrors.email}
               />
             </FormField>
-            <FormField label="Phone" className="mt-4" error={fieldErrors.phone}>
-              <Input
-                type="tel"
+            <div className="mt-4">
+              <PhoneInput
                 value={formData.phone}
                 onChange={handlePhoneChange}
-                maxLength={16}
-                placeholder="10-digit mobile number"
+                countryCode={formData.phoneCountryCode}
+                onCountryChange={handlePhoneCountryChange}
                 error={fieldErrors.phone}
+                onError={handlePhoneError}
+                required={false}
+                label="Contact Number"
               />
-            </FormField>
+            </div>
             <FormField label="Role" required className="mt-4">
               <Select
                 value={formData.role}
@@ -704,13 +784,8 @@ const Team = () => {
       </Modal>
 
       {/* Delete Confirmation Modal */}
-      <Modal isOpen={showDeleteModal} onClose={() => { setShowDeleteModal(false); setError(''); }} size="sm">
+      <Modal isOpen={showDeleteModal} onClose={() => { setShowDeleteModal(false); }} size="sm">
         <ModalContent>
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
-            </div>
-          )}
           <div className="text-center">
             <svg className="w-14 h-14 sm:w-16 sm:h-16 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -725,7 +800,7 @@ const Team = () => {
           </div>
         </ModalContent>
         <ModalFooter>
-          <ModalButton variant="secondary" onClick={() => { setShowDeleteModal(false); setError(''); }}>
+          <ModalButton variant="secondary" onClick={() => { setShowDeleteModal(false); }}>
             Cancel
           </ModalButton>
           <ModalButton variant="danger" loading={saving} onClick={handleDeleteMember}>

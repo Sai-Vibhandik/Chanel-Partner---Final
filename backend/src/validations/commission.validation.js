@@ -122,6 +122,7 @@ export const validateCommissionAction = [
     .trim()
     .isLength({ max: 500 }).withMessage('Override reason cannot exceed 500 characters'),
 
+  // Reason is validated in the controller for cancel action only
   body('reason')
     .optional()
     .trim()

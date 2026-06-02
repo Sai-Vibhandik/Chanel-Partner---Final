@@ -2,19 +2,22 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import { sidebarConfig } from '../../config/sidebar';
 import ExportButton from '../../components/common/ExportButton';
 import useDebounce from '../../hooks/useDebounce';
+import { formatCurrency } from '../../utils/currency';
+import { formatCurrencyExport } from '../../utils/export';
 
 const Properties = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [properties, setProperties] = useState([]);
   const [stats, setStats] = useState(null);
   const [limits, setLimits] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -50,7 +53,11 @@ const Properties = () => {
     { key: 'type', header: 'Type' },
     { key: 'location.city', header: 'City' },
     { key: 'location.state', header: 'State/Region' },
-    { key: 'pricing.basePrice', header: 'Price' },
+    {
+      key: 'pricing.basePrice',
+      header: 'Price',
+      format: (item) => item.pricing?.priceOnRequest ? 'Price on Request' : formatCurrencyExport(item.pricing?.basePrice, item.pricing?.currency)
+    },
     { key: 'details.bedrooms', header: 'Bedrooms' },
     { key: 'details.bathrooms', header: 'Bathrooms' },
     { key: 'details.builtUpArea', header: 'Area' },
@@ -76,7 +83,7 @@ const Properties = () => {
       const response = await api.get(`/properties?${params.toString()}`);
       setProperties(response.data.data.properties);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load properties');
+      toast.error(err.response?.data?.message || 'Failed to load properties');
     } finally {
       setLoading(false);
     }
@@ -142,24 +149,7 @@ const Properties = () => {
     if (property.pricing?.priceOnRequest) {
       return 'Price on Request';
     }
-    const symbol = property.pricing?.currency === 'AED' ? 'AED ' : '₹';
-    const price = property.pricing?.basePrice || 0;
-
-    if (property.region === 'dubai') {
-      if (price >= 1000000) {
-        return `${symbol}${(price / 1000000).toFixed(2)}M`;
-      } else if (price >= 1000) {
-        return `${symbol}${(price / 1000).toFixed(0)}K`;
-      }
-      return `${symbol}${price.toLocaleString()}`;
-    } else {
-      if (price >= 10000000) {
-        return `${symbol}${(price / 10000000).toFixed(2)} Cr`;
-      } else if (price >= 100000) {
-        return `${symbol}${(price / 100000).toFixed(2)} Lac`;
-      }
-      return `${symbol}${price.toLocaleString()}`;
-    }
+    return formatCurrency(property.pricing?.basePrice || 0, property.pricing?.currency || 'INR');
   };
 
   const getStatusBadge = (status) => {
@@ -180,11 +170,6 @@ const Properties = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Properties" subtitle="Manage your properties" color={config.color}>
-      {/* Error */}
-      {error && (
-        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
-      )}
-
       {/* Limit Warning */}
       {limitMessage && (
         <div className={`mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg ${
@@ -261,8 +246,18 @@ const Properties = () => {
                 placeholder="Search properties..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full py-2 pl-10 pr-4 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-sm"
+                className="w-full py-2 pl-10 pr-10 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-sm"
               />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
             <button
               onClick={handleAddProperty}
@@ -307,6 +302,14 @@ const Properties = () => {
               <option value="india">India</option>
               <option value="dubai">Dubai</option>
             </select>
+            {(statusFilter || typeFilter || regionFilter || search) && (
+              <button
+                onClick={() => { setStatusFilter(''); setTypeFilter(''); setRegionFilter(''); setSearch(''); }}
+                className="px-3 sm:px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Clear Filters
+              </button>
+            )}
             <ExportButton
               data={filteredProperties}
               columns={exportColumns}

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { sidebarConfig } from "../../config/sidebar";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import api from "../../utils/api";
 import {
   Twitter,
@@ -19,10 +20,9 @@ import {
 const LandingPageSettings = () => {
   const { user } = useAuth();
   const config = sidebarConfig.platform_admin;
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState("");
-  const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("hero");
 
   const [formData, setFormData] = useState({
@@ -166,7 +166,7 @@ const LandingPageSettings = () => {
         });
       }
     } catch (err) {
-      setError("Failed to load landing page settings");
+      toast.error("Failed to load landing page settings.");
     } finally {
       setLoading(false);
     }
@@ -175,12 +175,10 @@ const LandingPageSettings = () => {
   const handleSave = async () => {
     try {
       setSaving(true);
-      setError("");
-      setSuccess("");
       await api.put("/landing", formData);
-      setSuccess("Landing page updated successfully");
+      toast.success("Landing page updated successfully.");
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to update landing page");
+      toast.error(err.response?.data?.message || "Failed to update landing page.");
     } finally {
       setSaving(false);
     }
@@ -644,18 +642,6 @@ const LandingPageSettings = () => {
       subtitle="Manage your public landing page"
       color={config.color}
     >
-      {/* Messages */}
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-          {success}
-        </div>
-      )}
-
       {/* Tabs */}
       <div className="mb-6 border-b border-gray-200">
         <nav className="flex gap-4 -mb-px flex-wrap">

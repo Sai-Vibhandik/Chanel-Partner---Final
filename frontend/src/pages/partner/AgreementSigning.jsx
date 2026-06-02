@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 
 const AgreementSigning = () => {
@@ -11,21 +12,81 @@ const AgreementSigning = () => {
   const [searchParams] = useSearchParams();
   const partnershipId = searchParams.get('partnershipId');
   const config = sidebarConfig.partner;
+  const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Separate pending and signed agreements
   const [pendingAgreements, setPendingAgreements] = useState([]);
   const [signedAgreements, setSignedAgreements] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [typedName, setTypedName] = useState('');
+  const [signatureError, setSignatureError] = useState('');
+
+  // Validate signature name
+  const validateSignature = (name) => {
+    const trimmedName = name.trim();
+
+    // Check empty
+    if (!trimmedName) {
+      return 'Please type your name to sign.';
+    }
+
+    // Check minimum length (at least 2 characters for a valid name)
+    if (trimmedName.length < 2) {
+      return 'Name must be at least 2 characters long.';
+    }
+
+    // Check maximum length
+    if (trimmedName.length > 100) {
+      return 'Name must not exceed 100 characters.';
+    }
+
+    // Check for valid characters (letters, spaces, hyphens, apostrophes, and dots)
+    const validNameRegex = /^[a-zA-Z\s\-'.]+$/;
+    if (!validNameRegex.test(trimmedName)) {
+      return 'Name can only contain letters, spaces, hyphens, apostrophes, and periods.';
+    }
+
+    // Check for at least one letter
+    if (!/[a-zA-Z]/.test(trimmedName)) {
+      return 'Name must contain at least one letter.';
+    }
+
+    // Check for consecutive special characters
+    if (/[\-'.]{2,}/.test(trimmedName)) {
+      return 'Name contains invalid consecutive special characters.';
+    }
+
+    return null; // No error
+  };
+
+  const handleSignatureChange = (e) => {
+    let value = e.target.value;
+
+    // Only allow valid characters: letters, spaces, hyphens, apostrophes, and periods
+    value = value.replace(/[^a-zA-Z\s\-'.]/g, '');
+
+    // Enforce maximum length of 100 characters
+    if (value.length > 100) {
+      value = value.substring(0, 100);
+    }
+
+    setTypedName(value);
+
+    // Clear error when user starts typing valid input
+    if (signatureError && value.trim().length >= 2) {
+      const error = validateSignature(value);
+      if (!error) {
+        setSignatureError('');
+      }
+    }
+  };
 
   useEffect(() => {
     if (!partnershipId) {
-      setError('Partnership ID is required');
+      toast.error('Partnership ID is required.');
       setLoading(false);
       return;
     }
@@ -35,7 +96,6 @@ const AgreementSigning = () => {
   const fetchAgreements = async () => {
     try {
       setLoading(true);
-      setError('');
 
       const response = await api.get(`/agreements/partner/agreements?partnershipId=${partnershipId}`);
       const { agreements } = response.data.data;
@@ -51,15 +111,8 @@ const AgreementSigning = () => {
             ...agreement,
             status: 'signed'
           });
-        } else if (agreement.needsResign) {
-          // Needs to sign new version
-          pending.push({
-            ...agreement,
-            status: 'needs_resign',
-            previousVersion: agreement.previousVersion
-          });
         } else {
-          // Never signed
+          // All unsigned agreements are pending (no distinction for re-sign)
           pending.push({
             ...agreement,
             status: 'pending'
@@ -70,7 +123,7 @@ const AgreementSigning = () => {
       setPendingAgreements(pending);
       setSignedAgreements(signed);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load agreements');
+      toast.error(err.response?.data?.message || 'Failed to load agreements.');
     } finally {
       setLoading(false);
     }
@@ -79,43 +132,43 @@ const AgreementSigning = () => {
   const currentAgreement = pendingAgreements[currentIndex];
 
   const handleSign = async () => {
-    if (!typedName.trim()) {
-      setError('Please type your name to sign');
+    // Validate signature
+    const validationError = validateSignature(typedName);
+    if (validationError) {
+      setSignatureError(validationError);
       return;
     }
 
     if (!currentAgreement || !currentAgreement._id) {
-      setError('No agreement selected. Please try again.');
+      toast.error('No agreement selected. Please try again.');
       return;
     }
 
     try {
       setSubmitting(true);
-      setError('');
-      setSuccess('');
 
       await api.post(`/agreements/partner/agreements/${currentAgreement._id}/sign`, {
         partnershipId,
         typedName: typedName.trim()
       });
 
-      setSuccess(`"${currentAgreement.name}" signed successfully!`);
+      toast.success(`"${currentAgreement.name}" signed successfully!`);
       setTypedName('');
+      setSignatureError('');
 
       // Check if there are more agreements to sign
       if (currentIndex < pendingAgreements.length - 1) {
         // Move to next pending agreement
         setCurrentIndex(currentIndex + 1);
       } else {
-        // All pending agreements signed - clear success message and refresh
-        setSuccess('');
+        // All pending agreements signed - refresh
         await fetchAgreements();
         // After refresh, if no more pending, the component will show success screen
       }
     } catch (err) {
       console.error('Sign agreement error:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Failed to sign agreement. Please try again.';
-      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -217,20 +270,6 @@ const AgreementSigning = () => {
       subtitle={`Pending: ${pendingAgreements.length} agreement${pendingAgreements.length > 1 ? 's' : ''} to sign`}
       color={config.color}
     >
-      {/* Success Message */}
-      {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-          {success}
-        </div>
-      )}
-
-      {/* Error Message */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
-      )}
-
       {/* Progress */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
@@ -316,13 +355,39 @@ const AgreementSigning = () => {
               <input
                 type="text"
                 value={typedName}
-                onChange={(e) => setTypedName(e.target.value)}
+                onChange={handleSignatureChange}
+                onBlur={() => {
+                  if (typedName.trim()) {
+                    const error = validateSignature(typedName);
+                    if (error) setSignatureError(error);
+                  }
+                }}
                 placeholder="Enter your full legal name"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                maxLength={100}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
+                  signatureError
+                    ? 'border-red-300 focus:border-red-500'
+                    : 'border-gray-300 focus:border-indigo-500'
+                }`}
                 required
               />
-              <p className="mt-1 text-xs text-gray-500">
-                By typing your name, you agree that this electronic signature is as legally binding as a physical signature.
+              <div className="flex justify-between mt-1">
+                <div>
+                  {signatureError && (
+                    <p className="text-sm text-red-600">{signatureError}</p>
+                  )}
+                  {!signatureError && (
+                    <p className="text-xs text-gray-500">
+                      By typing your name, you agree that this electronic signature is as legally binding as a physical signature.
+                    </p>
+                  )}
+                </div>
+                <span className={`text-xs flex-shrink-0 ml-2 ${typedName.length > 100 ? 'text-red-500' : 'text-gray-400'}`}>
+                  {typedName.length}/100
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">
+                2-100 characters. Letters, spaces, hyphens, apostrophes, and periods allowed.
               </p>
             </div>
 
@@ -336,7 +401,7 @@ const AgreementSigning = () => {
               </button>
               <button
                 onClick={handleSign}
-                disabled={submitting || !typedName.trim()}
+                disabled={submitting}
                 className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? 'Signing...' : 'Sign & Continue'}

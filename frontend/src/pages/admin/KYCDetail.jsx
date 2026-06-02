@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api, { getDocumentViewUrl } from '../../utils/api';
 
 const KYCDetail = () => {
@@ -10,17 +11,17 @@ const KYCDetail = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const config = sidebarConfig[user?.role] || sidebarConfig.company_superadmin;
+  const toast = useToast();
 
   const [partner, setPartner] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Modal states
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [processing, setProcessing] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState(null);
 
@@ -31,7 +32,6 @@ const KYCDetail = () => {
   const fetchKYCDetails = async () => {
     try {
       setLoading(true);
-      setError('');
 
       const response = await api.get(`/partner-company/${partnershipId}/kyc`);
       const { kycSummary, partnership } = response.data.data;
@@ -51,7 +51,7 @@ const KYCDetail = () => {
         rejectionReason: doc.document?.rejectionReason
       })));
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load KYC details');
+      toast.error(err.response?.data?.message || 'Failed to load KYC details');
     } finally {
       setLoading(false);
     }
@@ -60,43 +60,47 @@ const KYCDetail = () => {
   const handleVerifyDocument = async (documentId) => {
     try {
       setProcessing(true);
-      setError('');
 
       await api.put(`/partner-company/${partnershipId}/kyc/${documentId}/verify`, {
         status: 'verified'
       });
 
-      setSuccess('Document verified successfully');
+      toast.success('Document verified successfully.');
       fetchKYCDetails();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to verify document');
+      toast.error(err.response?.data?.message || 'Failed to verify document');
     } finally {
       setProcessing(false);
     }
   };
 
   const handleRejectDocument = async () => {
+    // Validate rejection reason
+    const errors = {};
     if (!rejectReason.trim()) {
-      setError('Please provide a rejection reason');
+      errors.rejectReason = 'Please provide a rejection reason.';
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
     try {
       setProcessing(true);
-      setError('');
+      setFieldErrors({});
 
       await api.put(`/partner-company/${partnershipId}/kyc/${selectedDocId}/verify`, {
         status: 'rejected',
         reason: rejectReason.trim()
       });
 
-      setSuccess('Document rejected');
+      toast.success('Document rejected successfully.');
       setShowRejectModal(false);
       setRejectReason('');
       setSelectedDocId(null);
       fetchKYCDetails();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reject document');
+      toast.error(err.response?.data?.message || 'Failed to reject document');
     } finally {
       setProcessing(false);
     }
@@ -105,7 +109,6 @@ const KYCDetail = () => {
   const handleVerifyAll = async () => {
     try {
       setProcessing(true);
-      setError('');
 
       const pendingDocs = documents.filter(doc => doc.status === 'pending');
       await Promise.all(
@@ -116,10 +119,10 @@ const KYCDetail = () => {
         )
       );
 
-      setSuccess(`${pendingDocs.length} document(s) verified successfully`);
+      toast.success(`${pendingDocs.length} document(s) verified successfully.`);
       fetchKYCDetails();
     } catch (err) {
-      setError('Failed to verify all documents');
+      toast.error('Failed to verify all documents.');
     } finally {
       setProcessing(false);
     }
@@ -189,14 +192,6 @@ const KYCDetail = () => {
         </svg>
         <span>Back to KYC List</span>
       </button>
-
-      {/* Error/Success Messages */}
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
-      )}
-      {success && (
-        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{success}</div>
-      )}
 
       {/* Partner Info Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
@@ -295,9 +290,8 @@ const KYCDetail = () => {
               {documents.map((doc) => (
                 <tr key={doc.type} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">{doc.name}</span>
-                      {doc.required && <span className="text-red-500 text-sm">*</span>}
+                    <div className="flex items-center">
+                      <span className="font-medium text-gray-900">{doc.name}{doc.required && <span className="text-red-500 text-sm">*</span>}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -370,8 +364,7 @@ const KYCDetail = () => {
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
                   <h4 className="font-medium text-gray-900">
-                    {doc.name}
-                    {doc.required && <span className="text-red-500 ml-1">*</span>}
+                    {doc.name}{doc.required && <span className="text-red-500">*</span>}
                   </h4>
                   <div className="flex items-center gap-2 mt-1">
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -522,17 +515,28 @@ const KYCDetail = () => {
               </p>
               <textarea
                 value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
+                onChange={(e) => {
+                  setRejectReason(e.target.value);
+                  if (fieldErrors.rejectReason) {
+                    setFieldErrors(prev => ({ ...prev, rejectReason: '' }));
+                  }
+                }}
                 placeholder="e.g., Image is not clear, Document is expired, Wrong document type..."
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500/20 ${
+                  fieldErrors.rejectReason ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:border-red-500'
+                }`}
                 rows={3}
               />
+              {fieldErrors.rejectReason && (
+                <p className="text-sm text-red-600 mt-1">{fieldErrors.rejectReason}</p>
+              )}
             </div>
             <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
               <button
                 onClick={() => {
                   setShowRejectModal(false);
                   setRejectReason('');
+                  setFieldErrors({});
                 }}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
@@ -540,7 +544,7 @@ const KYCDetail = () => {
               </button>
               <button
                 onClick={handleRejectDocument}
-                disabled={processing || !rejectReason.trim()}
+                disabled={processing}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {processing ? 'Rejecting...' : 'Reject Document'}

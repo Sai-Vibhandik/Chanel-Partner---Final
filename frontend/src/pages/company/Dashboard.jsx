@@ -5,6 +5,7 @@ import { sidebarConfig } from '../../config/sidebar';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 import { StatCard, SubscriptionWarning } from '../../components/common';
+import { formatCurrency } from '../../utils/currency';
 
 const CompanyDashboard = () => {
   const { user } = useAuth();
@@ -199,7 +200,7 @@ const CompanyDashboard = () => {
           subtitle: activity.partner
             ? `Paid to ${activity.partner.firstName} ${activity.partner.lastName}`
             : 'Commission paid',
-          link: `/finance-manager/commissions/${activity.id}`
+          link: `/company/commissions/${activity.id}`
         };
       case 'visit_completed':
         return {
@@ -216,27 +217,6 @@ const CompanyDashboard = () => {
           link: '#'
         };
     }
-  };
-
-  const getCurrencySymbol = (currency) => {
-    const symbols = {
-      'INR': '₹',
-      'USD': '$',
-      'AED': 'د.إ',
-      'EUR': '€',
-      'GBP': '£'
-    };
-    return symbols[currency] || currency;
-  };
-
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = getCurrencySymbol(currency);
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${(amount || 0).toLocaleString()}`;
   };
 
   return (
@@ -297,7 +277,7 @@ const CompanyDashboard = () => {
           />
 
           <div
-            onClick={() => navigate('/finance-manager/commissions')}
+            onClick={() => navigate('/company/commissions')}
             className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5 cursor-pointer hover:shadow-md transition-shadow"
           >
             <div className="flex items-center gap-3 mb-3">

@@ -12,7 +12,8 @@ import {
   refreshToken,
   updateProfile,
   changePassword,
-  testEmail
+  testEmail,
+  checkEmailAvailability
 } from '../controllers/auth.controller.js';
 import { protect } from '../middlewares/auth.middleware.js';
 import {
@@ -57,6 +58,9 @@ router.post('/reset-password/:token', passwordResetLimiter, validateResetPasswor
 // Email verification - Moderate rate limiting + Validation
 router.post('/verify-email/:token', authLimiter, validateVerifyEmail, verifyEmail);
 router.post('/resend-verification', authLimiter, validateResendVerification, resendVerificationEmail);
+
+// Check email availability - for registration validation
+router.post('/check-email', authLimiter, checkEmailAvailability);
 
 // ============================================
 // PROTECTED ROUTES (Authentication required)

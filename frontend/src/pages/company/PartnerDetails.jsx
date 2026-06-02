@@ -1,24 +1,31 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 
 const PartnerDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const config = sidebarConfig.company_superadmin;
+  const toast = useToast();
   const [partnership, setPartnership] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [statusModal, setStatusModal] = useState(false);
   const [tierModal, setTierModal] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [newTier, setNewTier] = useState('');
   const [reason, setReason] = useState('');
   const [updating, setUpdating] = useState(false);
+
+  // Get the base path based on user role
+  const getBasePath = () => {
+    if (user?.role === 'partner_manager') {
+      return '/partner-manager/partners';
+    }
+    return '/company/partners';
+  };
 
   useEffect(() => {
     fetchPartnership();
@@ -27,11 +34,10 @@ const PartnerDetails = () => {
   const fetchPartnership = async () => {
     try {
       setLoading(true);
-      setError('');
       const response = await api.get(`/partner-company/${id}`);
       setPartnership(response.data.data.partnership);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partner details');
+      toast.error(err.response?.data?.message || 'Failed to load partner details');
     } finally {
       setLoading(false);
     }
@@ -44,12 +50,22 @@ const PartnerDetails = () => {
       setUpdating(true);
       await api.put(`/partner-company/${id}/status`, {
         status: newStatus,
-        adminNotes: reason
+        reason: reason
       });
       setStatusModal(false);
+      setReason('');
+
+      // Set success message based on status change
+      const statusMessages = {
+        pending: 'Partnership status changed to Pending. The partner will need to be approved again.',
+        active: 'Partnership has been approved successfully.',
+        suspended: 'Partnership has been suspended.'
+      };
+      toast.success(statusMessages[newStatus] || 'Status updated successfully.');
+
       fetchPartnership();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update status');
+      toast.error(err.response?.data?.message || 'Failed to update status');
     } finally {
       setUpdating(false);
     }
@@ -58,16 +74,32 @@ const PartnerDetails = () => {
   const handleTierUpdate = async () => {
     if (!newTier) return;
 
+    // Check if tier is the same as current tier
+    if (newTier === partnership?.tier) {
+      toast.info('No changes detected. Tier is already ' + newTier + '.');
+      setTierModal(false);
+      return;
+    }
+
     try {
       setUpdating(true);
       await api.put(`/partner-company/${id}/tier`, {
-        tier: newTier,
-        reason
+        tier: newTier
       });
       setTierModal(false);
+
+      // Set success message based on tier change
+      const tierNames = {
+        bronze: 'Bronze',
+        silver: 'Silver',
+        gold: 'Gold',
+        platinum: 'Platinum'
+      };
+      toast.success(`Partner tier updated to ${tierNames[newTier] || newTier}.`);
+
       fetchPartnership();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update tier');
+      toast.error(err.response?.data?.message || 'Failed to update tier');
     } finally {
       setUpdating(false);
     }
@@ -100,7 +132,7 @@ const PartnerDetails = () => {
 
   if (loading) {
     return (
-      <DashboardLayout sidebarLinks={config.links} title="Partner Details" subtitle="Loading..." color={config.color}>
+      <DashboardLayout title="Partner Details" subtitle="Loading...">
         <div className="flex items-center justify-center min-h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         </div>
@@ -108,13 +140,13 @@ const PartnerDetails = () => {
     );
   }
 
-  if (error && !partnership) {
+  if (!partnership) {
     return (
-      <DashboardLayout sidebarLinks={config.links} title="Partner Details" subtitle="Error" color={config.color}>
+      <DashboardLayout title="Partner Details" subtitle="Error">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <p className="text-red-700">{error}</p>
+          <p className="text-red-700">Failed to load partner details</p>
           <button
-            onClick={() => navigate('/company/partners')}
+            onClick={() => navigate(getBasePath())}
             className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
           >
             Back to Partners
@@ -125,7 +157,18 @@ const PartnerDetails = () => {
   }
 
   return (
-    <DashboardLayout sidebarLinks={config.links} title="Partner Details" subtitle={`${partner?.firstName} ${partner?.lastName}`} color={config.color}>
+    <DashboardLayout title="Partner Details" subtitle={`${partner?.firstName} ${partner?.lastName}`}>
+      {/* Back Button */}
+      <button
+        onClick={() => navigate(getBasePath())}
+        className="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Partners
+      </button>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div className="flex items-center gap-4">
@@ -155,7 +198,7 @@ const PartnerDetails = () => {
             Update Status
           </button>
           <button
-            onClick={() => { setNewTier(''); setReason(''); setTierModal(true); }}
+            onClick={() => { setNewTier(partnership?.tier || 'bronze'); setTierModal(true); }}
             className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
           >
             Change Tier
@@ -199,12 +242,15 @@ const PartnerDetails = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Information</h3>
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-gray-500">Company Name</p>
+              <p className="text-sm text-gray-500">Company/Business Name</p>
               <p className="text-gray-900">{partner?.partnerProfile?.companyName || '-'}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Company Type</p>
-              <p className="text-gray-900 capitalize">{partner?.partnerProfile?.companyType?.replace('_', ' ') || '-'}</p>
+              <p className="text-sm text-gray-500">Business Type</p>
+              <p className="text-gray-900">{(() => {
+                const types = { 'individual': 'Individual', 'proprietorship': 'Proprietorship', 'partnership': 'Partnership', 'llp': 'LLP', 'pvtltd': 'Pvt Ltd', 'freelancer': 'Freelancer' };
+                return types[partner?.partnerProfile?.companyType] || partner?.partnerProfile?.companyType?.replace('_', ' ') || '-';
+              })()}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Operating Region</p>
@@ -258,11 +304,9 @@ const PartnerDetails = () => {
                 >
                   <option value="">Select status</option>
                   <option value="pending">Pending</option>
-                  <option value="under_review">Under Review</option>
-                  <option value="approved">Approved</option>
                   <option value="active">Active</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="suspended">Suspended</option>
+                  <option value="suspended">Suspend</option>
+                  <option value="rejected">Reject</option>
                 </select>
               </div>
               <div>
@@ -271,9 +315,11 @@ const PartnerDetails = () => {
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  maxLength={500}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                   placeholder="Enter reason or notes..."
                 />
+                <p className="text-xs text-gray-500 mt-1">{reason.length}/500 characters</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
@@ -309,21 +355,11 @@ const PartnerDetails = () => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select tier</option>
-                  <option value="bronze">Bronze (30% commission)</option>
-                  <option value="silver">Silver (40% commission)</option>
-                  <option value="gold">Gold (50% commission)</option>
-                  <option value="platinum">Platinum (60% commission)</option>
+                  <option value="bronze">Bronze ({partnership?.companyId?.settings?.tierPercentages?.bronze || 25}% commission)</option>
+                  <option value="silver">Silver ({partnership?.companyId?.settings?.tierPercentages?.silver || 35}% commission)</option>
+                  <option value="gold">Gold ({partnership?.companyId?.settings?.tierPercentages?.gold || 50}% commission)</option>
+                  <option value="platinum">Platinum ({partnership?.companyId?.settings?.tierPercentages?.platinum || 75}% commission)</option>
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Reason (optional)</label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter reason for tier change..."
-                />
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">

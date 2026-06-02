@@ -89,6 +89,7 @@ import CompanyChat from './pages/company/Chat';
 import LoginLogs from './pages/company-superadmin/LoginLogs';
 import Analytics from './pages/company/Analytics';
 import EmailLogs from './pages/company/EmailLogs';
+import ActivityLog from './pages/company/ActivityLog';
 import PartnerManagerChat from './pages/partner-manager/Chat';
 
 // Protected Route Component
@@ -439,6 +440,38 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/company/activity-log"
+        element={
+          <ProtectedRoute allowedRoles={['company_superadmin']}>
+            <ActivityLog />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/company/commissions"
+        element={
+          <ProtectedRoute allowedRoles={['company_superadmin']}>
+            <FinanceManagerCommissions />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/company/commissions/new"
+        element={
+          <ProtectedRoute allowedRoles={['company_superadmin']}>
+            <FinanceManagerCommissionForm />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/company/commissions/:id"
+        element={
+          <ProtectedRoute allowedRoles={['company_superadmin']}>
+            <FinanceManagerCommissionDetails />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Partner Manager Routes */}
       <Route
@@ -461,15 +494,7 @@ function App() {
         path="/partner-manager/partners/:id"
         element={
           <ProtectedRoute allowedRoles={['partner_manager']}>
-            <PartnerManagerPartnerDetails />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/partner-manager/partnership/:id"
-        element={
-          <ProtectedRoute allowedRoles={['partner_manager']}>
-            <PartnerManagerPartnershipDetails />
+            <CompanyPartnerDetails />
           </ProtectedRoute>
         }
       />
@@ -510,6 +535,62 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={['partner_manager']}>
             <PartnerManagerReports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/partner-manager/commissions"
+        element={
+          <ProtectedRoute allowedRoles={['partner_manager']}>
+            <FinanceManagerCommissions />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/partner-manager/commissions/new"
+        element={
+          <ProtectedRoute allowedRoles={['partner_manager']}>
+            <FinanceManagerCommissionForm />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/partner-manager/commissions/:id"
+        element={
+          <ProtectedRoute allowedRoles={['partner_manager']}>
+            <FinanceManagerCommissionDetails />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/partner-manager/kyc-verification"
+        element={
+          <ProtectedRoute allowedRoles={['partner_manager']}>
+            <KYCVerification />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/partner-manager/kyc-verification/:partnershipId"
+        element={
+          <ProtectedRoute allowedRoles={['partner_manager']}>
+            <KYCDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/partner-manager/signed-agreements"
+        element={
+          <ProtectedRoute allowedRoles={['partner_manager']}>
+            <SignedAgreements />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/partner-manager/signed-agreements/:partnershipId"
+        element={
+          <ProtectedRoute allowedRoles={['partner_manager']}>
+            <AgreementDetail />
           </ProtectedRoute>
         }
       />

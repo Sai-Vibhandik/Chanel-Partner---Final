@@ -104,7 +104,13 @@ export const uploadDocument = async (req, res, next) => {
     }
 
     const file = req.files.file;
-    const folder = req.body.folder || 'documents';
+    const folder = (req.body && req.body.folder) || 'documents';
+
+    // Validate file size (10MB max for Cloudinary free tier)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      throw new ApiError(400, 'File size exceeds 10MB limit. Please upload a smaller file.');
+    }
 
     // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
@@ -186,7 +192,7 @@ export const uploadImage = async (req, res, next) => {
       tempFilePath: file.tempFilePath
     });
 
-    const folder = req.body.folder || 'images';
+    const folder = (req.body && req.body.folder) || 'images';
 
     // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];

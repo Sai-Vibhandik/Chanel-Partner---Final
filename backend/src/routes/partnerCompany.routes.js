@@ -6,11 +6,13 @@ import {
   getPartnership,
   updatePartnershipStatus,
   updatePartnershipTier,
+  updatePartnerRegions,
   uploadKYCForPartnership,
   getKYCForPartnership,
   verifyKYCForPartnership,
   getKYCReviews,
   leaveCompany,
+  withdrawPartnershipRequest,
   getPerformanceReport,
   getCommissionReport,
   getDashboardActivity
@@ -32,6 +34,12 @@ router.get('/my-companies', restrictTo('partner'), getMyCompanies);
 
 // Partner uploads KYC for a partnership
 router.post('/:id/kyc', restrictTo('partner'), uploadKYCForPartnership);
+
+// Partner updates their operating regions
+router.put('/:id/regions', restrictTo('partner'), updatePartnerRegions);
+
+// Partner withdraws a pending partnership request
+router.delete('/:id/withdraw', restrictTo('partner'), withdrawPartnershipRequest);
 
 // Partner leaves a company
 router.delete('/:id/leave', restrictTo('partner'), leaveCompany);

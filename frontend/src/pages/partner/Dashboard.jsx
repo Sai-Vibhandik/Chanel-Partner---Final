@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
 
 const PartnerDashboard = () => {
   const { user } = useAuth();
@@ -51,11 +52,11 @@ const PartnerDashboard = () => {
       try {
         const visitsRes = await api.get('/visits/my');
         const visits = visitsRes.data.data?.visits || [];
-        // Count upcoming visits (pending and scheduled)
-        totalVisits = visits.filter(v => v.status === 'pending' || v.status === 'scheduled').length;
-        // Get upcoming visits (next 5)
+        // Count upcoming visits (only approved/scheduled)
+        totalVisits = visits.filter(v => v.status === 'approved' || v.status === 'scheduled').length;
+        // Get upcoming visits (only approved/scheduled - pending visits are not confirmed)
         const upcoming = visits
-          .filter(v => v.status === 'pending' || v.status === 'scheduled' || v.status === 'completed')
+          .filter(v => v.status === 'approved' || v.status === 'scheduled')
           .sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate))
           .slice(0, 5);
         setUpcomingVisits(upcoming);
@@ -103,18 +104,8 @@ const PartnerDashboard = () => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount?.toLocaleString() || '0'}`;
-  };
-
   const getCurrencyLabel = (currency) => {
-    return currency === 'INR' ? '₹' : 'AED';
+    return currency === 'INR' ? '₹ (INR)' : 'AED';
   };
 
   const tierColors = {
@@ -124,11 +115,23 @@ const PartnerDashboard = () => {
     platinum: { bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-800', badge: 'bg-purple-100 text-purple-800', emoji: '💎' }
   };
 
-  const tierCommissionRates = {
-    bronze: '30%',
-    silver: '40%',
-    gold: '50%',
-    platinum: '60%'
+  const getTierCommission = (tier, company) => {
+    const percentages = {
+      bronze: company?.settings?.tierPercentages?.bronze || 25,
+      silver: company?.settings?.tierPercentages?.silver || 35,
+      gold: company?.settings?.tierPercentages?.gold || 50,
+      platinum: company?.settings?.tierPercentages?.platinum || 75
+    };
+    return `${percentages[tier] || percentages.bronze}%`;
+  };
+
+  const formatTimeDisplay = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
   };
 
   return (
@@ -197,7 +200,7 @@ const PartnerDashboard = () => {
                   <div className="mt-3 pt-3 border-t border-gray-200">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-500">Commission Rate</span>
-                      <span className="font-semibold text-gray-900">{tierCommissionRates[tier]}</span>
+                      <span className="font-semibold text-gray-900">{getTierCommission(tier, company)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm mt-1">
                       <span className="text-gray-500">Status</span>
@@ -399,15 +402,17 @@ const PartnerDashboard = () => {
                       })}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {visit.scheduledTime || visit.time || ''}
+                      {formatTimeDisplay(visit.scheduledTime || visit.time)}
                     </p>
                     <span className={`inline-block px-2 py-0.5 text-xs rounded-full mt-1 ${
-                      visit.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
+                      visit.status === 'approved' || visit.status === 'scheduled' ? 'bg-green-100 text-green-800' :
                       visit.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      visit.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      visit.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                      visit.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                      visit.status === 'cancelled' ? 'bg-gray-100 text-gray-800' :
                       'bg-gray-100 text-gray-800'
                     }`}>
-                      {visit.status}
+                      {visit.status === 'approved' ? 'Confirmed' : visit.status}
                     </span>
                   </div>
                 </div>
@@ -440,11 +445,6 @@ const PartnerDashboard = () => {
               {recentCommissions.map((commission) => {
                 const amount = commission.commission?.calculatedAmount || 0;
                 const currency = commission.commission?.currency || commission.currency || 'INR';
-                const formattedAmount = currency === 'AED'
-                  ? `AED ${(amount / 1000).toFixed(1)}K`
-                  : amount >= 100000
-                    ? `₹${(amount / 100000).toFixed(1)} Lac`
-                    : `₹${amount.toLocaleString()}`;
 
                 return (
                   <div
@@ -462,7 +462,7 @@ const PartnerDashboard = () => {
                     </div>
                     <div className="text-right ml-4">
                       <p className="font-semibold text-gray-900">
-                        {formattedAmount}
+                        {formatCurrency(amount, currency)}
                       </p>
                       <p className="text-xs text-gray-500">
                         {new Date(commission.createdAt).toLocaleDateString('en-IN', {

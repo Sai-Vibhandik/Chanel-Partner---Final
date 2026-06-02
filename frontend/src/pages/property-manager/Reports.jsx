@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import Pagination from '../../components/common/Pagination';
 
 const Reports = () => {
   const config = sidebarConfig.property_manager;
@@ -16,7 +17,7 @@ const Reports = () => {
 
   // Pagination
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Filters
   const [period, setPeriod] = useState('month');
@@ -29,7 +30,7 @@ const Reports = () => {
     } else {
       fetchAnalytics();
     }
-  }, [activeTab, period, sortBy, sortOrder, page]);
+  }, [activeTab, period, sortBy, sortOrder, page, itemsPerPage]);
 
   const fetchPerformanceReport = async () => {
     try {
@@ -39,7 +40,7 @@ const Reports = () => {
       params.append('sortBy', sortBy);
       params.append('sortOrder', sortOrder);
       params.append('page', page);
-      params.append('limit', limit);
+      params.append('limit', itemsPerPage);
 
       const response = await api.get(`/properties/reports/performance?${params.toString()}`);
       setPerformanceData(response.data?.data);
@@ -170,6 +171,7 @@ const Reports = () => {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sr. No.</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Property</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -182,12 +184,15 @@ const Reports = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {properties.map((property) => (
+                  {properties.map((property, index) => (
                     <tr
                       key={property._id}
                       className="hover:bg-gray-50 cursor-pointer"
                       onClick={() => navigate(`/property-manager/properties/${property._id}`)}
                     >
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {(page - 1) * itemsPerPage + index + 1}
+                      </td>
                       <td className="px-4 py-3">
                         <div>
                           <p className="font-medium text-gray-900">{property.name}</p>
@@ -230,31 +235,15 @@ const Reports = () => {
             </div>
           )}
           {/* Pagination */}
-          {pagination && pagination.pages > 1 && (
-            <div className="p-4 border-t border-gray-100 flex items-center justify-between">
-              <p className="text-sm text-gray-500">
-                Showing {((pagination.page - 1) * limit) + 1} to {Math.min(pagination.page * limit, pagination.total)} of {pagination.total} properties
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Previous
-                </button>
-                <span className="px-3 py-1 text-sm text-gray-600">
-                  Page {pagination.page} of {pagination.pages}
-                </span>
-                <button
-                  onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
-                  disabled={page === pagination.pages}
-                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+          {pagination && pagination.total > 0 && (
+            <Pagination
+              currentPage={page}
+              totalPages={pagination.pages}
+              total={pagination.total}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setPage}
+              onItemsPerPageChange={(newLimit) => { setItemsPerPage(newLimit); setPage(1); }}
+            />
           )}
         </div>
       </div>

@@ -800,6 +800,7 @@ export const getPropertyReports = async (req, res, next) => {
       activeProperties,
       draftProperties,
       soldProperties,
+      offMarketProperties,
       byType,
       byStatus,
       byRegion,
@@ -819,6 +820,8 @@ export const getPropertyReports = async (req, res, next) => {
       Property.countDocuments({ companyId, status: 'draft' }),
       // Sold
       Property.countDocuments({ companyId, status: 'sold_out' }),
+      // Off Market
+      Property.countDocuments({ companyId, status: 'off_market' }),
       // By type
       Property.aggregate([
         { $match: { companyId } },
@@ -914,6 +917,7 @@ export const getPropertyReports = async (req, res, next) => {
           active: activeProperties,
           draft: draftProperties,
           sold: soldProperties,
+          offMarket: offMarketProperties,
           newThisPeriod: newProperties,
           change
         },
@@ -977,7 +981,7 @@ export const getCommissionReports = async (req, res, next) => {
         { $match: { companyId } },
         {
           $group: {
-            _id: { status: '$status', currency: '$commission.currency' },
+            _id: { status: '$status', currency: { $ifNull: ['$commission.currency', 'INR'] } },
             count: { $sum: 1 },
             total: { $sum: '$commission.calculatedAmount' }
           }
@@ -991,7 +995,7 @@ export const getCommissionReports = async (req, res, next) => {
       // By currency
       Commission.aggregate([
         { $match: { companyId } },
-        { $group: { _id: '$commission.currency', count: { $sum: 1 }, total: { $sum: '$commission.calculatedAmount' } } }
+        { $group: { _id: { $ifNull: ['$commission.currency', 'INR'] }, count: { $sum: 1 }, total: { $sum: '$commission.calculatedAmount' } } }
       ]),
       // Trends over time
       Commission.aggregate([
@@ -1048,7 +1052,7 @@ export const getCommissionReports = async (req, res, next) => {
       : (totalCommissions > 0 ? 100 : 0);
 
     // Format status data
-    const statusData = { pending: { count: 0, amount: 0 }, approved: { count: 0, amount: 0 }, paid: { count: 0, amount: 0 }, rejected: { count: 0, amount: 0 } };
+    const statusData = { pending: { count: 0, amount: 0 }, approved: { count: 0, amount: 0 }, paid: { count: 0, amount: 0 }, cancelled: { count: 0, amount: 0 } };
     byStatus.forEach(item => {
       if (item._id && statusData.hasOwnProperty(item._id)) {
         statusData[item._id] = { count: item.count, amount: item.total || 0 };
@@ -1058,12 +1062,13 @@ export const getCommissionReports = async (req, res, next) => {
     // Format status by currency data
     const statusByCurrency = {};
     const currencies = [...new Set(byStatusByCurrency.map(item => item._id?.currency).filter(Boolean))];
+    if (currencies.length === 0) currencies.push('INR');
     currencies.forEach(currency => {
       statusByCurrency[currency] = {
         pending: { count: 0, amount: 0 },
         approved: { count: 0, amount: 0 },
         paid: { count: 0, amount: 0 },
-        rejected: { count: 0, amount: 0 }
+        cancelled: { count: 0, amount: 0 }
       };
     });
     byStatusByCurrency.forEach(item => {
@@ -1089,6 +1094,10 @@ export const getCommissionReports = async (req, res, next) => {
         currencyData[item._id] = { count: item.count, amount: item.total || 0 };
       }
     });
+    // Ensure INR has a default entry if no currency data exists
+    if (Object.keys(currencyData).length === 0) {
+      currencyData['INR'] = { count: 0, amount: 0 };
+    }
 
     // Calculate totals per currency
     const summaryByCurrency = {};
@@ -1098,7 +1107,8 @@ export const getCommissionReports = async (req, res, next) => {
         totalAmount: (statusData.paid?.amount || 0) + (statusData.approved?.amount || 0) + (statusData.pending?.amount || 0),
         pendingAmount: statusData.pending?.amount || 0,
         paidAmount: statusData.paid?.amount || 0,
-        approvedAmount: statusData.approved?.amount || 0
+        approvedAmount: statusData.approved?.amount || 0,
+        cancelledAmount: statusData.cancelled?.amount || 0
       };
     });
 
@@ -1126,6 +1136,64 @@ export const getCommissionReports = async (req, res, next) => {
       .limit(100)
       .lean();
 
+    // Get top partners with separate approved and paid amounts
+    const topPartnersWithBreakdown = await Commission.aggregate([
+      { $match: { companyId, status: { $in: ['approved', 'paid'] } } },
+      {
+        $group: {
+          _id: { partner: '$partner', status: '$status' },
+          amount: { $sum: '$commission.calculatedAmount' },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.partner',
+          approvedAmount: {
+            $sum: { $cond: [{ $eq: ['$_id.status', 'approved'] }, '$amount', 0] }
+          },
+          approvedCount: {
+            $sum: { $cond: [{ $eq: ['$_id.status', 'approved'] }, '$count', 0] }
+          },
+          paidAmount: {
+            $sum: { $cond: [{ $eq: ['$_id.status', 'paid'] }, '$amount', 0] }
+          },
+          paidCount: {
+            $sum: { $cond: [{ $eq: ['$_id.status', 'paid'] }, '$count', 0] }
+          }
+        }
+      },
+      {
+        $addFields: {
+          totalAmount: { $add: ['$approvedAmount', '$paidAmount'] },
+          totalCount: { $add: ['$approvedCount', '$paidCount'] }
+        }
+      },
+      { $sort: { totalAmount: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'partnerInfo'
+        }
+      },
+      { $unwind: '$partnerInfo' },
+      {
+        $project: {
+          partnerId: '$_id',
+          name: { $concat: ['$partnerInfo.firstName', ' ', '$partnerInfo.lastName'] },
+          approvedAmount: 1,
+          approvedCount: 1,
+          paidAmount: 1,
+          paidCount: 1,
+          totalAmount: 1,
+          totalCount: 1
+        }
+      }
+    ]);
+
     res.json({
       success: true,
       data: {
@@ -1134,7 +1202,9 @@ export const getCommissionReports = async (req, res, next) => {
           change,
           totalAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.totalAmount, 0),
           pendingAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.pendingAmount, 0),
-          paidAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.paidAmount, 0)
+          approvedAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.approvedAmount, 0),
+          paidAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.paidAmount, 0),
+          cancelledAmount: Object.values(summaryByCurrency).reduce((sum, s) => sum + s.cancelledAmount, 0)
         },
         summaryByCurrency,
         activeCurrencies: currencies.length > 0 ? currencies : ['INR'],
@@ -1143,7 +1213,7 @@ export const getCommissionReports = async (req, res, next) => {
         byTier: tierData,
         byCurrency: currencyData,
         trends: formattedTrends,
-        topPartners: topPartnersData,
+        topPartners: topPartnersWithBreakdown,
         records,
         period: {
           start: startDate,

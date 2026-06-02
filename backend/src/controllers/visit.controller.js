@@ -5,8 +5,9 @@ import Company from '../models/Company.js';
 import Commission from '../models/Commission.js';
 import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
-import { sendVisitApprovedEmail, sendVisitRejectedEmail } from '../services/email.service.js';
+import { sendVisitApprovedEmail, sendVisitRejectedEmail, sendPartnerVisitCancelledEmail } from '../services/email.service.js';
 import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
 // Default tier percentages (what % of property's base commission each tier gets)
 const DEFAULT_TIER_PERCENTAGES = {
@@ -56,7 +57,7 @@ const calculateCommission = async (salePrice, partnerTier, companyId, propertyBa
  */
 export const getMyVisits = async (req, res, next) => {
   try {
-    const { status, upcoming, page = 1, limit = 10 } = req.query;
+    const { status, upcoming, page = 1, limit = 50 } = req.query;
 
     const query = { partner: req.user._id };
 
@@ -73,7 +74,7 @@ export const getMyVisits = async (req, res, next) => {
       .populate('property', 'name type region location pricing images')
       .populate('companyId', 'name logo address')
       .populate('officeLocation', 'name address phone email')
-      .sort({ scheduledDate: 1, scheduledTime: 1 })
+      .sort({ scheduledDate: -1, scheduledTime: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
@@ -255,6 +256,23 @@ export const bookVisit = async (req, res, next) => {
       console.error('Failed to send visit notification:', notifError.message);
     }
 
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: partnership.companyId,
+      action: ActionTypes.VISIT_SCHEDULED,
+      resourceType: ResourceTypes.VISIT,
+      resourceId: visit._id,
+      resourceTitle: `Visit to ${property.name}`,
+      details: {
+        propertyName: property.name,
+        visitType: visitType,
+        scheduledDate: scheduledDate,
+        scheduledTime: scheduledTime
+      },
+      ...getRequestMetadata(req)
+    });
+
     res.status(201).json({
       success: true,
       message: 'Visit booked successfully',
@@ -275,7 +293,7 @@ export const getVisit = async (req, res, next) => {
     const visit = await Visit.findById(req.params.id)
       .populate('property')
       .populate('partner', 'firstName lastName email phone partnerProfile')
-      .populate('companyId', 'name logo address')
+      .populate('companyId', 'name logo address phone email website')
       .populate('handledBy', 'firstName lastName')
       .populate('officeLocation', 'name address phone email googleMapsUrl operatingHours');
 
@@ -360,13 +378,15 @@ export const cancelVisit = async (req, res, next) => {
   try {
     const { reason } = req.body || {};
 
-    const visit = await Visit.findById(req.params.id);
+    const visit = await Visit.findById(req.params.id)
+      .populate('partner', 'firstName lastName email')
+      .populate('property', 'name location');
 
     if (!visit) {
       throw new ApiError(404, 'Visit not found');
     }
 
-    if (visit.partner.toString() !== req.user._id.toString()) {
+    if (visit.partner._id.toString() !== req.user._id.toString()) {
       throw new ApiError(403, 'Access denied');
     }
 
@@ -375,9 +395,63 @@ export const cancelVisit = async (req, res, next) => {
       throw new ApiError(400, 'Cannot cancel this visit');
     }
 
+    const cancellationReason = reason || 'Cancelled by partner';
+
     visit.status = 'cancelled';
-    visit.cancellationReason = reason || 'Cancelled by partner';
+    visit.cancellationReason = cancellationReason;
     await visit.save();
+
+    // Get company info
+    const company = await Company.findById(visit.companyId);
+
+    // Get company users to notify (operations managers, partner managers, company superadmins)
+    const companyUsers = await User.find({
+      companyId: visit.companyId,
+      role: { $in: ['operations_manager', 'partner_manager', 'company_superadmin'] }
+    });
+
+    // Create notifications for company users
+    if (companyUsers.length > 0) {
+      const partnerName = `${visit.partner.firstName} ${visit.partner.lastName}`;
+      const propertyName = visit.property?.name || 'Property';
+      const visitDate = new Date(visit.scheduledDate).toLocaleDateString();
+
+      await createNotificationsForRecipients({
+        recipientIds: companyUsers.map(u => u._id),
+        type: 'visit_cancelled',
+        title: 'Visit Cancelled',
+        message: `${partnerName} has cancelled their visit to "${propertyName}" scheduled for ${visitDate}.${cancellationReason ? ` Reason: ${cancellationReason}` : ''}`,
+        data: {
+          visitId: visit._id,
+          propertyId: visit.property?._id,
+          companyId: visit.companyId
+        },
+        link: '/operations/visits'
+      }).catch(err => console.error('Failed to create visit cancellation notification:', err));
+
+      // Send email notifications to company users
+      for (const companyUser of companyUsers) {
+        if (companyUser.email) {
+          sendPartnerVisitCancelledEmail(companyUser, visit, visit.partner, visit.property, company, cancellationReason)
+            .catch(err => console.error(`Failed to send cancellation email to ${companyUser.email}:`, err));
+        }
+      }
+    }
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: visit.companyId,
+      action: ActionTypes.VISIT_CANCELLED,
+      resourceType: ResourceTypes.VISIT,
+      resourceId: visit._id,
+      resourceTitle: `Visit to ${visit.property?.name || 'Property'}`,
+      details: {
+        propertyName: visit.property?.name,
+        cancellationReason: cancellationReason
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
@@ -608,6 +682,22 @@ export const approveVisit = async (req, res, next) => {
       });
     }
 
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: visit.companyId,
+      action: ActionTypes.VISIT_CONFIRMED,
+      resourceType: ResourceTypes.VISIT,
+      resourceId: visit._id,
+      resourceTitle: `Visit to ${visit.property?.name || 'Property'}`,
+      details: {
+        propertyName: visit.property?.name,
+        partnerName: `${visit.partner?.firstName} ${visit.partner?.lastName}`,
+        scheduledDate: visit.scheduledDate
+      },
+      ...getRequestMetadata(req)
+    });
+
     res.status(200).json({
       success: true,
       message: 'Visit approved successfully',
@@ -739,6 +829,21 @@ export const completeVisit = async (req, res, next) => {
     await PartnerCompany.findByIdAndUpdate(visit.partnershipId, {
       $inc: { 'stats.totalVisits': 1 },
       'stats.lastVisitAt': new Date()
+    });
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: visit.companyId,
+      action: ActionTypes.VISIT_COMPLETED,
+      resourceType: ResourceTypes.VISIT,
+      resourceId: visit._id,
+      resourceTitle: `Visit to ${visit.property?.name || 'Property'}`,
+      details: {
+        propertyName: visit.property?.name,
+        completionNotes: completionNotes
+      },
+      ...getRequestMetadata(req)
     });
 
     res.status(200).json({

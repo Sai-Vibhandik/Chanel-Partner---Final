@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { validateEmail, validatePhone, validateName, validatePassword, handlePhoneInput } from '../../utils/validation';
+import { validateEmail, validateName, validatePassword, validatePhoneWithCountry } from '../../utils/validation';
+import PhoneInput from '../../components/common/PhoneInput';
+import api from '../../utils/api';
+import { Loader2 } from 'lucide-react';
 
 const RegisterPartner = () => {
   const [formData, setFormData] = useState({
@@ -11,13 +14,16 @@ const RegisterPartner = () => {
     firstName: '',
     lastName: '',
     phone: '',
+    phoneCountryCode: 'IN',
     companyName: '',
     companyType: 'individual',
-    operatingRegion: 'india'
+    operatingRegion: 'india',
+    website: ''
   });
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
@@ -27,17 +33,26 @@ const RegisterPartner = () => {
 
   // Helper to extract validation errors from API response
   const getValidationErrors = (err) => {
-    const errors = err.response?.data?.errors;
-    if (errors && Array.isArray(errors) && errors.length > 0) {
+    const errorData = err.response?.data;
+
+    // Check for validation errors array
+    if (errorData?.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
       const fieldErrs = {};
-      errors.forEach(e => {
+      const messages = [];
+      errorData.errors.forEach(e => {
         if (e.field) {
-          fieldErrs[e.field] = e.message;
+          // Clean up field name (remove any path prefixes)
+          const fieldName = e.field.split('.').pop();
+          fieldErrs[fieldName] = e.message;
+        } else {
+          messages.push(e.message);
         }
       });
-      return { fieldErrors: fieldErrs, message: errors.map(e => e.message).join(', ') };
+      return { fieldErrors: fieldErrs, message: messages.length > 0 ? messages.join('. ') : '' };
     }
-    return { fieldErrors: {}, message: err.response?.data?.message || 'Registration failed. Please try again.' };
+
+    // Check for simple error message
+    return { fieldErrors: {}, message: errorData?.message || err.message || 'Registration failed. Please try again.' };
   };
 
   const handleChange = (e) => {
@@ -53,8 +68,7 @@ const RegisterPartner = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handlePhoneChange = (e) => {
-    const value = handlePhoneInput(e, null, null);
+  const handlePhoneChange = (value) => {
     setFormData(prev => ({ ...prev, phone: value }));
     if (fieldErrors.phone) {
       setFieldErrors(prev => {
@@ -65,29 +79,64 @@ const RegisterPartner = () => {
     }
   };
 
-  const validateForm = () => {
+  const handlePhoneCountryChange = (countryCode) => {
+    setFormData(prev => ({ ...prev, phoneCountryCode: countryCode }));
+  };
+
+  const handlePhoneError = (error) => {
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, phone: error }));
+    } else if (fieldErrors.phone) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.phone;
+        return newErrors;
+      });
+    }
+  };
+
+  const validateForm = async () => {
     const errors = {};
 
-    const firstNameError = validateName(formData.firstName, 'First name');
+    const firstNameError = validateName(formData.firstName, 'First Name');
     if (firstNameError) errors.firstName = firstNameError;
 
-    const lastNameError = validateName(formData.lastName, 'Last name');
+    const lastNameError = validateName(formData.lastName, 'Last Name');
     if (lastNameError) errors.lastName = lastNameError;
 
     const emailError = validateEmail(formData.email);
     if (emailError) errors.email = emailError;
 
-    const phoneError = validatePhone(formData.phone);
+    const phoneError = validatePhoneWithCountry(formData.phone, formData.phoneCountryCode);
     if (phoneError) errors.phone = phoneError;
 
     const passwordError = validatePassword(formData.password);
     if (passwordError) errors.password = passwordError;
 
     if (formData.password !== formData.confirmPassword) {
-      errors.confirmPassword = 'Passwords do not match';
+      errors.confirmPassword = 'Passwords do not match.';
     }
 
     setFieldErrors(errors);
+
+    // If basic validation passes, check email availability
+    if (Object.keys(errors).length === 0) {
+      setCheckingEmail(true);
+      try {
+        const response = await api.post('/auth/check-email', { email: formData.email });
+        if (!response.data.available) {
+          errors.email = response.data.message || 'This email is already registered.';
+          setFieldErrors(errors);
+          return false;
+        }
+      } catch (err) {
+        // If check fails, proceed anyway (will be caught during registration)
+        console.error('Email check failed:', err);
+      } finally {
+        setCheckingEmail(false);
+      }
+    }
+
     return Object.keys(errors).length === 0;
   };
 
@@ -96,7 +145,8 @@ const RegisterPartner = () => {
     setError('');
     setFieldErrors({});
 
-    if (!validateForm()) {
+    const isValid = await validateForm();
+    if (!isValid) {
       return;
     }
 
@@ -107,8 +157,13 @@ const RegisterPartner = () => {
       setRegistrationSuccess(true);
     } catch (err) {
       const { fieldErrors: errs, message } = getValidationErrors(err);
-      setFieldErrors(errs);
-      setError(message);
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs);
+      }
+      // Only show general error if there are no field-specific errors
+      if (Object.keys(errs).length === 0 && message) {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -173,7 +228,7 @@ const RegisterPartner = () => {
                 to="/login"
                 className="inline-flex items-center justify-center w-full py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 transition-colors"
               >
-                Go to Login
+                Go to Sign In
               </Link>
             </div>
           </div>
@@ -283,12 +338,12 @@ const RegisterPartner = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {/* Personal Information */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
-                  First Name *
+                  First Name<span className="text-red-500">*</span>
                 </label>
                 <input
                   id="firstName"
@@ -305,7 +360,7 @@ const RegisterPartner = () => {
               </div>
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
-                  Last Name *
+                  Last Name<span className="text-red-500">*</span>
                 </label>
                 <input
                   id="lastName"
@@ -324,7 +379,7 @@ const RegisterPartner = () => {
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email *
+                Email ID<span className="text-red-500">*</span>
               </label>
               <input
                 id="email"
@@ -340,23 +395,15 @@ const RegisterPartner = () => {
               {fieldErrors.email && <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>}
             </div>
 
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                Phone *
-              </label>
-              <input
-                id="phone"
-                name="phone"
-                type="tel"
-                required
-                value={formData.phone}
-                onChange={handlePhoneChange}
-                maxLength={16}
-                className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                placeholder="10-digit mobile number"
-              />
-              {fieldErrors.phone && <p className="mt-1 text-sm text-red-600">{fieldErrors.phone}</p>}
-            </div>
+            <PhoneInput
+              value={formData.phone}
+              onChange={handlePhoneChange}
+              countryCode={formData.phoneCountryCode}
+              onCountryChange={handlePhoneCountryChange}
+              error={fieldErrors.phone}
+              onError={handlePhoneError}
+              label="Contact Number"
+            />
 
             {/* Business Information */}
             <div className="border-t pt-5 mt-5">
@@ -417,6 +464,22 @@ const RegisterPartner = () => {
               </div>
             </div>
 
+            <div>
+              <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-2">
+                Website
+              </label>
+              <input
+                id="website"
+                name="website"
+                type="url"
+                value={formData.website}
+                onChange={handleChange}
+                maxLength={200}
+                className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400"
+                placeholder="https://www.yourcompany.com"
+              />
+            </div>
+
             {/* Password */}
             <div className="border-t pt-5 mt-5">
               <p className="text-sm font-medium text-gray-700 mb-3">Create Password</p>
@@ -424,7 +487,7 @@ const RegisterPartner = () => {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password *
+                Password<span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -435,8 +498,8 @@ const RegisterPartner = () => {
                   value={formData.password}
                   onChange={handleChange}
                   maxLength={128}
-                  className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                  placeholder="Min 8 chars, uppercase, lowercase, number"
+                  className={`block w-full px-4 pr-10 py-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="Min 8 chars, uppercase, lowercase, number, special char"
                 />
                 <button
                   type="button"
@@ -460,7 +523,7 @@ const RegisterPartner = () => {
 
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm Password *
+                Confirm Password<span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -471,8 +534,8 @@ const RegisterPartner = () => {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   maxLength={128}
-                  className={`block w-full px-4 pr-12 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                  placeholder="Confirm password"
+                  className={`block w-full px-4 pr-10 py-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="Confirm Password"
                 />
                 <button
                   type="button"
@@ -496,10 +559,19 @@ const RegisterPartner = () => {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || checkingEmail}
               className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? 'Creating Account...' : 'Register as Partner'}
+              {checkingEmail ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Checking...
+                </>
+              ) : loading ? (
+                'Creating Account...'
+              ) : (
+                'Register as Partner'
+              )}
             </button>
           </form>
 

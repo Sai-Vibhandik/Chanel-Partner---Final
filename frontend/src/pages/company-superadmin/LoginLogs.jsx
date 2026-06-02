@@ -29,17 +29,17 @@ const LoginLogs = () => {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
   const [pagination, setPagination] = useState({
     total: 0,
     page: 1,
     pages: 0
   });
-  const itemsPerPage = 20;
 
   useEffect(() => {
     fetchLogs();
     fetchStats();
-  }, [statusFilter, startDate, endDate, currentPage, debouncedSearch]);
+  }, [statusFilter, startDate, endDate, currentPage, itemsPerPage, debouncedSearch]);
 
   const fetchLogs = async () => {
     try {
@@ -79,6 +79,11 @@ const LoginLogs = () => {
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newLimit) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1);
   };
 
   const getStatusBadge = (status) => {
@@ -126,9 +131,8 @@ const LoginLogs = () => {
   const exportColumns = [
     { key: 'userId.firstName', header: 'First Name' },
     { key: 'userId.lastName', header: 'Last Name' },
-    { key: 'userId.email', header: 'Email' },
+    { key: 'email', header: 'Email ID' },
     { key: 'userId.role', header: 'Role' },
-    { key: 'email', header: 'Login Email' },
     { key: 'status', header: 'Status' },
     { key: 'browser.name', header: 'Browser' },
     { key: 'os.name', header: 'OS' },
@@ -210,7 +214,7 @@ const LoginLogs = () => {
               setStartDate('');
               setEndDate('');
               setCurrentPage(1);
-              fetchLogs();
+              setItemsPerPage(20);
             }}
             className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
           >
@@ -231,8 +235,18 @@ const LoginLogs = () => {
                 placeholder="Search by email..."
                 value={searchEmail}
                 onChange={(e) => setSearchEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
               />
+              {searchEmail && (
+                <button
+                  onClick={() => setSearchEmail('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
           <div>
@@ -307,6 +321,7 @@ const LoginLogs = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sr. No.</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -318,8 +333,11 @@ const LoginLogs = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {logs.map((log) => (
+                {logs.map((log, index) => (
                   <tr key={log._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {(currentPage - 1) * itemsPerPage + index + 1}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <p className="font-medium text-gray-900">
@@ -348,14 +366,12 @@ const LoginLogs = () => {
                         <span className="text-gray-500">{getDeviceIcon(log.device?.type)}</span>
                         <div>
                           <p className="text-sm text-gray-900">{log.os?.name || 'Unknown'}</p>
-                          <p className="text-xs text-gray-500">{log.os?.version || ''}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <p className="text-sm text-gray-900">{log.browser?.name || 'Unknown'}</p>
-                        <p className="text-xs text-gray-500">{log.browser?.version || ''}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -381,19 +397,21 @@ const LoginLogs = () => {
         )}
 
         {/* Pagination */}
-        {pagination.pages > 1 && (
+        {pagination.total > 0 && (
           <Pagination
             currentPage={currentPage}
             totalPages={pagination.pages}
             total={pagination.total}
+            itemsPerPage={itemsPerPage}
             onPageChange={handlePageChange}
+            onItemsPerPageChange={handleItemsPerPageChange}
           />
         )}
       </div>
 
       {/* Stats Section */}
-      {stats && (stats.browsers?.length > 0 || stats.operatingSystems?.length > 0 || stats.countries?.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+      {stats && (stats.browsers?.length > 0 || stats.operatingSystems?.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
           {/* Top Browsers */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">Top Browsers</h3>
@@ -414,19 +432,6 @@ const LoginLogs = () => {
               {stats.operatingSystems?.slice(0, 5).map((item, index) => (
                 <div key={index} className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">{item.os || 'Unknown'}</span>
-                  <span className="text-sm font-medium text-gray-900">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Top Countries */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Top Countries</h3>
-            <div className="space-y-2">
-              {stats.countries?.slice(0, 5).map((item, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">{item.country || 'Unknown'}</span>
                   <span className="text-sm font-medium text-gray-900">{item.count}</span>
                 </div>
               ))}

@@ -21,6 +21,7 @@ import { ApiError } from '../middlewares/error.middleware.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.service.js';
 import { parseUserAgent } from '../utils/userAgent.js';
 import { getGeoFromIP } from '../services/geo.service.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
 /**
  * Log login attempt
@@ -34,11 +35,41 @@ const logLoginAttempt = async (params) => {
     const userAgent = req.headers['user-agent'];
     const parsedUA = parseUserAgent(userAgent);
 
-    // Get IP address - check multiple sources
-    const ip = req.ip ||
-               req.connection?.remoteAddress ||
-               req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-               'unknown';
+    // Get IP address - check multiple sources in order of reliability
+    // X-Forwarded-For header contains the original client IP when behind a proxy
+    let ip;
+
+    // Check X-Forwarded-For header first (most reliable when behind proxy)
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (forwardedFor) {
+      // X-Forwarded-For can contain multiple IPs, the first one is the client
+      ip = forwardedFor.split(',')[0].trim();
+    }
+
+    // Fallback to Express trust proxy setting
+    if (!ip && req.ip) {
+      ip = req.ip;
+    }
+
+    // Fallback to socket remote address
+    if (!ip && req.connection?.remoteAddress) {
+      ip = req.connection.remoteAddress;
+    }
+
+    // Fallback to socket remote address (alternative)
+    if (!ip && req.socket?.remoteAddress) {
+      ip = req.socket.remoteAddress;
+    }
+
+    // Clean up IPv6 prefix for IPv4 addresses
+    if (ip && ip.startsWith('::ffff:')) {
+      ip = ip.substring(7);
+    }
+
+    // Final fallback
+    if (!ip) {
+      ip = 'unknown';
+    }
 
     // Get geolocation from IP
     const location = await getGeoFromIP(ip);
@@ -638,6 +669,7 @@ export const registerPartner = async (req, res, next) => {
       companyName,
       companyType,
       operatingRegion,
+      website,
       // Address
       address,
       // Contact person
@@ -666,6 +698,7 @@ export const registerPartner = async (req, res, next) => {
         companyName,
         companyType,
         operatingRegion,
+        website,
         address,
         contactPerson,
         bankDetails,
@@ -779,8 +812,9 @@ export const login = async (req, res, next) => {
 
     // For company users (not partners), check if company is active
     // Partners use PartnerCompany collection for associations, not direct companyId
+    let company = null;
     if (user.role !== 'platform_admin' && user.role !== 'partner' && user.companyId) {
-      const company = await Company.findById(user.companyId);
+      company = await Company.findById(user.companyId);
       if (!company) {
         await logLoginAttempt({
           email,
@@ -831,6 +865,23 @@ export const login = async (req, res, next) => {
     });
     await user.save({ validateBeforeSave: false });
 
+    // Log activity (only for company users, not partners or platform admins)
+    if (user.companyId) {
+      await logActivity({
+        userId: user._id,
+        companyId: user.companyId,
+        action: ActionTypes.LOGIN_SUCCESS,
+        resourceType: ResourceTypes.AUTH,
+        resourceId: user._id,
+        resourceTitle: `${user.firstName} ${user.lastName}`,
+        details: {
+          email: user.email,
+          role: user.role
+        },
+        ...getRequestMetadata(req)
+      });
+    }
+
     // Generate tokens
     const tokenPayload = {
       userId: user._id,
@@ -857,7 +908,8 @@ export const login = async (req, res, next) => {
           lastName: user.lastName,
           role: user.role,
           companyId: user.companyId
-        }
+        },
+        company
         // Token is now in httpOnly cookie, not in response body
       }
     });
@@ -1183,6 +1235,22 @@ export const updateProfile = async (req, res, next) => {
       throw new ApiError(404, 'User not found');
     }
 
+    // Log activity if user has a company
+    if (user.companyId) {
+      await logActivity({
+        userId: user._id,
+        companyId: user.companyId,
+        action: ActionTypes.PROFILE_UPDATED,
+        resourceType: ResourceTypes.AUTH,
+        resourceId: user._id,
+        resourceTitle: `${user.firstName} ${user.lastName}`,
+        details: {
+          updatedFields: Object.keys(updateData)
+        },
+        ...getRequestMetadata(req)
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
@@ -1217,6 +1285,19 @@ export const changePassword = async (req, res, next) => {
     // Update password
     user.password = newPassword;
     await user.save();
+
+    // Log activity if user has a company
+    if (user.companyId) {
+      await logActivity({
+        userId: user._id,
+        companyId: user.companyId,
+        action: ActionTypes.PASSWORD_CHANGED,
+        resourceType: ResourceTypes.AUTH,
+        resourceId: user._id,
+        resourceTitle: `${user.firstName} ${user.lastName}`,
+        ...getRequestMetadata(req)
+      });
+    }
 
     // Invalidate all existing tokens by blacklisting current token
     if (req.accessToken) {
@@ -1290,6 +1371,58 @@ export const testEmail = async (req, res, next) => {
     }
   } catch (error) {
     console.error('❌ Test email error:', error);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Check email availability for registration
+ * @route   POST /api/auth/check-email
+ * @access  Public
+ */
+export const checkEmailAvailability = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      throw new ApiError(400, 'Email is required');
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new ApiError(400, 'Please enter a valid email address');
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Check if email exists in Company collection
+    const existingCompany = await Company.findOne({ email: normalizedEmail });
+    if (existingCompany) {
+      return res.status(200).json({
+        success: false,
+        available: false,
+        message: 'This email is already registered as a company. Please use a different email or login to your existing account.'
+      });
+    }
+
+    // Check if email exists in User collection
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(200).json({
+        success: false,
+        available: false,
+        message: 'This email is already registered. Please use a different email or login to your existing account.'
+      });
+    }
+
+    // Email is available
+    res.status(200).json({
+      success: true,
+      available: true,
+      message: 'Email is available'
+    });
+  } catch (error) {
     next(error);
   }
 };

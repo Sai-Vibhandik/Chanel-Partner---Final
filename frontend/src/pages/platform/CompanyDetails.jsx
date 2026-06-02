@@ -2,16 +2,17 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 
 const CompanyDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const config = sidebarConfig.platform_admin;
+  const toast = useToast();
   const [company, setCompany] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [statusModal, setStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [statusReason, setStatusReason] = useState('');
@@ -28,7 +29,7 @@ const CompanyDetails = () => {
       setCompany(response.data.data.company);
       setStats(response.data.data.stats);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load company');
+      toast.error(err.response?.data?.message || 'Failed to load company');
     } finally {
       setLoading(false);
     }
@@ -43,10 +44,11 @@ const CompanyDetails = () => {
         status: newStatus,
         reason: statusReason
       });
+      toast.success('Status updated successfully.');
       setStatusModal(false);
       fetchCompany();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update status');
+      toast.error(err.response?.data?.message || 'Failed to update status');
     } finally {
       setUpdating(false);
     }
@@ -300,18 +302,6 @@ const CompanyDetails = () => {
             <div>
               <p className="text-sm text-gray-500">Default Commission</p>
               <p className="text-xl font-bold text-gray-900">{company?.settings?.defaultCommissionPercentage || 5}%</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Chat Enabled</p>
-              <span className={`inline-flex items-center px-2 py-1 rounded text-sm ${company?.settings?.features?.chatEnabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                {company?.settings?.features?.chatEnabled ? 'Yes' : 'No'}
-              </span>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Analytics Enabled</p>
-              <span className={`inline-flex items-center px-2 py-1 rounded text-sm ${company?.settings?.features?.analyticsEnabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                {company?.settings?.features?.analyticsEnabled ? 'Yes' : 'No'}
-              </span>
             </div>
           </div>
         </div>

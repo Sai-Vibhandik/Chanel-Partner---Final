@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import { validatePassword } from '../../utils/validation';
 
 const ResetPassword = () => {
   const { token } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -21,37 +22,70 @@ const ResetPassword = () => {
     // Check if token exists
     if (!token) {
       setValidToken(false);
-      setError('Invalid reset link. Please request a new password reset.');
+      toast.error('Invalid reset link. Please request a new password reset.');
     }
   }, [token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     setFieldErrors({});
 
+    // Trim passwords to avoid whitespace issues
+    const trimmedPassword = password.trim();
+    const trimmedConfirmPassword = confirmPassword.trim();
+
     // Validate password
-    const passwordError = validatePassword(password);
-    if (passwordError) {
-      setFieldErrors({ password: passwordError });
-      return;
+    const errors = {};
+
+    if (!trimmedPassword) {
+      errors.password = 'Password is required.';
+    } else {
+      const passwordError = validatePassword(trimmedPassword);
+      if (passwordError) {
+        errors.password = passwordError;
+      }
     }
 
-    if (password !== confirmPassword) {
-      setFieldErrors({ confirmPassword: 'Passwords do not match' });
+    if (!trimmedConfirmPassword) {
+      errors.confirmPassword = 'Please confirm your password.';
+    } else if (trimmedPassword !== trimmedConfirmPassword) {
+      errors.confirmPassword = 'Passwords do not match.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
     setLoading(true);
 
     try {
-      await api.post(`/auth/reset-password/${token}`, { password });
+      await api.post(`/auth/reset-password/${token}`, {
+        password: trimmedPassword,
+        confirmPassword: trimmedConfirmPassword
+      });
       setSuccess(true);
       setTimeout(() => {
         navigate('/login');
       }, 3000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reset password. The link may have expired.');
+      // Handle validation errors from backend
+      const backendErrors = err.response?.data?.errors;
+      if (backendErrors && Array.isArray(backendErrors)) {
+        const formattedErrors = {};
+        backendErrors.forEach(error => {
+          if (error.field) {
+            formattedErrors[error.field] = error.message;
+          }
+        });
+        setFieldErrors(formattedErrors);
+        // Also show toast for general errors
+        if (backendErrors.some(e => !e.field)) {
+          toast.error(err.response?.data?.message || 'Failed to reset password.');
+        }
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to reset password. The link may have expired.');
+      }
     } finally {
       setLoading(false);
     }
@@ -69,14 +103,14 @@ const ResetPassword = () => {
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Password Reset Successful!</h2>
             <p className="text-gray-600 mb-6">
-              Your password has been changed. You can now log in with your new password.
+              Your password has been changed. You can now sign in with your new password.
             </p>
-            <p className="text-sm text-gray-500 mb-4">Redirecting to login...</p>
+            <p className="text-sm text-gray-500 mb-4">Redirecting to sign in...</p>
             <Link
               to="/login"
               className="inline-flex items-center justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
             >
-              Go to Login
+              Go to Sign In
             </Link>
           </div>
         </div>
@@ -171,8 +205,14 @@ const ResetPassword = () => {
                 At least one number
               </li>
               <li className="flex items-center gap-2">
-                <svg className={`w-4 h-4 ${password === confirmPassword && password.length > 0 ? 'text-green-300' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={password === confirmPassword && password.length > 0 ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} />
+                <svg className={`w-4 h-4 ${/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~]/.test(password) ? 'text-green-300' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~]/.test(password) ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} />
+                </svg>
+                At least one special character
+              </li>
+              <li className="flex items-center gap-2">
+                <svg className={`w-4 h-4 ${password.trim() === confirmPassword.trim() && password.trim().length > 0 ? 'text-green-300' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={password.trim() === confirmPassword.trim() && password.trim().length > 0 ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} />
                 </svg>
                 Passwords match
               </li>
@@ -198,22 +238,10 @@ const ResetPassword = () => {
             <p className="text-gray-500 mt-2">Create a new password for your account</p>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                New Password
+                New Password<span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -225,11 +253,10 @@ const ResetPassword = () => {
                   id="password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
-                  required
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => ({ ...prev, password: '' })); }}
                   maxLength={128}
-                  className={`block w-full pl-10 pr-12 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                  className={`block w-full pl-10 pr-10 py-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   placeholder="Enter new password"
                 />
                 <button
@@ -254,7 +281,7 @@ const ResetPassword = () => {
 
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm Password
+                Confirm Password<span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -266,12 +293,11 @@ const ResetPassword = () => {
                   id="confirmPassword"
                   name="confirmPassword"
                   type={showConfirmPassword ? 'text' : 'password'}
-                  required
                   value={confirmPassword}
                   onChange={(e) => { setConfirmPassword(e.target.value); setFieldErrors(prev => ({ ...prev, confirmPassword: '' })); }}
                   maxLength={128}
-                  className={`block w-full pl-10 pr-12 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                  placeholder="Confirm new password"
+                  className={`block w-full pl-10 pr-10 py-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="Confirm New Password"
                 />
                 <button
                   type="button"
@@ -311,7 +337,7 @@ const ResetPassword = () => {
 
           <div className="mt-8 text-center">
             <Link to="/login" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-              ← Back to Login
+              ← Back to Sign In
             </Link>
           </div>
         </div>

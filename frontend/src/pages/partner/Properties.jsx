@@ -3,23 +3,27 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import Pagination from '../../components/common/Pagination';
 import ExportButton from '../../components/common/ExportButton';
 import useDebounce from '../../hooks/useDebounce';
+import { formatCurrency } from '../../utils/currency';
+import { formatCurrencyExport } from '../../utils/export';
 
 const Properties = () => {
   const { user } = useAuth();
   const config = sidebarConfig.partner;
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
 
   const [activePartnerships, setActivePartnerships] = useState([]);
   const [selectedPartnership, setSelectedPartnership] = useState(null);
+  const [viewAllCompanies, setViewAllCompanies] = useState(false);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [propertiesLoading, setPropertiesLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -35,7 +39,7 @@ const Properties = () => {
     page: 1,
     pages: 0
   });
-  const itemsPerPage = 12;
+  const [itemsPerPage, setItemsPerPage] = useState(12);
 
   const propertyTypes = [
     { value: 'apartment', label: 'Apartment' },
@@ -54,7 +58,11 @@ const Properties = () => {
     { key: 'type', header: 'Type' },
     { key: 'location.city', header: 'City' },
     { key: 'location.state', header: 'State' },
-    { key: 'pricing.basePrice', header: 'Price' },
+    {
+      key: 'pricing.basePrice',
+      header: 'Price',
+      format: (item) => item.pricing?.priceOnRequest ? 'Price on Request' : formatCurrencyExport(item.pricing?.basePrice, item.pricing?.currency)
+    },
     { key: 'details.bedrooms', header: 'Bedrooms' },
     { key: 'details.bathrooms', header: 'Bathrooms' },
     { key: 'details.builtUpArea', header: 'Area' },
@@ -78,10 +86,12 @@ const Properties = () => {
   }, [searchParams, activePartnerships]);
 
   useEffect(() => {
-    if (selectedPartnership) {
+    if (viewAllCompanies) {
+      fetchAllProperties();
+    } else if (selectedPartnership) {
       fetchProperties();
     }
-  }, [selectedPartnership, debouncedSearch, typeFilter, regionFilter, currentPage]);
+  }, [selectedPartnership, viewAllCompanies, debouncedSearch, typeFilter, regionFilter, currentPage, itemsPerPage]);
 
   const fetchPartnerships = async () => {
     try {
@@ -97,21 +107,16 @@ const Properties = () => {
       if (partnershipIdFromUrl) {
         const urlPartnership = active.find(p => p._id === partnershipIdFromUrl);
         if (urlPartnership) {
+          setViewAllCompanies(false);
           setSelectedPartnership(urlPartnership);
           return;
         }
       }
 
-      // Auto-select first active partnership with active subscription
-      const activeWithSubscription = active.find(p => p.companySubscriptionActive !== false);
-      if (activeWithSubscription) {
-        setSelectedPartnership(activeWithSubscription);
-      } else if (active.length > 0 && !selectedPartnership) {
-        // Fallback to first partnership if none with active subscription
-        setSelectedPartnership(active[0]);
-      }
+      // Default to "All Companies" view
+      setViewAllCompanies(true);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partnerships');
+      toast.error(err.response?.data?.message || 'Failed to load partnerships');
     } finally {
       setLoading(false);
     }
@@ -122,7 +127,6 @@ const Properties = () => {
 
     try {
       setPropertiesLoading(true);
-      setError('');
 
       const params = new URLSearchParams();
       if (typeFilter) params.append('type', typeFilter);
@@ -137,7 +141,28 @@ const Properties = () => {
       setProperties(response.data.data.properties || []);
       setPagination(response.data.data.pagination || { total: 0, page: 1, pages: 0 });
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load properties');
+      toast.error(err.response?.data?.message || 'Failed to load properties');
+    } finally {
+      setPropertiesLoading(false);
+    }
+  };
+
+  const fetchAllProperties = async () => {
+    try {
+      setPropertiesLoading(true);
+
+      const params = new URLSearchParams();
+      if (typeFilter) params.append('type', typeFilter);
+      if (regionFilter) params.append('region', regionFilter);
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      params.append('page', currentPage);
+      params.append('limit', itemsPerPage);
+
+      const response = await api.get(`/properties/all-partnerships?${params.toString()}`);
+      setProperties(response.data.data.properties || []);
+      setPagination(response.data.data.pagination || { total: 0, page: 1, pages: 0 });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load properties');
     } finally {
       setPropertiesLoading(false);
     }
@@ -147,28 +172,16 @@ const Properties = () => {
     setCurrentPage(page);
   };
 
+  const handleItemsPerPageChange = (newLimit) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1);
+  };
+
   const formatPrice = (property) => {
     if (property.pricing?.priceOnRequest) {
       return 'Price on Request';
     }
-    const symbol = property.pricing?.currency === 'AED' ? 'AED ' : '₹';
-    const price = property.pricing?.basePrice || 0;
-
-    if (property.region === 'dubai') {
-      if (price >= 1000000) {
-        return `${symbol}${(price / 1000000).toFixed(2)}M`;
-      } else if (price >= 1000) {
-        return `${symbol}${(price / 1000).toFixed(0)}K`;
-      }
-      return `${symbol}${price.toLocaleString()}`;
-    } else {
-      if (price >= 10000000) {
-        return `${symbol}${(price / 10000000).toFixed(2)} Cr`;
-      } else if (price >= 100000) {
-        return `${symbol}${(price / 100000).toFixed(2)} Lac`;
-      }
-      return `${symbol}${price.toLocaleString()}`;
-    }
+    return formatCurrency(property.pricing?.basePrice || 0, property.pricing?.currency || 'INR');
   };
 
   const getCommissionDisplay = (property) => {
@@ -184,10 +197,14 @@ const Properties = () => {
     }
 
     const baseCommission = property.commission?.basePercentage || 0;
-    const tierPercentage = selectedPartnership.commissionPercentage ||
-      (selectedPartnership.tier === 'platinum' ? 60 :
-       selectedPartnership.tier === 'gold' ? 50 :
-       selectedPartnership.tier === 'silver' ? 40 : 30);
+    // Get tier percentage from company settings or use defaults
+    const tierPercentages = {
+      bronze: selectedPartnership.companyId?.settings?.tierPercentages?.bronze || 25,
+      silver: selectedPartnership.companyId?.settings?.tierPercentages?.silver || 35,
+      gold: selectedPartnership.companyId?.settings?.tierPercentages?.gold || 50,
+      platinum: selectedPartnership.companyId?.settings?.tierPercentages?.platinum || 75
+    };
+    const tierPercentage = selectedPartnership.commissionPercentage || tierPercentages[selectedPartnership.tier] || tierPercentages.bronze;
 
     const partnerCommission = (baseCommission * tierPercentage) / 100;
 
@@ -211,11 +228,6 @@ const Properties = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Properties" subtitle="Browse available properties" color={config.color}>
-      {/* Error */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
-      )}
-
       {/* Subscription Inactive Warning */}
       {selectedPartnership && selectedPartnership.companySubscriptionActive === false && (
         <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
@@ -258,13 +270,21 @@ const Properties = () => {
                   Select Company
                 </label>
                 <select
-                  value={selectedPartnership?._id || ''}
+                  value={viewAllCompanies ? 'all' : (selectedPartnership?._id || '')}
                   onChange={(e) => {
-                    const partnership = activePartnerships.find(p => p._id === e.target.value);
-                    setSelectedPartnership(partnership);
+                    if (e.target.value === 'all') {
+                      setViewAllCompanies(true);
+                      setSelectedPartnership(null);
+                    } else {
+                      setViewAllCompanies(false);
+                      const partnership = activePartnerships.find(p => p._id === e.target.value);
+                      setSelectedPartnership(partnership);
+                    }
+                    setCurrentPage(1);
                   }}
                   className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[250px]"
                 >
+                  <option value="all">All Companies</option>
                   {activePartnerships.map((p) => (
                     <option key={p._id} value={p._id}>
                       {p.companyId?.name} ({p.tier} tier)
@@ -273,7 +293,7 @@ const Properties = () => {
                 </select>
               </div>
 
-              {selectedPartnership && (
+              {selectedPartnership && !viewAllCompanies && (
                 <div className="flex items-center gap-4">
                   <div className="text-sm">
                     <span className="text-gray-500">Your Tier:</span>
@@ -289,9 +309,10 @@ const Properties = () => {
                     <span className="text-gray-500">Commission:</span>
                     <span className="ml-2 font-semibold text-indigo-600">
                       {selectedPartnership.commissionPercentage ||
-                        (selectedPartnership.tier === 'platinum' ? 60 :
+                        selectedPartnership.companyId?.settings?.tierPercentages?.[selectedPartnership.tier] ||
+                        (selectedPartnership.tier === 'platinum' ? 75 :
                          selectedPartnership.tier === 'gold' ? 50 :
-                         selectedPartnership.tier === 'silver' ? 40 : 30)}%
+                         selectedPartnership.tier === 'silver' ? 35 : 25)}%
                     </span>
                   </div>
                 </div>
@@ -311,8 +332,18 @@ const Properties = () => {
                   placeholder="Search properties..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full py-2 pl-10 pr-4 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full py-2 pl-10 pr-10 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
               </div>
               <select
                 value={typeFilter}
@@ -333,6 +364,14 @@ const Properties = () => {
                 <option value="india">India</option>
                 <option value="dubai">Dubai</option>
               </select>
+              {(typeFilter || regionFilter || search) && (
+                <button
+                  onClick={() => { setTypeFilter(''); setRegionFilter(''); setSearch(''); }}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Clear Filters
+                </button>
+              )}
               <ExportButton
                 data={properties}
                 columns={exportColumns}
@@ -363,7 +402,9 @@ const Properties = () => {
                 <>
                   <p className="text-gray-500 mb-2">No properties available</p>
                   <p className="text-sm text-gray-400">
-                    {selectedPartnership?.companyId?.name || 'This company'} hasn't listed any properties yet
+                    {viewAllCompanies
+                      ? 'No properties available from your partnered companies.'
+                      : `${selectedPartnership?.companyId?.name || 'This company'} hasn't listed any properties yet`}
                   </p>
                 </>
               )}
@@ -447,7 +488,7 @@ const Properties = () => {
                               <div className="flex items-center justify-between text-sm">
                                 <span className="text-gray-600">Your Commission:</span>
                                 <span className="font-semibold text-green-700">
-                                  {commission.currency === 'AED' ? 'AED ' : '₹'}{parseFloat(commission.fixedAmount).toLocaleString()} (Fixed)
+                                  {formatCurrency(commission.fixedAmount, commission.currency || 'INR')} (Fixed)
                                 </span>
                               </div>
                               <p className="text-xs text-gray-500 mt-1">
@@ -496,12 +537,14 @@ const Properties = () => {
           )}
 
           {/* Pagination */}
-          {pagination.pages > 1 && (
+          {pagination.total > 0 && (
             <Pagination
               currentPage={currentPage}
               totalPages={pagination.pages}
               total={pagination.total}
+              itemsPerPage={itemsPerPage}
               onPageChange={handlePageChange}
+              onItemsPerPageChange={handleItemsPerPageChange}
             />
           )}
         </>

@@ -3,17 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import Pagination from '../../components/common/Pagination';
 import ExportButton from '../../components/common/ExportButton';
 import { formatCurrencyExport, formatDateExport } from '../../utils/export';
+import { formatCurrency } from '../../utils/currency';
 
 const Commissions = () => {
   const { user } = useAuth();
   const config = sidebarConfig[user?.role] || sidebarConfig.finance_manager;
-  // All roles use the same path since routes are under /finance-manager
-  const basePath = '/finance-manager/commissions';
+
+  // Get basePath based on role for consistent URLs
+  const getBasePath = () => {
+    switch (user?.role) {
+      case 'company_superadmin':
+        return '/company/commissions';
+      case 'partner_manager':
+        return '/partner-manager/commissions';
+      default:
+        return '/finance-manager/commissions';
+    }
+  };
+  const basePath = getBasePath();
+
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [commissions, setCommissions] = useState([]);
   const [stats, setStats] = useState(null);
@@ -22,18 +37,23 @@ const Commissions = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [partnerFilter, setPartnerFilter] = useState('');
+  const [propertyFilter, setPropertyFilter] = useState('');
+  const [partners, setPartners] = useState([]);
+  const [properties, setProperties] = useState([]);
   const [showPayModal, setShowPayModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedCommission, setSelectedCommission] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [pagination, setPagination] = useState({
     total: 0,
     page: 1,
     pages: 0
   });
-  const itemsPerPage = 10;
 
   // Pay form state
   const [payForm, setPayForm] = useState({
@@ -47,13 +67,50 @@ const Commissions = () => {
   useEffect(() => {
     fetchCommissions();
     fetchStats();
-  }, [statusFilter, currentPage]);
+  }, [statusFilter, partnerFilter, propertyFilter, currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    fetchPartners();
+    fetchProperties();
+  }, []);
+
+  const fetchPartners = async () => {
+    try {
+      const response = await api.get(`/partner-company/company/${user.companyId}/partners?limit=100`);
+      // Partnerships contain partnerId populated with partner details
+      const partnershipData = response.data.data.partnerships || [];
+      // Extract unique partners from partnerships
+      const uniquePartners = [];
+      const seenIds = new Set();
+      partnershipData.forEach(partnership => {
+        if (partnership.partnerId && !seenIds.has(partnership.partnerId._id)) {
+          seenIds.add(partnership.partnerId._id);
+          uniquePartners.push(partnership.partnerId);
+        }
+      });
+      setPartners(uniquePartners);
+    } catch (err) {
+      console.error('Failed to load partners');
+    }
+  };
+
+  const fetchProperties = async () => {
+    try {
+      const response = await api.get('/properties?limit=100');
+      setProperties(response.data.data.properties || []);
+    } catch (err) {
+      console.error('Failed to load properties');
+    }
+  };
 
   const fetchCommissions = async () => {
     try {
       setLoading(true);
+      setError('');
       const params = new URLSearchParams();
       if (statusFilter) params.append('status', statusFilter);
+      if (partnerFilter) params.append('partnerId', partnerFilter);
+      if (propertyFilter) params.append('propertyId', propertyFilter);
       params.append('page', currentPage);
       params.append('limit', itemsPerPage);
 
@@ -61,7 +118,9 @@ const Commissions = () => {
       setCommissions(response.data.data.commissions || []);
       setPagination(response.data.data.pagination || { total: 0, page: 1, pages: 0 });
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load commissions');
+      const errorMessage = err.response?.data?.message || 'Failed to load commissions.';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -69,6 +128,11 @@ const Commissions = () => {
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newLimit) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1);
   };
 
   const fetchStats = async () => {
@@ -87,11 +151,11 @@ const Commissions = () => {
     try {
       setSubmitting(true);
       await api.put(`/commissions/${commissionId}/approve`);
-      setSuccess('Commission approved successfully');
+      toast.success('Commission approved successfully.');
       fetchCommissions();
       fetchStats();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to approve commission');
+      toast.error(err.response?.data?.message || 'Failed to approve commission.');
     } finally {
       setSubmitting(false);
     }
@@ -100,23 +164,28 @@ const Commissions = () => {
   const handlePay = async (e) => {
     e.preventDefault();
 
-    // Payment reference is required for non-cash payment methods
-    if (payForm.paymentMethod !== 'cash' && !payForm.paymentReference) {
-      setError('Payment reference is required for this payment method');
+    // Validate payment reference for non-cash payment methods
+    const errors = {};
+    if (payForm.paymentMethod !== 'cash' && !payForm.paymentReference.trim()) {
+      errors.paymentReference = 'Payment reference is required for this payment method.';
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
     setSubmitting(true);
+    setFieldErrors({});
     try {
       await api.put(`/commissions/${selectedCommission._id}/pay`, payForm);
-      setSuccess('Commission marked as paid successfully');
+      toast.success('Commission marked as paid successfully.');
       setShowPayModal(false);
       setPayForm({ paymentReference: '', paymentMethod: 'bank_transfer', notes: '' });
       setSelectedCommission(null);
       fetchCommissions();
       fetchStats();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to mark as paid');
+      toast.error(err.response?.data?.message || 'Failed to mark as paid.');
     } finally {
       setSubmitting(false);
     }
@@ -124,22 +193,29 @@ const Commissions = () => {
 
   const handleCancel = async (e) => {
     e.preventDefault();
-    if (!cancelReason) {
-      setError('Cancellation reason is required');
+
+    // Validate cancellation reason
+    const errors = {};
+    if (!cancelReason.trim()) {
+      errors.cancelReason = 'Cancellation reason is required.';
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
     setSubmitting(true);
+    setFieldErrors({});
     try {
       await api.put(`/commissions/${selectedCommission._id}/cancel`, { reason: cancelReason });
-      setSuccess('Commission cancelled');
+      toast.success('Commission cancelled successfully.');
       setShowCancelModal(false);
       setCancelReason('');
       setSelectedCommission(null);
       fetchCommissions();
       fetchStats();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to cancel commission');
+      toast.error(err.response?.data?.message || 'Failed to cancel commission.');
     } finally {
       setSubmitting(false);
     }
@@ -169,24 +245,26 @@ const Commissions = () => {
   const exportColumns = [
     { key: 'partner.firstName', header: 'Partner First Name' },
     { key: 'partner.lastName', header: 'Partner Last Name' },
-    { key: 'partner.email', header: 'Partner Email' },
+    { key: 'partner.email', header: 'Partner Email ID' },
     { key: 'property.name', header: 'Property Name' },
-    { key: 'saleDetails.salePrice', header: 'Sale Price' },
-    { key: 'commission.calculatedAmount', header: 'Commission Amount' },
+    {
+      key: 'saleDetails.salePrice',
+      header: 'Sale Price',
+      format: (item) => formatCurrencyExport(item.saleDetails?.salePrice, item.commission?.currency)
+    },
+    {
+      key: 'commission.calculatedAmount',
+      header: 'Commission Amount',
+      format: (item) => formatCurrencyExport(item.commission?.calculatedAmount, item.commission?.currency)
+    },
     { key: 'commission.effectivePercentage', header: 'Commission Rate (%)' },
     { key: 'status', header: 'Status' },
-    { key: 'createdAt', header: 'Created Date' }
-  ];
-
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
+    {
+      key: 'createdAt',
+      header: 'Created Date',
+      format: (item) => formatDateExport(item.createdAt)
     }
-    return `${symbol}${amount?.toLocaleString() || '0'}`;
-  };
+  ];
 
   const getCurrencyLabel = (currency) => {
     return currency === 'INR' ? '₹ (INR)' : 'AED';
@@ -212,11 +290,26 @@ const Commissions = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Commissions" subtitle="Manage partner commissions" color={config.color}>
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
+      {/* Messages - only show when no modal is open */}
+      {error && !showPayModal && !showCancelModal && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex justify-between items-center">
+          <span>{error}</span>
+          <button onClick={() => setError('')} className="text-red-700 hover:text-red-900">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       )}
-      {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>
+      {success && !showPayModal && !showCancelModal && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex justify-between items-center">
+          <span>{success}</span>
+          <button onClick={() => setSuccess('')} className="text-green-700 hover:text-green-900">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       )}
 
       {/* Stats by Currency */}
@@ -275,10 +368,10 @@ const Commissions = () => {
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
             className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             <option value="">All Status</option>
@@ -287,6 +380,38 @@ const Commissions = () => {
             <option value="paid">Paid</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <select
+            value={partnerFilter}
+            onChange={(e) => { setPartnerFilter(e.target.value); setCurrentPage(1); }}
+            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">All Partners</option>
+            {partners.map(partner => (
+              <option key={partner._id} value={partner._id}>
+                {partner.firstName} {partner.lastName}
+              </option>
+            ))}
+          </select>
+          <select
+            value={propertyFilter}
+            onChange={(e) => { setPropertyFilter(e.target.value); setCurrentPage(1); }}
+            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">All Properties</option>
+            {properties.map(property => (
+              <option key={property._id} value={property._id}>
+                {property.name}
+              </option>
+            ))}
+          </select>
+          {(statusFilter || partnerFilter || propertyFilter) && (
+            <button
+              onClick={() => { setStatusFilter(''); setPartnerFilter(''); setPropertyFilter(''); setCurrentPage(1); }}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Clear Filters
+            </button>
+          )}
           <ExportButton
             data={commissions}
             columns={exportColumns}
@@ -322,6 +447,7 @@ const Commissions = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sr. No.</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Partner</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Property</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sale Price</th>
@@ -332,8 +458,11 @@ const Commissions = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {commissions.map((commission) => (
+                {commissions.map((commission, index) => (
                   <tr key={commission._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {(currentPage - 1) * itemsPerPage + index + 1}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <p className="font-medium text-gray-900">
@@ -399,6 +528,8 @@ const Commissions = () => {
                             </button>
                             <button
                               onClick={() => {
+                                setError('');
+                                setFieldErrors({});
                                 setSelectedCommission(commission);
                                 setShowCancelModal(true);
                               }}
@@ -412,6 +543,8 @@ const Commissions = () => {
                         {commission.status === 'approved' && user?.role !== 'partner_manager' && (
                           <button
                             onClick={() => {
+                              setError('');
+                              setFieldErrors({});
                               setSelectedCommission(commission);
                               setShowPayModal(true);
                             }}
@@ -430,12 +563,14 @@ const Commissions = () => {
         )}
 
         {/* Pagination */}
-        {pagination.pages > 1 && (
+        {pagination.total > 0 && (
           <Pagination
             currentPage={currentPage}
             totalPages={pagination.pages}
             total={pagination.total}
+            itemsPerPage={itemsPerPage}
             onPageChange={handlePageChange}
+            onItemsPerPageChange={handleItemsPerPageChange}
           />
         )}
       </div>
@@ -448,6 +583,8 @@ const Commissions = () => {
               <h3 className="text-lg font-semibold text-gray-900">Mark as Paid</h3>
               <button
                 onClick={() => {
+                  setError('');
+                  setFieldErrors({});
                   setShowPayModal(false);
                   setSelectedCommission(null);
                 }}
@@ -478,11 +615,21 @@ const Commissions = () => {
                 <input
                   type="text"
                   value={payForm.paymentReference}
-                  onChange={(e) => setPayForm({ ...payForm, paymentReference: e.target.value })}
+                  onChange={(e) => {
+                    setPayForm({ ...payForm, paymentReference: e.target.value });
+                    if (fieldErrors.paymentReference) {
+                      setFieldErrors(prev => ({ ...prev, paymentReference: '' }));
+                    }
+                  }}
                   placeholder={payForm.paymentMethod === 'cash' ? 'Optional - e.g., Receipt Number' : 'Transaction ID / Cheque Number'}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
+                    fieldErrors.paymentReference ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   required={payForm.paymentMethod !== 'cash'}
                 />
+                {fieldErrors.paymentReference && (
+                  <p className="text-sm text-red-600 mt-1">{fieldErrors.paymentReference}</p>
+                )}
                 {payForm.paymentMethod === 'cash' && (
                   <p className="text-xs text-gray-500 mt-1">Payment reference is optional for cash payments</p>
                 )}
@@ -516,6 +663,8 @@ const Commissions = () => {
                 <button
                   type="button"
                   onClick={() => {
+                    setError('');
+                    setFieldErrors({});
                     setShowPayModal(false);
                     setSelectedCommission(null);
                   }}
@@ -544,6 +693,8 @@ const Commissions = () => {
               <h3 className="text-lg font-semibold text-gray-900">Cancel Commission</h3>
               <button
                 onClick={() => {
+                  setError('');
+                  setFieldErrors({});
                   setShowCancelModal(false);
                   setSelectedCommission(null);
                 }}
@@ -560,18 +711,30 @@ const Commissions = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Cancellation Reason *</label>
                 <textarea
                   value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
+                  onChange={(e) => {
+                    setCancelReason(e.target.value);
+                    if (fieldErrors.cancelReason) {
+                      setFieldErrors(prev => ({ ...prev, cancelReason: '' }));
+                    }
+                  }}
                   rows={3}
                   placeholder="Please provide a reason for cancellation..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
+                    fieldErrors.cancelReason ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
                   required
                 />
+                {fieldErrors.cancelReason && (
+                  <p className="text-sm text-red-600 mt-1">{fieldErrors.cancelReason}</p>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
                   onClick={() => {
+                    setError('');
+                    setFieldErrors({});
                     setShowCancelModal(false);
                     setSelectedCommission(null);
                   }}

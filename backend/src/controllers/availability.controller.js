@@ -10,24 +10,42 @@ const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frida
 /**
  * @desc    Get availability for an office
  * @route   GET /api/offices/:officeId/availability
- * @access  Private (company_superadmin, partner_manager)
+ * @access  Private (company_superadmin, partner_manager, partner)
  */
 export const getAvailability = async (req, res, next) => {
   try {
     const { officeId } = req.params;
 
-    // Verify office belongs to company
-    const office = await OfficeLocation.findOne({
-      _id: officeId,
-      companyId: req.user.companyId
-    });
-
+    // Get office
+    const office = await OfficeLocation.findById(officeId);
     if (!office) {
       throw new ApiError(404, 'Office not found');
     }
 
+    // Check access based on role
+    if (req.user.role === 'partner') {
+      // Partner must have active partnership with the office's company
+      const PartnerCompany = (await import('../models/PartnerCompany.js')).default;
+      const partnership = await PartnerCompany.findOne({
+        partnerId: req.user._id,
+        companyId: office.companyId,
+        status: 'active'
+      });
+      if (!partnership) {
+        throw new ApiError(403, 'You do not have access to this office');
+      }
+    } else if (['company_superadmin', 'partner_manager'].includes(req.user.role)) {
+      // Admin/manager must belong to the office's company
+      if (req.user.companyId.toString() !== office.companyId.toString()) {
+        throw new ApiError(403, 'You do not have access to this office');
+      }
+    } else {
+      throw new ApiError(403, 'Access denied');
+    }
+
+    // Use office's companyId to find availability (works for all roles)
     let availability = await OfficeAvailability.findOne({
-      companyId: req.user.companyId,
+      companyId: office.companyId,
       officeId
     });
 

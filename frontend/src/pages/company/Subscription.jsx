@@ -18,6 +18,7 @@ const Subscription = () => {
   const [cancelling, setCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     fetchData();
@@ -48,11 +49,18 @@ const Subscription = () => {
   };
 
   const handleCancelSubscription = async () => {
+    // Validate cancellation reason
+    const errors = {};
     if (!cancelReason.trim()) {
+      errors.cancelReason = 'Please provide a reason for cancellation.';
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
     setCancelling(true);
+    setFieldErrors({});
     try {
       await cancelSubscription(cancelReason);
       await fetchData();
@@ -60,7 +68,7 @@ const Subscription = () => {
       setCancelReason('');
     } catch (err) {
       console.error('Error cancelling subscription:', err);
-      alert('Failed to cancel subscription. Please try again.');
+      setError('Failed to cancel subscription. Please try again.');
     } finally {
       setCancelling(false);
     }
@@ -76,7 +84,7 @@ const Subscription = () => {
   };
 
   const formatPrice = (price, currency) => {
-    const symbols = { INR: '₹', AED: 'د.إ', USD: '$' };
+    const symbols = { INR: '₹', AED: 'AED ', USD: '$' };
     const symbol = symbols[currency] || '$';
     return `${symbol}${price?.toLocaleString() || '0'}`;
   };
@@ -419,7 +427,7 @@ const Subscription = () => {
                 You can cancel your subscription at any time. You'll continue to have access until the end of your billing period.
               </p>
               <button
-                onClick={() => setShowCancelModal(true)}
+                onClick={() => { setError(''); setShowCancelModal(true); }}
                 className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded-lg transition-colors border border-red-200"
               >
                 Cancel Subscription
@@ -442,18 +450,30 @@ const Subscription = () => {
                 </label>
                 <textarea
                   value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  onChange={(e) => {
+                    setCancelReason(e.target.value);
+                    if (fieldErrors.cancelReason) {
+                      setFieldErrors(prev => ({ ...prev, cancelReason: '' }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
+                    fieldErrors.cancelReason ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-indigo-500'
+                  }`}
                   rows={3}
                   placeholder="Please tell us why you're cancelling..."
                   required
                 />
+                {fieldErrors.cancelReason && (
+                  <p className="text-sm text-red-600 mt-1">{fieldErrors.cancelReason}</p>
+                )}
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={() => {
+                    setError('');
                     setShowCancelModal(false);
                     setCancelReason('');
+                    setFieldErrors({});
                   }}
                   className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors"
                 >
@@ -461,7 +481,7 @@ const Subscription = () => {
                 </button>
                 <button
                   onClick={handleCancelSubscription}
-                  disabled={cancelling || !cancelReason.trim()}
+                  disabled={cancelling}
                   className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {cancelling ? (

@@ -3,9 +3,99 @@
  */
 
 /**
+ * Format currency for export
+ */
+export const formatCurrencyExport = (amount, currency = 'INR') => {
+  if (amount === null || amount === undefined) return '';
+  const symbol = currency === 'AED' ? 'AED ' : 'Rs ';
+  if (amount >= 10000000) {
+    return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
+  } else if (amount >= 100000) {
+    return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
+  }
+  return `${symbol}${amount.toLocaleString()}`;
+};
+
+/**
+ * Format date for export
+ */
+export const formatDateExport = (date) => {
+  if (!date) return '';
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+/**
+ * Format datetime for export
+ */
+export const formatDateTimeExport = (date) => {
+  if (!date) return '';
+  return new Date(date).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+/**
+ * Format time string (HH:MM) for export - converts to AM/PM format
+ */
+export const formatTimeStringExport = (timeString) => {
+  if (!timeString) return '';
+  try {
+    const [hours, minutes] = timeString.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  } catch {
+    return timeString;
+  }
+};
+
+/**
+ * Helper to get value from column definition
+ * @param {Object} item - The data item
+ * @param {Object} col - Column definition
+ * @returns {*} The formatted value
+ */
+const getColumnValue = (item, col) => {
+  let value;
+
+  // Use custom format function if provided
+  if (col.format && typeof col.format === 'function') {
+    value = col.format(item);
+  } else if (col.key) {
+    value = col.key.split('.').reduce((obj, key) => obj?.[key], item);
+  }
+
+  // Handle string format values (for backward compatibility)
+  if (col.format && typeof col.format === 'string') {
+    switch (col.format) {
+      case 'date':
+        value = formatDateExport(value);
+        break;
+      case 'datetime':
+        value = formatDateTimeExport(value);
+        break;
+      case 'currency':
+        value = formatCurrencyExport(value);
+        break;
+    }
+  }
+
+  return value;
+};
+
+/**
  * Convert data to CSV format
  * @param {Array} data - Array of objects to convert
- * @param {Array} columns - Column definitions [{key, header}]
+ * @param {Array} columns - Column definitions [{key, header, format}]
  * @returns {string} CSV string
  */
 export const toCSV = (data, columns) => {
@@ -14,7 +104,7 @@ export const toCSV = (data, columns) => {
   const headers = columns.map(col => col.header);
   const rows = data.map(item =>
     columns.map(col => {
-      let value = col.key.split('.').reduce((obj, key) => obj?.[key], item);
+      let value = getColumnValue(item, col);
 
       // Handle null/undefined
       if (value === null || value === undefined) value = '';
@@ -62,7 +152,7 @@ export const downloadCSV = (data, columns, filename = 'export') => {
 /**
  * Convert data to Excel format (simple HTML table that Excel can open)
  * @param {Array} data - Array of objects to convert
- * @param {Array} columns - Column definitions
+ * @param {Array} columns - Column definitions [{key, header, format}]
  * @param {string} title - Title for the spreadsheet
  * @returns {string} HTML table string
  */
@@ -73,7 +163,8 @@ export const toExcel = (data, columns, title = 'Export') => {
 
   const dataRows = data.map(item => {
     return `<tr>${columns.map(col => {
-      let value = col.key.split('.').reduce((obj, key) => obj?.[key], item);
+      let value = getColumnValue(item, col);
+
       if (value === null || value === undefined) value = '';
       if (value instanceof Date) value = value.toLocaleDateString();
       return `<td style="padding: 6px; border: 1px solid #ddd;">${value}</td>`;
@@ -122,46 +213,6 @@ export const downloadExcel = (data, columns, filename = 'export', title = 'Expor
   document.body.removeChild(link);
 };
 
-/**
- * Format currency for export
- */
-export const formatCurrencyExport = (amount, currency = 'INR') => {
-  if (amount === null || amount === undefined) return '';
-  const symbol = currency === 'AED' ? 'AED ' : '₹';
-  if (amount >= 10000000) {
-    return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-  } else if (amount >= 100000) {
-    return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-  }
-  return `${symbol}${amount.toLocaleString()}`;
-};
-
-/**
- * Format date for export
- */
-export const formatDateExport = (date) => {
-  if (!date) return '';
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
-
-/**
- * Format datetime for export
- */
-export const formatDateTimeExport = (date) => {
-  if (!date) return '';
-  return new Date(date).toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
 export default {
   toCSV,
   downloadCSV,
@@ -169,5 +220,6 @@ export default {
   downloadExcel,
   formatCurrencyExport,
   formatDateExport,
-  formatDateTimeExport
+  formatDateTimeExport,
+  formatTimeStringExport
 };

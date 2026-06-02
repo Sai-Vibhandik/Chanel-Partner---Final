@@ -3,6 +3,7 @@ import Company from '../models/Company.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { sendTeamInviteEmail } from '../services/email.service.js';
 import { createNotification } from './notification.controller.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 import crypto from 'crypto';
 
 /**
@@ -13,7 +14,7 @@ import crypto from 'crypto';
 export const getTeamMembers = async (req, res, next) => {
   try {
     const { companyId } = req.params;
-    const { search, role, status } = req.query;
+    const { search, role, status, page = 1, limit = 10 } = req.query;
 
     // Verify access - only company superadmin can view team
     if (req.user.role !== 'platform_admin' && req.user.companyId?.toString() !== companyId) {
@@ -31,24 +32,39 @@ export const getTeamMembers = async (req, res, next) => {
       query.isActive = status === 'active';
     }
 
-    let users = await User.find(query)
-      .select('-password -resetPasswordToken -emailVerificationToken')
-      .populate('createdBy', 'firstName lastName')
-      .sort({ createdAt: -1 });
-
     // Search filter
     if (search) {
       const searchRegex = new RegExp(search, 'i');
-      users = users.filter(user =>
-        searchRegex.test(user.firstName) ||
-        searchRegex.test(user.lastName) ||
-        searchRegex.test(user.email)
-      );
+      query.$or = [
+        { firstName: searchRegex },
+        { lastName: searchRegex },
+        { email: searchRegex }
+      ];
     }
+
+    // Get total count for pagination
+    const total = await User.countDocuments(query);
+    const pages = Math.ceil(total / limit);
+    const currentPage = Math.max(1, Math.min(parseInt(page), pages || 1));
+
+    const users = await User.find(query)
+      .select('-password -resetPasswordToken -emailVerificationToken')
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .skip((currentPage - 1) * limit)
+      .limit(parseInt(limit));
 
     res.status(200).json({
       success: true,
-      data: { team: users }
+      data: {
+        team: users,
+        pagination: {
+          total,
+          pages,
+          currentPage,
+          limit: parseInt(limit)
+        }
+      }
     });
   } catch (error) {
     next(error);
@@ -137,11 +153,19 @@ export const createTeamMember = async (req, res, next) => {
     });
 
     // If sendInvite is true, send invitation email with credentials
+    // Send email asynchronously (don't wait for it)
+    console.log('📧 Team member created. sendInvite:', sendInvite, 'Type:', typeof sendInvite);
     if (sendInvite) {
-      // Send invitation email with temporary password
-      sendTeamInviteEmail(user, userPassword, company, req.user).catch(err => {
-        console.error('Failed to send team invitation email:', err.message);
-      });
+      console.log('📧 Preparing to send team invitation email to:', user.email);
+      sendTeamInviteEmail(user, userPassword, company, req.user)
+        .then(() => {
+          console.log(`✅ Team invitation email sent to ${user.email}`);
+        })
+        .catch(err => {
+          console.error('❌ Failed to send team invitation email:', err.message);
+        });
+    } else {
+      console.log('📧 sendInvite is false/undefined, skipping email');
     }
 
     // Create notification for the new team member
@@ -165,6 +189,22 @@ export const createTeamMember = async (req, res, next) => {
       link: '/profile'
     }).catch(err => {
       console.error('Failed to create team member notification:', err.message);
+    });
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: companyId,
+      action: ActionTypes.TEAM_MEMBER_ADDED,
+      resourceType: ResourceTypes.TEAM_MEMBER,
+      resourceId: user._id,
+      resourceTitle: `${user.firstName} ${user.lastName}`,
+      details: {
+        memberEmail: user.email,
+        memberRole: role,
+        inviteSent: sendInvite || false
+      },
+      ...getRequestMetadata(req)
     });
 
     // Remove sensitive fields from response
@@ -208,6 +248,10 @@ export const updateTeamMember = async (req, res, next) => {
       throw new ApiError(400, 'You cannot change your own role');
     }
 
+    // Track if email is being changed
+    let emailChanged = false;
+    const oldEmail = user.email;
+
     // Check if email is being changed and if it already exists
     if (email && email.toLowerCase() !== user.email) {
       const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -215,6 +259,7 @@ export const updateTeamMember = async (req, res, next) => {
         throw new ApiError(400, 'A user with this email already exists');
       }
       user.email = email.toLowerCase();
+      emailChanged = true;
     }
 
     // Update fields
@@ -230,6 +275,98 @@ export const updateTeamMember = async (req, res, next) => {
     }
 
     await user.save();
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: companyId,
+      action: ActionTypes.TEAM_MEMBER_UPDATED,
+      resourceType: ResourceTypes.TEAM_MEMBER,
+      resourceId: user._id,
+      resourceTitle: `${user.firstName} ${user.lastName}`,
+      details: {
+        memberEmail: user.email,
+        changes: {
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+          email: email || undefined,
+          phone: phone || undefined,
+          role: role || undefined
+        }
+      },
+      ...getRequestMetadata(req)
+    });
+
+    // Send notification and email if email was changed
+    if (emailChanged) {
+      const company = await Company.findById(companyId);
+      const updatedBy = req.user;
+
+      // Create notification for the team member
+      createNotification({
+        recipientId: user._id,
+        type: 'system',
+        title: 'Email Address Updated',
+        message: `Your email address has been changed from ${oldEmail} to ${user.email}. If you did not make this change, please contact your administrator.`,
+        data: {
+          companyId: company._id,
+          userId: user._id,
+          oldEmail,
+          newEmail: user.email
+        },
+        link: '/profile'
+      }).catch(err => {
+        console.error('Failed to create email change notification:', err.message);
+      });
+
+      // Send email notification to new email address
+      const { sendEmail } = await import('../services/email.service.js');
+      sendEmail({
+        to: user.email,
+        subject: `Email Address Updated - ${company.name}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4f46e5;">Email Address Updated</h2>
+            <p>Hello ${user.firstName},</p>
+            <p>Your email address has been updated in <strong>${company.name}</strong>'s team.</p>
+            <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p style="margin: 5px 0;"><strong>Previous Email:</strong> ${oldEmail}</p>
+              <p style="margin: 5px 0;"><strong>New Email:</strong> ${user.email}</p>
+            </div>
+            <p>This change was made by ${updatedBy.firstName} ${updatedBy.lastName}.</p>
+            <p>If you did not request this change, please contact your administrator immediately.</p>
+            <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
+              Best regards,<br>${company.name} Team
+            </p>
+          </div>
+        `
+      }).catch(err => {
+        console.error('Failed to send email change notification:', err.message);
+      });
+
+      // Also send notification to old email for security
+      sendEmail({
+        to: oldEmail,
+        subject: `Email Address Changed - ${company.name}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #dc2626;">Security Notice: Email Address Changed</h2>
+            <p>Hello ${user.firstName},</p>
+            <p>This is a security notification to inform you that your email address has been changed.</p>
+            <div style="background-color: #fef2f2; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626;">
+              <p style="margin: 5px 0;"><strong>Previous Email:</strong> ${oldEmail}</p>
+              <p style="margin: 5px 0;"><strong>New Email:</strong> ${user.email}</p>
+            </div>
+            <p>If you did not make this change, please contact your administrator immediately.</p>
+            <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
+              Best regards,<br>${company.name} Team
+            </p>
+          </div>
+        `
+      }).catch(err => {
+        console.error('Failed to send old email notification:', err.message);
+      });
+    }
 
     const userResponse = user.toObject();
     delete userResponse.password;
@@ -273,6 +410,21 @@ export const deleteTeamMember = async (req, res, next) => {
     // Permanently delete the user from the database
     await User.findByIdAndDelete(id);
 
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: companyId,
+      action: ActionTypes.TEAM_MEMBER_DELETED,
+      resourceType: ResourceTypes.TEAM_MEMBER,
+      resourceId: id,
+      resourceTitle: `${user.firstName} ${user.lastName}`,
+      details: {
+        memberEmail: user.email,
+        memberRole: user.role
+      },
+      ...getRequestMetadata(req)
+    });
+
     res.status(200).json({
       success: true,
       message: 'Team member permanently deleted'
@@ -309,6 +461,21 @@ export const toggleTeamMemberStatus = async (req, res, next) => {
 
     user.isActive = isActive;
     await user.save();
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: companyId,
+      action: isActive ? ActionTypes.TEAM_MEMBER_ACTIVATED : ActionTypes.TEAM_MEMBER_DEACTIVATED,
+      resourceType: ResourceTypes.TEAM_MEMBER,
+      resourceId: user._id,
+      resourceTitle: `${user.firstName} ${user.lastName}`,
+      details: {
+        memberEmail: user.email,
+        reason: reason || undefined
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
@@ -352,8 +519,26 @@ export const resendInvite = async (req, res, next) => {
     await user.save();
 
     // Send invitation email with new temporary password
-    sendTeamInviteEmail(user, temporaryPassword, company, req.user).catch(err => {
-      console.error('Failed to send team invitation email:', err.message);
+    sendTeamInviteEmail(user, temporaryPassword, company, req.user)
+      .then(() => {
+        console.log(`✅ Team invitation email resent to ${user.email}`);
+      })
+      .catch(err => {
+        console.error('❌ Failed to resend team invitation email:', err.message);
+      });
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: companyId,
+      action: ActionTypes.TEAM_INVITE_RESENT,
+      resourceType: ResourceTypes.TEAM_MEMBER,
+      resourceId: user._id,
+      resourceTitle: `${user.firstName} ${user.lastName}`,
+      details: {
+        memberEmail: user.email
+      },
+      ...getRequestMetadata(req)
     });
 
     res.status(200).json({

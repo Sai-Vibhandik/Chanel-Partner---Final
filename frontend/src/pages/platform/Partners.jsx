@@ -2,22 +2,27 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import useDebounce from '../../hooks/useDebounce';
+import Pagination from '../../components/common/Pagination';
 
 const Partners = () => {
   const navigate = useNavigate();
   const config = sidebarConfig.platform_admin;
+  const toast = useToast();
   const [partners, setPartners] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [kycFilter, setKycFilter] = useState('');
   const [tierFilter, setTierFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
+  const [exporting, setExporting] = useState(false);
 
   // Debounce search for real-time filtering
   const debouncedSearch = useDebounce(search, 300);
@@ -25,7 +30,7 @@ const Partners = () => {
   useEffect(() => {
     fetchPartners();
     fetchStats();
-  }, [debouncedSearch, page, statusFilter, tierFilter]);
+  }, [debouncedSearch, page, statusFilter, kycFilter, tierFilter, itemsPerPage]);
 
   const fetchPartners = async () => {
     try {
@@ -33,17 +38,90 @@ const Partners = () => {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (statusFilter) params.append('status', statusFilter);
+      if (kycFilter) params.append('kycStatus', kycFilter);
       if (tierFilter) params.append('tier', tierFilter);
       params.append('page', page);
-      params.append('limit', 10);
+      params.append('limit', itemsPerPage);
 
       const response = await api.get(`/partners?${params.toString()}`);
       setPartners(response.data.data.partners);
       setPagination(response.data.data.pagination);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partners');
+      toast.error(err.response?.data?.message || 'Failed to load partners');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Calculate KYC status from kycDocuments array
+  const calculateKycStatus = (kycDocuments) => {
+    if (!kycDocuments || kycDocuments.length === 0) {
+      return 'pending';
+    }
+
+    const totalDocs = kycDocuments.length;
+    const verifiedDocs = kycDocuments.filter(doc => doc.status === 'verified').length;
+    const rejectedDocs = kycDocuments.filter(doc => doc.status === 'rejected').length;
+    const pendingDocs = kycDocuments.filter(doc => doc.status === 'pending').length;
+
+    if (verifiedDocs === totalDocs) {
+      return 'verified';
+    }
+    if (rejectedDocs > 0 && pendingDocs === 0) {
+      return 'rejected';
+    }
+    if (pendingDocs > 0) {
+      return 'pending';
+    }
+    return 'submitted';
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (statusFilter) params.append('status', statusFilter);
+      if (kycFilter) params.append('kycStatus', kycFilter);
+      if (tierFilter) params.append('tier', tierFilter);
+      params.append('limit', 1000); // Export all
+
+      const response = await api.get(`/partners?${params.toString()}`);
+      const exportPartners = response.data.data.partners;
+
+      // Create CSV content
+      const headers = ['Name', 'Email', 'Phone', 'Status', 'KYC Status', 'Tier', 'Company Name', 'Business Type', 'Operating Region', 'Created At'];
+      const csvContent = [
+        headers.join(','),
+        ...exportPartners.map(partner => [
+          `${partner.firstName} ${partner.lastName}`,
+          partner.email,
+          partner.phone || '',
+          partner.partnerProfile?.status || 'pending',
+          calculateKycStatus(partner.partnerProfile?.kycDocuments),
+          partner.partnerProfile?.tier || 'bronze',
+          partner.partnerProfile?.companyName || partner.companyId?.name || '',
+          (() => { const types = { 'individual': 'Individual', 'proprietorship': 'Proprietorship', 'partnership': 'Partnership', 'llp': 'LLP', 'pvtltd': 'Pvt Ltd', 'freelancer': 'Freelancer' }; return types[partner.partnerProfile?.companyType] || partner.partnerProfile?.companyType || ''; })(),
+          partner.partnerProfile?.operatingRegion || '',
+          new Date(partner.createdAt).toLocaleDateString()
+        ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `partners-export-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Failed to export partners');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -104,8 +182,8 @@ const Partners = () => {
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
+        <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="relative flex-1 w-full">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
@@ -114,8 +192,18 @@ const Partners = () => {
               placeholder="Search partners..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full py-2 pl-10 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
+            {search && (
+              <button
+                onClick={() => { setSearch(''); setPage(1); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
           <select
             value={statusFilter}
@@ -124,11 +212,17 @@ const Partners = () => {
           >
             <option value="">All Status</option>
             <option value="pending">Pending</option>
-            <option value="under_review">Under Review</option>
-            <option value="approved">Approved</option>
             <option value="active">Active</option>
-            <option value="rejected">Rejected</option>
-            <option value="suspended">Suspended</option>
+          </select>
+          <select
+            value={kycFilter}
+            onChange={(e) => { setKycFilter(e.target.value); setPage(1); }}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="">All KYC</option>
+            <option value="pending">Pending</option>
+            <option value="submitted">Submitted</option>
+            <option value="verified">Verified</option>
           </select>
           <select
             value={tierFilter}
@@ -141,6 +235,25 @@ const Partners = () => {
             <option value="gold">Gold</option>
             <option value="platinum">Platinum</option>
           </select>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+          >
+            {exporting ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                Exporting...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Export
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -240,6 +353,7 @@ const Partners = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sr. No.</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Partner</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -249,8 +363,11 @@ const Partners = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {partners.map((partner) => (
+                {partners.map((partner, index) => (
                   <tr key={partner._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {(page - 1) * itemsPerPage + index + 1}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold">
@@ -295,28 +412,15 @@ const Partners = () => {
         )}
 
         {/* Pagination */}
-        {pagination.pages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
-              Showing page {page} of {pagination.pages}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(page - 1)}
-                disabled={page === 1}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setPage(page + 1)}
-                disabled={page === pagination.pages}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+        {pagination.total > 0 && (
+          <Pagination
+            currentPage={page}
+            totalPages={pagination.pages}
+            total={pagination.total}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setPage}
+            onItemsPerPageChange={(newLimit) => { setItemsPerPage(newLimit); setPage(1); }}
+          />
         )}
       </div>
     </DashboardLayout>

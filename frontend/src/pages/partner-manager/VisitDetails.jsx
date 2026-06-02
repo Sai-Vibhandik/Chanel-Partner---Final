@@ -3,22 +3,35 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
+import Modal, { ModalContent, ModalFooter, ModalButton } from '../../components/common/Modal';
 
 const PartnerManagerVisitDetails = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const config = sidebarConfig[user?.role] || sidebarConfig.partner_manager;
   const navigate = useNavigate();
+  const toast = useToast();
 
   // Determine base path based on user role
   const basePath = user?.role === 'company_superadmin' ? '/company/visits' : '/partner-manager/visits';
 
   const [visit, setVisit] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+
+  const formatTimeDisplay = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
 
   useEffect(() => {
     fetchVisit();
@@ -30,7 +43,7 @@ const PartnerManagerVisitDetails = () => {
       const response = await api.get(`/visits/${id}`);
       setVisit(response.data.data.visit);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load visit details');
+      toast.error(err.response?.data?.message || 'Failed to load visit details');
     } finally {
       setLoading(false);
     }
@@ -41,25 +54,29 @@ const PartnerManagerVisitDetails = () => {
     try {
       setProcessing(true);
       await api.put(`/visits/${id}/approve`);
-      setSuccess('Visit approved successfully');
+      toast.success('Visit approved successfully.');
       fetchVisit();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to approve visit');
+      toast.error(err.response?.data?.message || 'Failed to approve visit');
     } finally {
       setProcessing(false);
     }
   };
 
   const handleReject = async () => {
-    const reason = prompt('Enter rejection reason:');
-    if (!reason) return;
+    if (!rejectReason.trim()) {
+      toast.error('Please enter a rejection reason');
+      return;
+    }
     try {
       setProcessing(true);
-      await api.put(`/visits/${id}/reject`, { reason });
-      setSuccess('Visit rejected');
+      await api.put(`/visits/${id}/reject`, { reason: rejectReason.trim() });
+      toast.success('Visit rejected successfully.');
+      setShowRejectModal(false);
+      setRejectReason('');
       fetchVisit();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reject visit');
+      toast.error(err.response?.data?.message || 'Failed to reject visit');
     } finally {
       setProcessing(false);
     }
@@ -70,10 +87,10 @@ const PartnerManagerVisitDetails = () => {
     try {
       setProcessing(true);
       await api.put(`/visits/${id}/complete`);
-      setSuccess('Visit marked as completed');
+      toast.success('Visit marked as completed successfully.');
       fetchVisit();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to complete visit');
+      toast.error(err.response?.data?.message || 'Failed to complete visit');
     } finally {
       setProcessing(false);
     }
@@ -99,36 +116,12 @@ const PartnerManagerVisitDetails = () => {
     return styles[type] || 'bg-gray-100 text-gray-800';
   };
 
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount?.toLocaleString() || '0'}`;
-  };
-
   if (loading) {
     return (
       <DashboardLayout sidebarLinks={config.links} title="Visit Details" subtitle="Loading..." color={config.color}>
         <div className="flex items-center justify-center min-h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (error && !visit) {
-    return (
-      <DashboardLayout sidebarLinks={config.links} title="Visit Details" subtitle="Error" color={config.color}>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">{error}</div>
-        <button
-          onClick={() => navigate(basePath)}
-          className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-        >
-          Back to Visits
-        </button>
       </DashboardLayout>
     );
   }
@@ -149,10 +142,6 @@ const PartnerManagerVisitDetails = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Visit Details" subtitle={`Visit #${visit._id.slice(-6).toUpperCase()}`} color={config.color}>
-      {/* Messages */}
-      {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>}
-      {success && <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>}
-
       {/* Back Button */}
       <button
         onClick={() => navigate(basePath)}
@@ -186,7 +175,7 @@ const PartnerManagerVisitDetails = () => {
                   Approve
                 </button>
                 <button
-                  onClick={handleReject}
+                  onClick={() => setShowRejectModal(true)}
                   disabled={processing}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
                 >
@@ -239,7 +228,7 @@ const PartnerManagerVisitDetails = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Time</span>
-              <span className="font-medium">{visit.scheduledTime}</span>
+              <span className="font-medium">{formatTimeDisplay(visit.scheduledTime)}</span>
             </div>
           </div>
         </div>
@@ -289,6 +278,71 @@ const PartnerManagerVisitDetails = () => {
             </div>
           </div>
         </div>
+
+        {/* Office Location Info */}
+        {visit.officeLocation && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Office Location</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Office Name</span>
+                <span className="font-medium">{visit.officeLocation.name || 'N/A'}</span>
+              </div>
+              {visit.officeLocation.phone && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Phone</span>
+                  <span className="font-medium">{visit.officeLocation.phone}</span>
+                </div>
+              )}
+              {visit.officeLocation.email && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Email</span>
+                  <span className="font-medium">{visit.officeLocation.email}</span>
+                </div>
+              )}
+              {visit.officeLocation.address && (
+                <>
+                  {visit.officeLocation.address.street && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Street</span>
+                      <span className="font-medium text-right max-w-[200px]">{visit.officeLocation.address.street}</span>
+                    </div>
+                  )}
+                  {(visit.officeLocation.address.city || visit.officeLocation.address.state) && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">City/State</span>
+                      <span className="font-medium">
+                        {[visit.officeLocation.address.city, visit.officeLocation.address.state].filter(Boolean).join(', ')}
+                      </span>
+                    </div>
+                  )}
+                  {visit.officeLocation.address.zipCode && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Pincode</span>
+                      <span className="font-medium">{visit.officeLocation.address.zipCode}</span>
+                    </div>
+                  )}
+                </>
+              )}
+              {visit.officeLocation.googleMapsUrl && (
+                <div className="pt-2">
+                  <a
+                    href={visit.officeLocation.googleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    View on Google Maps
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Notes */}
@@ -321,6 +375,49 @@ const PartnerManagerVisitDetails = () => {
           )}
         </div>
       )}
+
+      {/* Reject Modal */}
+      <Modal
+        isOpen={showRejectModal}
+        onClose={() => {
+          setShowRejectModal(false);
+          setRejectReason('');
+        }}
+        title="Reject Visit"
+        size="sm"
+      >
+        <ModalContent>
+          <p className="text-gray-600 mb-4">
+            Please provide a reason for rejecting this visit.
+          </p>
+          <textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Enter rejection reason..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+            rows={4}
+            autoFocus
+          />
+        </ModalContent>
+        <ModalFooter>
+          <ModalButton
+            onClick={() => {
+              setShowRejectModal(false);
+              setRejectReason('');
+            }}
+            variant="secondary"
+          >
+            Cancel
+          </ModalButton>
+          <ModalButton
+            onClick={handleReject}
+            variant="danger"
+            disabled={processing || !rejectReason.trim()}
+          >
+            {processing ? 'Rejecting...' : 'Reject Visit'}
+          </ModalButton>
+        </ModalFooter>
+      </Modal>
     </DashboardLayout>
   );
 };

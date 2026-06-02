@@ -36,8 +36,26 @@ const Login = () => {
     e.preventDefault();
     setError('');
     setFieldErrors({});
-    setLoading(true);
     setShowResendVerification(false);
+
+    // Client-side validation
+    const errors = {};
+    if (!email.trim()) {
+      errors.email = 'Email ID is required.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = 'Please enter a valid Email ID.';
+    }
+    if (!password) {
+      errors.password = 'Password is required.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const { user } = await login(email, password);
@@ -70,7 +88,7 @@ const Login = () => {
 
   const handleResendVerification = async () => {
     if (!email) {
-      setError('Please enter your email address first.');
+      setError('Please enter your Email ID first.');
       return;
     }
 
@@ -194,10 +212,10 @@ const Login = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email address
+                Email ID<span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -210,7 +228,6 @@ const Login = () => {
                   name="email"
                   type="email"
                   autoComplete="email"
-                  required
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.email; return n; }); }}
                   className={`block w-full pl-10 pr-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
@@ -222,7 +239,7 @@ const Login = () => {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
+                Password<span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -235,10 +252,9 @@ const Login = () => {
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
-                  required
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.password; return n; }); }}
-                  className={`block w-full pl-10 pr-12 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  className={`block w-full pl-10 pr-10 py-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                   placeholder="••••••••"
                 />
                 <button
@@ -267,7 +283,7 @@ const Login = () => {
                 <span className="ml-2 text-sm text-gray-600">Remember me</span>
               </label>
               <Link to="/forgot-password" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-                Forgot password?
+                Forgot Password?
               </Link>
             </div>
 

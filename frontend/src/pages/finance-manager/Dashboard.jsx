@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
 
 const FinanceManagerDashboard = () => {
   const { user } = useAuth();
@@ -40,17 +41,6 @@ const FinanceManagerDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (!amount) return `${symbol}0`;
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount.toLocaleString()}`;
   };
 
   const getStatusColor = (status) => {

@@ -116,13 +116,6 @@
     // Commission settings
     defaultCommissionPercentage: { type: Number, default: 5 },
 
-    // Feature flags
-    features: {
-      chatEnabled: { type: Boolean, default: true },
-      suggestionsEnabled: { type: Boolean, default: true },
-      analyticsEnabled: { type: Boolean, default: true }
-    },
-
     // Notifications
     notifications: {
       email: { type: Boolean, default: true },

@@ -2,15 +2,20 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api, { getDocumentViewUrl } from '../../utils/api';
 
 const PartnerDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const config = sidebarConfig.partner_manager;
-  const [partner, setPartner] = useState(null);
+  const toast = useToast();
+  const [partnership, setPartnership] = useState(null);
+  const [companySettings, setCompanySettings] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [statusModal, setStatusModal] = useState(false);
   const [tierModal, setTierModal] = useState(false);
   const [newStatus, setNewStatus] = useState('');
@@ -21,20 +26,38 @@ const PartnerDetails = () => {
   const [activeTab, setActiveTab] = useState('info');
 
   useEffect(() => {
-    fetchPartner();
+    fetchPartnership();
   }, [id]);
 
-  const fetchPartner = async () => {
+  useEffect(() => {
+    fetchCompanySettings();
+  }, []);
+
+  const fetchCompanySettings = async () => {
+    try {
+      const response = await api.get(`/companies/${user.companyId}/settings`);
+      setCompanySettings(response.data.data);
+    } catch (err) {
+      console.error('Failed to fetch company settings:', err);
+    }
+  };
+
+  const fetchPartnership = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/partners/${id}`);
-      setPartner(response.data.data.partner);
+      setError(null);
+      const [partnershipRes, kycRes] = await Promise.all([
+        api.get(`/partner-company/${id}`),
+        api.get(`/partner-company/${id}/kyc`)
+      ]);
+      setPartnership(partnershipRes.data.data.partnership);
+      setKycSummary(kycRes.data.data.kycSummary);
 
       // Fetch KYC summary
       const kycResponse = await api.get(`/partners/${id}/kyc`);
       setKycSummary(kycResponse.data.data.kycSummary);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partner');
+      toast.error(err.response?.data?.message || 'Failed to load partner');
     } finally {
       setLoading(false);
     }
@@ -52,8 +75,9 @@ const PartnerDetails = () => {
       setStatusModal(false);
       setReason('');
       fetchPartner();
+      toast.success('Partner status updated successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update status');
+      toast.error(err.response?.data?.message || 'Failed to update status');
     } finally {
       setUpdating(false);
     }
@@ -61,6 +85,13 @@ const PartnerDetails = () => {
 
   const handleTierUpdate = async () => {
     if (!newTier) return;
+
+    // Check if tier is the same as current tier
+    if (newTier === partner?.partnerProfile?.tier) {
+      toast.info('No changes detected. Tier is already ' + newTier + '.');
+      setTierModal(false);
+      return;
+    }
 
     try {
       setUpdating(true);
@@ -71,8 +102,9 @@ const PartnerDetails = () => {
       setTierModal(false);
       setReason('');
       fetchPartner();
+      toast.success('Partner tier updated successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update tier');
+      toast.error(err.response?.data?.message || 'Failed to update tier');
     } finally {
       setUpdating(false);
     }
@@ -87,8 +119,9 @@ const PartnerDetails = () => {
         reason: rejectionReason
       });
       fetchPartner(); // Refresh to get updated KYC summary
+      toast.success('Document verified successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to verify document');
+      toast.error(err.response?.data?.message || 'Failed to verify document');
     } finally {
       setUpdating(false);
     }
@@ -173,7 +206,7 @@ const PartnerDetails = () => {
             Update Status
           </button>
           <button
-            onClick={() => { setNewTier(''); setReason(''); setTierModal(true); }}
+            onClick={() => { setNewTier(partner?.partnerProfile?.tier || 'bronze'); setReason(''); setTierModal(true); }}
             className="px-4 py-2 border border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors"
           >
             Change Tier
@@ -436,12 +469,15 @@ const PartnerDetails = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Information</h3>
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-gray-500">Company Name</p>
+              <p className="text-sm text-gray-500">Your Company/Business Name</p>
               <p className="text-gray-900">{partner?.partnerProfile?.companyName || '-'}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Company Type</p>
-              <p className="text-gray-900 capitalize">{partner?.partnerProfile?.companyType?.replace('_', ' ') || '-'}</p>
+              <p className="text-sm text-gray-500">Business Type</p>
+              <p className="text-gray-900">{(() => {
+                const types = { 'individual': 'Individual', 'proprietorship': 'Proprietorship', 'partnership': 'Partnership', 'llp': 'LLP', 'pvtltd': 'Pvt Ltd', 'freelancer': 'Freelancer' };
+                return types[partner?.partnerProfile?.companyType] || partner?.partnerProfile?.companyType?.replace('_', ' ') || '-';
+              })()}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Operating Region</p>
@@ -611,11 +647,9 @@ const PartnerDetails = () => {
                 >
                   <option value="">Select status</option>
                   <option value="pending">Pending</option>
-                  <option value="under_review">Under Review</option>
-                  <option value="approved">Approved</option>
                   <option value="active">Active</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="suspended">Suspended</option>
+                  <option value="suspended">Suspend</option>
+                  <option value="rejected">Reject</option>
                 </select>
               </div>
               <div>
@@ -624,9 +658,11 @@ const PartnerDetails = () => {
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  maxLength={500}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
                   placeholder="Enter reason or notes..."
                 />
+                <p className="text-xs text-gray-500 mt-1">{reason.length}/500 characters</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
@@ -662,10 +698,10 @@ const PartnerDetails = () => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                 >
                   <option value="">Select tier</option>
-                  <option value="bronze">Bronze (30% commission)</option>
-                  <option value="silver">Silver (40% commission)</option>
-                  <option value="gold">Gold (50% commission)</option>
-                  <option value="platinum">Platinum (60% commission)</option>
+                  <option value="bronze">Bronze ({companySettings?.settings?.tierPercentages?.bronze || 25}% commission)</option>
+                  <option value="silver">Silver ({companySettings?.settings?.tierPercentages?.silver || 35}% commission)</option>
+                  <option value="gold">Gold ({companySettings?.settings?.tierPercentages?.gold || 50}% commission)</option>
+                  <option value="platinum">Platinum ({companySettings?.settings?.tierPercentages?.platinum || 75}% commission)</option>
                 </select>
               </div>
               <div>

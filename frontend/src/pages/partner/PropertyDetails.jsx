@@ -3,17 +3,18 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api, { getDocumentViewUrl } from '../../utils/api';
 import BookVisitModal from '../../components/common/BookVisitModal';
+import { formatCurrency } from '../../utils/currency';
 
 const PropertyDetails = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { user } = useAuth();
+  const toast = useToast();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Booking modal state
   const [showBookModal, setShowBookModal] = useState(false);
@@ -38,12 +39,11 @@ const PropertyDetails = () => {
   const fetchProperty = async () => {
     try {
       setLoading(true);
-      setError('');
       const response = await api.get(`/properties/${id}`);
       setProperty(response.data?.data?.property || null);
     } catch (err) {
       console.error('Error fetching property:', err);
-      setError(err.response?.data?.message || 'Failed to load property');
+      toast.error(err.response?.data?.message || 'Failed to load property');
     } finally {
       setLoading(false);
     }
@@ -68,19 +68,7 @@ const PropertyDetails = () => {
   const formatPrice = (prop) => {
     if (!prop) return '';
     if (prop.pricing?.priceOnRequest) return 'Price on Request';
-
-    const price = prop.pricing?.basePrice || 0;
-    const currency = prop.pricing?.currency === 'AED' ? 'AED ' : '₹';
-
-    if (prop.region === 'dubai') {
-      if (price >= 1000000) return `${currency}${(price / 1000000).toFixed(2)}M`;
-      if (price >= 1000) return `${currency}${(price / 1000).toFixed(0)}K`;
-      return `${currency}${price.toLocaleString()}`;
-    } else {
-      if (price >= 10000000) return `${currency}${(price / 10000000).toFixed(2)} Cr`;
-      if (price >= 100000) return `${currency}${(price / 100000).toFixed(2)} Lac`;
-      return `${currency}${price.toLocaleString()}`;
-    }
+    return formatCurrency(prop.pricing?.basePrice || 0, prop.pricing?.currency || 'INR');
   };
 
   const propertyTypes = {
@@ -104,11 +92,11 @@ const PropertyDetails = () => {
     );
   }
 
-  if (error || !property) {
+  if (!property) {
     return (
       <DashboardLayout sidebarLinks={config.links} title="Property Not Found" subtitle="" color={config.color}>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 mb-6">
-          {error || 'Property not found'}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-gray-700 mb-6">
+          Property not found
         </div>
         <button
           onClick={() => navigate('/partner/properties')}
@@ -211,7 +199,7 @@ const PropertyDetails = () => {
               <p className="text-sm text-gray-600 mb-1">Commission Available</p>
               <p className="text-lg font-semibold text-green-700">
                 {property.commission?.isFixed
-                  ? `${property.pricing?.currency === 'AED' ? 'د.إ' : '₹'}${property.commission.fixedAmount} (Fixed)`
+                  ? `${property.pricing?.currency === 'AED' ? 'AED ' : '₹'}${property.commission.fixedAmount} (Fixed)`
                   : `${property.commission.basePercentage}% of sale value`}
               </p>
             </div>
@@ -271,25 +259,31 @@ const PropertyDetails = () => {
           {property.pricing?.pricePerSqFt && (
             <div>
               <p className="text-sm text-gray-500">Price per {property.details?.areaUnit === 'sqm' ? 'sq m' : 'sq ft'}</p>
-              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'د.إ' : '₹'}{property.pricing.pricePerSqFt.toLocaleString()}</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'AED ' : '₹'}{property.pricing.pricePerSqFt.toLocaleString()}</p>
+            </div>
+          )}
+          {property.pricing?.pricePerSqM && (
+            <div>
+              <p className="text-sm text-gray-500">Price per sq m</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'AED ' : '₹'}{property.pricing.pricePerSqM.toLocaleString()}</p>
             </div>
           )}
           {property.pricing?.bookingAmount && (
             <div>
               <p className="text-sm text-gray-500">Booking Amount</p>
-              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'د.إ' : '₹'}{property.pricing.bookingAmount.toLocaleString()}</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'AED ' : '₹'}{property.pricing.bookingAmount.toLocaleString()}</p>
             </div>
           )}
           {property.pricing?.maintenanceCharges && (
             <div>
               <p className="text-sm text-gray-500">Maintenance Charges</p>
-              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'د.إ' : '₹'}{property.pricing.maintenanceCharges.toLocaleString()}</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'AED ' : '₹'}{property.pricing.maintenanceCharges.toLocaleString()}</p>
             </div>
           )}
           {property.pricing?.otherCharges && (
             <div>
               <p className="text-sm text-gray-500">Other Charges</p>
-              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'د.إ' : '₹'}{property.pricing.otherCharges.toLocaleString()}</p>
+              <p className="font-semibold">{property.pricing.currency === 'AED' ? 'AED ' : '₹'}{property.pricing.otherCharges.toLocaleString()}</p>
             </div>
           )}
         </div>
@@ -458,7 +452,7 @@ const PropertyDetails = () => {
             {property.indiaDetails.reraWebsite && (
               <div>
                 <p className="text-sm text-gray-500">RERA Website</p>
-                <a href={property.indiaDetails.reraWebsite} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-600 hover:underline">
+                <a href={property.indiaDetails.reraWebsite} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-600 hover:underline break-all">
                   {property.indiaDetails.reraWebsite}
                 </a>
               </div>
@@ -484,7 +478,12 @@ const PropertyDetails = () => {
             {property.indiaDetails.possessionStatus && (
               <div>
                 <p className="text-sm text-gray-500">Possession Status</p>
-                <p className="font-medium capitalize">{property.indiaDetails.possessionStatus.replace(/([A-Z])/g, ' $1').trim()}</p>
+                <p className="font-medium">
+                  {property.indiaDetails.possessionStatus === 'readytomove' ? 'Ready to Move' :
+                   property.indiaDetails.possessionStatus === 'underconstruction' ? 'Under Construction' :
+                   property.indiaDetails.possessionStatus === 'ocreceived' ? 'OC Received' :
+                   property.indiaDetails.possessionStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </p>
               </div>
             )}
             {property.indiaDetails.possessionDate && (
@@ -559,7 +558,7 @@ const PropertyDetails = () => {
             {property.dubaiDetails.serviceCharges && (
               <div>
                 <p className="text-sm text-gray-500">Service Charges</p>
-                <p className="font-medium">د.إ {property.dubaiDetails.serviceCharges}/sq ft</p>
+                <p className="font-medium">AED {property.dubaiDetails.serviceCharges.toLocaleString()}/{property.details?.areaUnit === 'sqm' ? 'sq m' : 'sq ft'}</p>
               </div>
             )}
             {property.dubaiDetails.ownershipType && (
@@ -647,8 +646,9 @@ const PropertyDetails = () => {
         show={showBookModal}
         onClose={() => setShowBookModal(false)}
         onSuccess={() => {
-          setSuccess('Visit booked successfully!');
+          toast.success('Visit booked successfully.');
           setShowBookModal(false);
+          window.scrollTo(0, 0);
         }}
         selectedProperty={property}
         selectedPartnership={selectedPartnership}

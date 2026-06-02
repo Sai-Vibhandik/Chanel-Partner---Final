@@ -30,7 +30,8 @@ export const validateRegisterPartner = [
     .isLength({ min: 8, max: 128 }).withMessage('Password must be between 8 and 128 characters')
     .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
     .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
-    .matches(/[0-9]/).withMessage('Password must contain at least one number'),
+    .matches(/[0-9]/).withMessage('Password must contain at least one number')
+    .matches(/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~]/).withMessage('Password must contain at least one special character'),
 
   body('firstName')
     .trim()
@@ -64,6 +65,20 @@ export const validateRegisterPartner = [
     .optional()
     .isIn(['india', 'dubai', 'both'])
     .withMessage('Operating region must be india, dubai, or both'),
+
+  body('website')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ max: 200 }).withMessage('Website cannot exceed 200 characters')
+    .custom((value) => {
+      // Allow URLs with or without protocol
+      if (!value) return true;
+      const urlPattern = /^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/;
+      if (!urlPattern.test(value)) {
+        throw new Error('Please enter a valid website URL');
+      }
+      return true;
+    }),
 
   // India-specific fields
   body('gstNumber')
@@ -131,7 +146,8 @@ export const validateResetPassword = [
     .isLength({ min: 8, max: 128 }).withMessage('Password must be between 8 and 128 characters')
     .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
     .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
-    .matches(/[0-9]/).withMessage('Password must contain at least one number'),
+    .matches(/[0-9]/).withMessage('Password must contain at least one number')
+    .matches(/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~]/).withMessage('Password must contain at least one special character'),
 
   body('confirmPassword')
     .notEmpty().withMessage('Password confirmation is required')
@@ -156,6 +172,7 @@ export const validateChangePassword = [
     .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
     .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
     .matches(/[0-9]/).withMessage('Password must contain at least one number')
+    .matches(/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~]/).withMessage('Password must contain at least one special character')
     .custom((value, { req }) => {
       if (value === req.body.currentPassword) {
         throw new Error('New password must be different from current password');

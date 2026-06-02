@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
+import Pagination from '../../components/common/Pagination';
 
 const Reports = () => {
   const config = sidebarConfig.partner_manager;
@@ -15,7 +17,7 @@ const Reports = () => {
 
   // Pagination
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Filters
   const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
@@ -29,7 +31,7 @@ const Reports = () => {
     } else {
       fetchCommissionReport();
     }
-  }, [activeTab, dateRange.startDate, dateRange.endDate, tierFilter, sortBy, sortOrder, page]);
+  }, [activeTab, dateRange.startDate, dateRange.endDate, tierFilter, sortBy, sortOrder, page, itemsPerPage]);
 
   const fetchPerformanceReport = async () => {
     try {
@@ -41,7 +43,7 @@ const Reports = () => {
       params.append('sortBy', sortBy);
       params.append('sortOrder', sortOrder);
       params.append('page', page);
-      params.append('limit', limit);
+      params.append('limit', itemsPerPage);
 
       const response = await api.get(`/partner-company/reports/performance?${params.toString()}`);
       setPerformanceData(response.data?.data);
@@ -59,7 +61,7 @@ const Reports = () => {
       if (dateRange.startDate) params.append('startDate', dateRange.startDate);
       if (dateRange.endDate) params.append('endDate', dateRange.endDate);
       params.append('page', page);
-      params.append('limit', limit);
+      params.append('limit', itemsPerPage);
 
       const response = await api.get(`/partner-company/reports/commissions?${params.toString()}`);
       setCommissionData(response.data?.data);
@@ -70,18 +72,6 @@ const Reports = () => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbols = { INR: '₹', USD: '$', AED: 'د.إ', EUR: '€', GBP: '£' };
-    if (!amount) return `${symbols[currency] || currency}0`;
-    const symbol = symbols[currency] || currency;
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount.toLocaleString()}`;
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -89,6 +79,43 @@ const Reports = () => {
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  // Format status to title case
+  const formatStatus = (status) => {
+    if (!status) return 'Pending';
+    return status
+      .split(/[_\s]+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
+
+  // Format tier to title case
+  const formatTier = (tier) => {
+    if (!tier) return 'Bronze';
+    return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
+  };
+
+  // Get KYC status styles
+  const getKycStatusStyles = (status) => {
+    const styles = {
+      verified: 'bg-green-100 text-green-700',
+      submitted: 'bg-amber-100 text-amber-700',
+      pending: 'bg-gray-100 text-gray-700',
+      rejected: 'bg-red-100 text-red-700'
+    };
+    return styles[status] || styles.pending;
+  };
+
+  // Get tier styles
+  const getTierStyles = (tier) => {
+    const styles = {
+      platinum: 'bg-purple-100 text-purple-700',
+      gold: 'bg-amber-100 text-amber-700',
+      silver: 'bg-gray-200 text-gray-700',
+      bronze: 'bg-orange-100 text-orange-700'
+    };
+    return styles[tier] || styles.bronze;
   };
 
   const clearFilters = () => {
@@ -268,8 +295,8 @@ const Reports = () => {
         {/* Tier Breakdown */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Partners by Tier</h3>
-          <div className="grid grid-cols-4 gap-4">
-            {['bronze', 'silver', 'gold', 'platinum'].map((tier) => (
+          <div className={`grid gap-4 ${tierFilter ? 'grid-cols-1 max-w-xs' : 'grid-cols-4'}`}>
+            {(tierFilter ? [tierFilter] : ['bronze', 'silver', 'gold', 'platinum']).map((tier) => (
               <div key={tier} className="text-center p-4 rounded-lg bg-gray-50">
                 <p className="text-2xl font-bold text-gray-900">{tierBreakdown?.[tier] || 0}</p>
                 <p className="text-sm text-gray-500 capitalize">{tier}</p>
@@ -325,13 +352,8 @@ const Reports = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
-                          partner.tier === 'platinum' ? 'bg-purple-100 text-purple-700' :
-                          partner.tier === 'gold' ? 'bg-amber-100 text-amber-700' :
-                          partner.tier === 'silver' ? 'bg-gray-200 text-gray-700' :
-                          'bg-orange-100 text-orange-700'
-                        }`}>
-                          {partner.tier}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTierStyles(partner.tier)}`}>
+                          {formatTier(partner.tier)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right text-gray-900">{partner.totalVisits}</td>
@@ -364,13 +386,8 @@ const Reports = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          partner.kycStatus === 'verified' ? 'bg-green-100 text-green-700' :
-                          partner.kycStatus === 'submitted' ? 'bg-amber-100 text-amber-700' :
-                          partner.kycStatus === 'rejected' ? 'bg-red-100 text-red-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {partner.kycStatus || 'pending'}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getKycStatusStyles(partner.kycStatus)}`}>
+                          {formatStatus(partner.kycStatus)}
                         </span>
                       </td>
                     </tr>
@@ -381,31 +398,15 @@ const Reports = () => {
           )}
 
           {/* Pagination */}
-          {pagination && pagination.pages > 1 && (
-            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-              <div className="text-sm text-gray-500">
-                Showing {((pagination.page - 1) * limit) + 1} to {Math.min(pagination.page * limit, pagination.total)} of {pagination.total} partners
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-gray-600">
-                  Page {pagination.page} of {pagination.pages}
-                </span>
-                <button
-                  onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
-                  disabled={page === pagination.pages}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+          {pagination && pagination.total > 0 && (
+            <Pagination
+              currentPage={page}
+              totalPages={pagination.pages}
+              total={pagination.total}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setPage}
+              onItemsPerPageChange={(newLimit) => { setItemsPerPage(newLimit); setPage(1); }}
+            />
           )}
         </div>
       </div>
@@ -470,29 +471,90 @@ const Reports = () => {
         {/* Commission Trend */}
         {byPeriod && byPeriod.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Trend</h3>
-            {(activeCurrencies?.length || 1) > 1 && (
-              <p className="text-xs text-gray-400 mb-3">Note: Amounts may include mixed currencies</p>
-            )}
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Monthly Commission Trend</h3>
+              <p className="text-sm text-gray-500">Overview of commissions created and paid each month</p>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Count</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total Amount</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Paid Amount</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Commissions Created</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount Created</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount Paid</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {byPeriod.map((item) => (
-                    <tr key={item.period}>
-                      <td className="px-4 py-2 text-gray-900">{item.period}</td>
-                      <td className="px-4 py-2 text-right text-gray-900">{item.count}</td>
-                      <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.amount)}</td>
-                      <td className="px-4 py-2 text-right text-green-600">{formatCurrency(item.paidAmount)}</td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    // Format period from "2024-01" to "January 2024"
+                    const formatPeriod = (periodStr) => {
+                      if (!periodStr) return '-';
+                      const [year, month] = periodStr.split('-');
+                      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+                      return `${monthNames[parseInt(month) - 1]} ${year}`;
+                    };
+
+                    // Group by period and aggregate currencies
+                    const periodMap = new Map();
+                    byPeriod.forEach(item => {
+                      const period = item._id?.period || item.period;
+                      const currency = item._id?.currency || 'INR';
+                      if (!periodMap.has(period)) {
+                        periodMap.set(period, { count: 0, amountsByCurrency: {}, paidByCurrency: {} });
+                      }
+                      const periodData = periodMap.get(period);
+                      periodData.count += item.count || 0;
+                      periodData.amountsByCurrency[currency] = (periodData.amountsByCurrency[currency] || 0) + (item.amount || 0);
+                      periodData.paidByCurrency[currency] = (periodData.paidByCurrency[currency] || 0) + (item.paidAmount || 0);
+                    });
+
+                    // Sort periods in descending order (most recent first)
+                    const sortedPeriods = Array.from(periodMap.entries())
+                      .sort((a, b) => b[0].localeCompare(a[0]))
+                      .slice(0, 12);
+
+                    return sortedPeriods.map(([period, data]) => {
+                      const currencies = Object.keys(data.amountsByCurrency);
+                      const isMultiCurrency = currencies.length > 1;
+
+                      return (
+                        <tr key={period}>
+                          <td className="px-4 py-2 text-gray-900 font-medium">{formatPeriod(period)}</td>
+                          <td className="px-4 py-2 text-right text-gray-900">{data.count}</td>
+                          <td className="px-4 py-2 text-right">
+                            {isMultiCurrency ? (
+                              <div className="space-y-0.5">
+                                {currencies.map(currency => (
+                                  <div key={currency} className="flex items-center justify-end gap-1">
+                                    <span className="font-medium text-gray-900">{formatCurrency(data.amountsByCurrency[currency] || 0, currency)}</span>
+                                    <span className="text-xs text-gray-400">({currency})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="font-medium text-gray-900">{formatCurrency(data.amountsByCurrency[currencies[0] || 'INR'] || 0, currencies[0] || 'INR')}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            {isMultiCurrency ? (
+                              <div className="space-y-0.5">
+                                {currencies.map(currency => (
+                                  <div key={currency} className="flex items-center justify-end gap-1">
+                                    <span className="text-green-600">{formatCurrency(data.paidByCurrency[currency] || 0, currency)}</span>
+                                    <span className="text-xs text-gray-400">({currency})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-green-600">{formatCurrency(data.paidByCurrency[currencies[0] || 'INR'] || 0, currencies[0] || 'INR')}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -552,13 +614,8 @@ const Reports = () => {
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900">{partner.partnerName}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
-                          partner.tier === 'platinum' ? 'bg-purple-100 text-purple-700' :
-                          partner.tier === 'gold' ? 'bg-amber-100 text-amber-700' :
-                          partner.tier === 'silver' ? 'bg-gray-200 text-gray-700' :
-                          'bg-orange-100 text-orange-700'
-                        }`}>
-                          {partner.tier}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTierStyles(partner.tier)}`}>
+                          {formatTier(partner.tier)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -612,31 +669,15 @@ const Reports = () => {
           )}
 
           {/* Pagination */}
-          {pagination && pagination.pages > 1 && (
-            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-              <div className="text-sm text-gray-500">
-                Showing {((pagination.page - 1) * limit) + 1} to {Math.min(pagination.page * limit, pagination.total)} of {pagination.total} partners
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-gray-600">
-                  Page {pagination.page} of {pagination.pages}
-                </span>
-                <button
-                  onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
-                  disabled={page === pagination.pages}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+          {pagination && pagination.total > 0 && (
+            <Pagination
+              currentPage={page}
+              totalPages={pagination.pages}
+              total={pagination.total}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setPage}
+              onItemsPerPageChange={(newLimit) => { setItemsPerPage(newLimit); setPage(1); }}
+            />
           )}
         </div>
       </div>

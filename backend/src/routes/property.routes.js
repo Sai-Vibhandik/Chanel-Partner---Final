@@ -12,6 +12,7 @@ import {
   getPropertyStats,
   getPublicProperties,
   getPropertiesForPartnership,
+  getPropertiesForAllPartnerships,
   getPropertyPerformanceReport,
   getVisitAnalytics,
   exportPropertyReport
@@ -36,6 +37,9 @@ router.use(protect);
 
 // Get properties for a specific partnership (Partner only)
 router.get('/partnership/:partnershipId', getPropertiesForPartnership);
+
+// Get properties for all partnerships of the logged-in partner
+router.get('/all-partnerships', restrictTo('partner'), getPropertiesForAllPartnerships);
 
 // Property reports (Property Manager, Company SuperAdmin)
 router.get('/reports/performance', restrictTo('company_superadmin', 'property_manager'), getPropertyPerformanceReport);

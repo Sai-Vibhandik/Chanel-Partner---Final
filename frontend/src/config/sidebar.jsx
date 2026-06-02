@@ -78,9 +78,20 @@ const sidebarIcons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
     </svg>
   ),
+  kyc: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    </svg>
+  ),
+  signedAgreements: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
   office: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   ),
   chat: (
@@ -91,6 +102,11 @@ const sidebarIcons = {
   loginLogs: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+    </svg>
+  ),
+  activityLog: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   ),
   analytics: (
@@ -137,17 +153,18 @@ export const sidebarConfig = {
       { path: '/company/analytics', label: 'Analytics', icon: sidebarIcons.analytics },
       { path: '/company/properties', label: 'Properties', icon: sidebarIcons.properties },
       { path: '/company/partners', label: 'Partners', icon: sidebarIcons.partners },
-      { path: '/company/kyc-verification', label: 'KYC Verification', icon: sidebarIcons.documents },
+      { path: '/company/kyc-verification', label: 'KYC Verification', icon: sidebarIcons.kyc },
       { path: '/company/agreements', label: 'Agreements', icon: sidebarIcons.agreements },
-      { path: '/company/signed-agreements', label: 'Signed Agreements', icon: sidebarIcons.documents },
+      { path: '/company/signed-agreements', label: 'Signed Agreements', icon: sidebarIcons.signedAgreements },
       { path: '/company/offices', label: 'Office Locations', icon: sidebarIcons.office },
       { path: '/company/visits', label: 'Visits', icon: sidebarIcons.visits },
-      { path: '/finance-manager/commissions', label: 'Commissions', icon: sidebarIcons.commissions },
+      { path: '/company/commissions', label: 'Commissions', icon: sidebarIcons.commissions },
       { path: '/company/chat', label: 'Chat', icon: sidebarIcons.chat },
       { path: '/company/team', label: 'Team', icon: sidebarIcons.team },
       { path: '/company/subscription', label: 'Subscription', icon: sidebarIcons.subscription },
       { path: '/company/login-logs', label: 'Login Logs', icon: sidebarIcons.loginLogs },
       { path: '/company/email-logs', label: 'Email Logs', icon: sidebarIcons.email },
+      { path: '/company/activity-log', label: 'Activity Log', icon: sidebarIcons.activityLog },
       { path: '/company/settings', label: 'Settings', icon: sidebarIcons.settings },
     ],
   },
@@ -168,11 +185,11 @@ export const sidebarConfig = {
     links: [
       { path: '/partner-manager/dashboard', label: 'Dashboard', icon: sidebarIcons.dashboard },
       { path: '/partner-manager/partners', label: 'Partners', icon: sidebarIcons.partners },
-      { path: '/company/kyc-verification', label: 'KYC Verification', icon: sidebarIcons.documents },
-      { path: '/company/signed-agreements', label: 'Signed Agreements', icon: sidebarIcons.documents },
+      { path: '/partner-manager/kyc-verification', label: 'KYC Verification', icon: sidebarIcons.kyc },
+      { path: '/partner-manager/signed-agreements', label: 'Signed Agreements', icon: sidebarIcons.signedAgreements },
       { path: '/partner-manager/offices', label: 'Office Locations', icon: sidebarIcons.office },
       { path: '/partner-manager/visits', label: 'Visits', icon: sidebarIcons.visits },
-      { path: '/finance-manager/commissions', label: 'Commissions', icon: sidebarIcons.commissions },
+      { path: '/partner-manager/commissions', label: 'Commissions', icon: sidebarIcons.commissions },
       { path: '/partner-manager/chat', label: 'Chat', icon: sidebarIcons.chat },
       { path: '/partner-manager/reports', label: 'Reports', icon: sidebarIcons.reports },
     ],

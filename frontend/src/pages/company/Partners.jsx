@@ -1,50 +1,132 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import Pagination from '../../components/common/Pagination';
 import useDebounce from '../../hooks/useDebounce';
+import { formatDateExport } from '../../utils/export';
 
 const Partners = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const config = sidebarConfig.company_superadmin;
+  const toast = useToast();
   const [partners, setPartners] = useState([]);
+  const [companySettings, setCompanySettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [kycFilter, setKycFilter] = useState('');
   const [tierFilter, setTierFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
+  const [exporting, setExporting] = useState(false);
 
   // Debounce search for real-time filtering
   const debouncedSearch = useDebounce(search, 300);
 
   useEffect(() => {
     fetchPartners();
-  }, [debouncedSearch, statusFilter, tierFilter, page]);
+  }, [debouncedSearch, statusFilter, kycFilter, tierFilter, page, itemsPerPage]);
+
+  useEffect(() => {
+    fetchCompanySettings();
+  }, []);
+
+  const fetchCompanySettings = async () => {
+    try {
+      const response = await api.get(`/companies/${user.companyId}/settings`);
+      setCompanySettings(response.data.data);
+    } catch (err) {
+      console.error('Failed to fetch company settings:', err);
+    }
+  };
 
   const fetchPartners = async () => {
     try {
       setLoading(true);
+      setError('');
       const params = new URLSearchParams();
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (statusFilter) params.append('status', statusFilter);
+      if (kycFilter) params.append('kycStatus', kycFilter);
       if (tierFilter) params.append('tier', tierFilter);
       params.append('page', page);
-      params.append('limit', 10);
+      params.append('limit', itemsPerPage);
 
       const response = await api.get(`/partner-company/company/${user.companyId}/partners?${params.toString()}`);
       setPartners(response.data.data.partnerships);
       setPagination(response.data.data.pagination);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partners');
+      const errorMessage = err.response?.data?.message || 'Failed to load partners';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (statusFilter) params.append('status', statusFilter);
+      if (kycFilter) params.append('kycStatus', kycFilter);
+      if (tierFilter) params.append('tier', tierFilter);
+      params.append('limit', 1000);
+
+      const response = await api.get(`/partner-company/company/${user.companyId}/partners?${params.toString()}`);
+      const exportPartners = response.data.data.partnerships;
+
+      // Helper function to get commission percentage
+      const getCommission = (p) => {
+        if (p.commissionOverride?.percentage) {
+          return `${p.commissionOverride.percentage}%`;
+        }
+        const tierPercentages = {
+          bronze: companySettings?.settings?.tierPercentages?.bronze || 25,
+          silver: companySettings?.settings?.tierPercentages?.silver || 35,
+          gold: companySettings?.settings?.tierPercentages?.gold || 50,
+          platinum: companySettings?.settings?.tierPercentages?.platinum || 75
+        };
+        return `${tierPercentages[p.tier] || tierPercentages.bronze}%`;
+      };
+
+      // Create CSV content
+      const headers = ['Partner Name', 'Email', 'Status', 'KYC Status', 'Tier', 'Commission', 'Created At'];
+      const csvContent = [
+        headers.join(','),
+        ...exportPartners.map(p => [
+          `${p.partnerId?.firstName || ''} ${p.partnerId?.lastName || ''}`,
+          p.partnerId?.email || '',
+          p.status || 'pending',
+          p.kycStatus || 'pending',
+          p.tier || 'bronze',
+          getCommission(p),
+          formatDateExport(p.createdAt)
+        ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `partners-export-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Failed to export partners');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -52,7 +134,8 @@ const Partners = () => {
     const styles = {
       pending: 'bg-yellow-100 text-yellow-800',
       active: 'bg-green-100 text-green-800',
-      suspended: 'bg-red-100 text-red-800'
+      suspended: 'bg-red-100 text-red-800',
+      rejected: 'bg-gray-100 text-gray-800'
     };
     return styles[status] || 'bg-gray-100 text-gray-800';
   };
@@ -67,20 +150,37 @@ const Partners = () => {
     return styles[tier] || 'bg-gray-100 text-gray-800';
   };
 
+  const getKycBadge = (kycStatus) => {
+    const styles = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      submitted: 'bg-blue-100 text-blue-800',
+      under_review: 'bg-purple-100 text-purple-800',
+      verified: 'bg-green-100 text-green-800',
+      rejected: 'bg-red-100 text-red-800'
+    };
+    return styles[kycStatus] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getCommissionPercentage = (tier) => {
+    const percentages = {
+      bronze: companySettings?.settings?.tierPercentages?.bronze || 25,
+      silver: companySettings?.settings?.tierPercentages?.silver || 35,
+      gold: companySettings?.settings?.tierPercentages?.gold || 50,
+      platinum: companySettings?.settings?.tierPercentages?.platinum || 75
+    };
+    return `${percentages[tier] || percentages.bronze}%`;
+  };
+
   // Count partners by status
   const activeCount = partners.filter(p => p.status === 'active').length;
   const pendingCount = partners.filter(p => p.status === 'pending').length;
   const suspendedCount = partners.filter(p => p.status === 'suspended').length;
+  const rejectedCount = partners.filter(p => p.status === 'rejected').length;
 
   return (
-    <DashboardLayout sidebarLinks={config.links} title="Partners" subtitle="Manage your company's channel partners" color={config.color}>
-      {/* Error */}
-      {error && (
-        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
-      )}
-
+    <DashboardLayout title="Partners" subtitle="Manage your company's channel partners">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <p className="text-xs sm:text-sm text-gray-500">Total Partners</p>
           <p className="text-xl sm:text-3xl font-bold text-gray-900 mt-1">{pagination.total}</p>
@@ -97,12 +197,16 @@ const Partners = () => {
           <p className="text-xs sm:text-sm text-gray-500">Suspended</p>
           <p className="text-xl sm:text-3xl font-bold text-red-600 mt-1">{suspendedCount}</p>
         </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+          <p className="text-xs sm:text-sm text-gray-500">Rejected</p>
+          <p className="text-xl sm:text-3xl font-bold text-gray-600 mt-1">{rejectedCount}</p>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-          <div className="flex-1 relative">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-center">
+          <div className="flex-1 relative w-full">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
@@ -111,24 +215,45 @@ const Partners = () => {
               placeholder="Search partners..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              className="w-full py-2 pl-10 pr-4 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
+              className="w-full py-2 pl-10 pr-10 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
             />
+            {search && (
+              <button
+                onClick={() => { setSearch(''); setPage(1); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
-          <div className="flex gap-2 sm:gap-3">
+          <div className="flex gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
             <select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-              className="px-3 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm flex-1 sm:flex-none"
+              className="px-3 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
             >
               <option value="">All Status</option>
               <option value="pending">Pending</option>
               <option value="active">Active</option>
               <option value="suspended">Suspended</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <select
+              value={kycFilter}
+              onChange={(e) => { setKycFilter(e.target.value); setPage(1); }}
+              className="px-3 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
+            >
+              <option value="">All KYC</option>
+              <option value="pending">Pending</option>
+              <option value="submitted">Submitted</option>
+              <option value="verified">Verified</option>
             </select>
             <select
               value={tierFilter}
               onChange={(e) => { setTierFilter(e.target.value); setPage(1); }}
-              className="px-3 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm flex-1 sm:flex-none"
+              className="px-3 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm"
             >
               <option value="">All Tiers</option>
               <option value="bronze">Bronze</option>
@@ -136,6 +261,33 @@ const Partners = () => {
               <option value="gold">Gold</option>
               <option value="platinum">Platinum</option>
             </select>
+            {(statusFilter || kycFilter || tierFilter || search) && (
+              <button
+                onClick={() => { setStatusFilter(''); setKycFilter(''); setTierFilter(''); setSearch(''); setPage(1); }}
+                className="px-3 sm:px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Clear Filters
+              </button>
+            )}
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap text-sm"
+            >
+              {exporting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -213,9 +365,9 @@ const Partners = () => {
 
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">Company</span>
-                      <span className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
-                        {partnership.partnerId?.partnerProfile?.companyName || '-'}
+                      <span className="text-sm text-gray-500">KYC Status</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getKycBadge(partnership.kycStatus)}`}>
+                        {(partnership.kycStatus || 'pending').replace('_', ' ')}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -225,9 +377,21 @@ const Partners = () => {
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">Joined</span>
+                      <span className="text-sm text-gray-500">Commission</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {partnership.commissionOverride?.percentage ? `${partnership.commissionOverride.percentage}%` : getCommissionPercentage(partnership.tier)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">Applied</span>
                       <span className="text-sm text-gray-900">{new Date(partnership.createdAt).toLocaleDateString()}</span>
                     </div>
+                    {partnership.approvedAt && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-500">Approved</span>
+                        <span className="text-sm text-gray-900">{new Date(partnership.approvedAt).toLocaleDateString()}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-gray-100">
@@ -247,17 +411,23 @@ const Partners = () => {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sr. No.</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Partner</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KYC Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Commission</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Applied</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Approved</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {partners.map((partnership) => (
+                  {partners.map((partnership, index) => (
                     <tr key={partnership._id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {(page - 1) * itemsPerPage + index + 1}
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center">
                           <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold text-sm">
@@ -270,11 +440,13 @@ const Partners = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-gray-900">{partnership.partnerId?.partnerProfile?.companyName || '-'}</p>
-                      </td>
-                      <td className="px-6 py-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusBadge(partnership.status)}`}>
                           {partnership.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getKycBadge(partnership.kycStatus)}`}>
+                          {(partnership.kycStatus || 'pending').replace('_', ' ')}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -282,8 +454,14 @@ const Partners = () => {
                           {partnership.tier}
                         </span>
                       </td>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                        {partnership.commissionOverride?.percentage ? `${partnership.commissionOverride.percentage}%` : getCommissionPercentage(partnership.tier)}
+                      </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {new Date(partnership.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {partnership.approvedAt ? new Date(partnership.approvedAt).toLocaleDateString() : '-'}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
@@ -320,17 +498,28 @@ const Partners = () => {
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${getStatusBadge(partnership.status)}`}>
                       {partnership.status}
                     </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${getKycBadge(partnership.kycStatus)}`}>
+                      {(partnership.kycStatus || 'pending').replace('_', ' ')}
+                    </span>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${getTierBadge(partnership.tier)}`}>
                       {partnership.tier}
                     </span>
                   </div>
+                  <div className="flex justify-between items-center text-sm mb-1">
+                    <span className="text-gray-500">Commission:</span>
+                    <span className="font-medium text-gray-900">
+                      {partnership.commissionOverride?.percentage ? `${partnership.commissionOverride.percentage}%` : getCommissionPercentage(partnership.tier)}
+                    </span>
+                  </div>
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">
-                      {partnership.partnerId?.partnerProfile?.companyName || 'No company'}
-                    </span>
                     <span className="text-gray-400">
-                      {new Date(partnership.createdAt).toLocaleDateString()}
+                      Applied: {new Date(partnership.createdAt).toLocaleDateString()}
                     </span>
+                    {partnership.approvedAt && (
+                      <span className="text-gray-400">
+                        Approved: {new Date(partnership.approvedAt).toLocaleDateString()}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -339,13 +528,15 @@ const Partners = () => {
         )}
 
         {/* Pagination */}
-        {pagination.pages > 1 && (
+        {pagination.total > 0 && (
           <div className="px-4 sm:px-6 py-4 border-t border-gray-200">
             <Pagination
               currentPage={page}
               totalPages={pagination.pages}
               total={pagination.total}
+              itemsPerPage={itemsPerPage}
               onPageChange={setPage}
+              onItemsPerPageChange={(newLimit) => { setItemsPerPage(newLimit); setPage(1); }}
             />
           </div>
         )}

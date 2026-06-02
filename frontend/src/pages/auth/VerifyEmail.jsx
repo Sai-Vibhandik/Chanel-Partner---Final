@@ -13,7 +13,7 @@ const VerifyEmail = () => {
     const verifyEmail = async () => {
       if (!token) {
         setStatus('error');
-        setError('Invalid verification link');
+        setError('Invalid verification link.');
         return;
       }
 
@@ -60,12 +60,12 @@ const VerifyEmail = () => {
               <p className="text-gray-600 mb-6">
                 Your email has been successfully verified. You can now access all features.
               </p>
-              <p className="text-sm text-gray-500 mb-4">Redirecting to login...</p>
+              <p className="text-sm text-gray-500 mb-4">Redirecting to sign in...</p>
               <Link
                 to="/login"
                 className="inline-flex items-center justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
               >
-                Go to Login
+                Go to Sign In
               </Link>
             </>
           )}
@@ -84,7 +84,7 @@ const VerifyEmail = () => {
                   to="/login"
                   className="inline-flex items-center justify-center w-full py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
                 >
-                  Go to Login
+                  Go to Sign In
                 </Link>
                 <Link
                   to="/forgot-password"

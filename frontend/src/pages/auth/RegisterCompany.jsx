@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { validateEmail, validatePhone, validateName, validatePassword, handlePhoneInput } from '../../utils/validation';
+import { validateEmail, validateName, validatePassword, validatePhoneWithCountry } from '../../utils/validation';
+import PhoneInput from '../../components/common/PhoneInput';
+import api from '../../utils/api';
 import {
   getPlans,
   initRegistrationPayment,
@@ -10,11 +12,15 @@ import {
 } from '../../services/payment.service.js';
 import { Check, Loader2, CreditCard, AlertCircle } from 'lucide-react';
 
+// LocalStorage key for saving registration progress
+const REGISTRATION_STORAGE_KEY = 'company_registration_progress';
+
 const RegisterCompany = () => {
   const [formData, setFormData] = useState({
     companyName: '',
     email: '',
     phone: '',
+    phoneCountryCode: 'IN',
     website: '',
     regions: [],
     defaultCurrency: 'INR',
@@ -34,15 +40,55 @@ const RegisterCompany = () => {
   const [step, setStep] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
 
   // Payment states
   const [registrationToken, setRegistrationToken] = useState(null);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentToken, setPaymentToken] = useState(null);
+  const [restoredFromStorage, setRestoredFromStorage] = useState(false);
 
   const { registerCompany } = useAuth();
   const navigate = useNavigate();
+
+  // Load saved progress on mount
+  useEffect(() => {
+    const savedProgress = localStorage.getItem(REGISTRATION_STORAGE_KEY);
+    if (savedProgress) {
+      try {
+        const { formData: savedFormData, step: savedStep } = JSON.parse(savedProgress);
+        if (savedFormData && Object.keys(savedFormData).some(key => savedFormData[key])) {
+          setFormData(prev => ({ ...prev, ...savedFormData }));
+          if (savedStep && savedStep > 0) {
+            setStep(savedStep);
+          }
+          setRestoredFromStorage(true);
+        }
+      } catch (err) {
+        console.error('Failed to load saved progress:', err);
+        localStorage.removeItem(REGISTRATION_STORAGE_KEY);
+      }
+    }
+  }, []);
+
+  // Save form data when it changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      // Don't save passwords for security
+      const dataToSave = {
+        ...formData,
+        password: '',
+        confirmPassword: ''
+      };
+      localStorage.setItem(REGISTRATION_STORAGE_KEY, JSON.stringify({
+        formData: dataToSave,
+        step
+      }));
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [formData, step]);
 
   // Fetch plans on mount
   useEffect(() => {
@@ -51,12 +97,15 @@ const RegisterCompany = () => {
         const response = await getPlans();
         if (response.data?.plans) {
           setPlans(response.data.plans);
-          // Auto-select popular plan or first plan
-          const popularPlan = response.data.plans.find(p => p.isPopular);
-          if (popularPlan) {
-            setFormData(prev => ({ ...prev, selectedPlan: popularPlan._id }));
-          } else if (response.data.plans.length > 0) {
-            setFormData(prev => ({ ...prev, selectedPlan: response.data.plans[0]._id }));
+          // Auto-select popular plan or first plan if no saved selection
+          const savedProgress = localStorage.getItem(REGISTRATION_STORAGE_KEY);
+          if (!savedProgress || !JSON.parse(savedProgress)?.formData?.selectedPlan) {
+            const popularPlan = response.data.plans.find(p => p.isPopular);
+            if (popularPlan) {
+              setFormData(prev => ({ ...prev, selectedPlan: popularPlan._id }));
+            } else if (response.data.plans.length > 0) {
+              setFormData(prev => ({ ...prev, selectedPlan: response.data.plans[0]._id }));
+            }
           }
         }
       } catch (err) {
@@ -89,8 +138,7 @@ const RegisterCompany = () => {
     }
   };
 
-  const handlePhoneChange = (e) => {
-    const value = handlePhoneInput(e, null, null);
+  const handlePhoneChange = (value) => {
     setFormData(prev => ({ ...prev, phone: value }));
     if (fieldErrors.phone) {
       setFieldErrors(prev => {
@@ -101,52 +149,99 @@ const RegisterCompany = () => {
     }
   };
 
+  const handlePhoneCountryChange = (countryCode) => {
+    setFormData(prev => ({ ...prev, phoneCountryCode: countryCode }));
+  };
+
+  const handlePhoneError = (error) => {
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, phone: error }));
+    } else if (fieldErrors.phone) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.phone;
+        return newErrors;
+      });
+    }
+  };
+
   const validateStep0 = () => {
     if (!formData.selectedPlan) {
-      setError('Please select a plan to continue');
+      setError('Please select a plan to continue.');
       return false;
     }
     setError('');
     return true;
   };
 
-  const validateStep1 = () => {
+  const validateStep1 = async () => {
     const errors = {};
 
+    // Company Name validation
     if (!formData.companyName.trim()) {
-      errors.companyName = 'Company name is required';
+      errors.companyName = 'Company Name is required.';
+    } else if (formData.companyName.trim().length < 2) {
+      errors.companyName = 'Company Name must be at least 2 characters.';
+    } else if (formData.companyName.trim().length > 100) {
+      errors.companyName = 'Company Name must not exceed 100 characters.';
     }
 
     const emailError = validateEmail(formData.email);
-    if (emailError) errors.email = emailError;
-
-    if (formData.phone) {
-      const phoneError = validatePhone(formData.phone);
-      if (phoneError) errors.phone = phoneError;
+    if (emailError) {
+      // Customize the required message for Company Email ID
+      if (emailError === 'Email ID is required.') {
+        errors.email = 'Company Email ID is required.';
+      } else if (emailError === 'Please enter a valid Email ID.') {
+        errors.email = 'Please enter a valid Company Email ID.';
+      } else {
+        errors.email = emailError;
+      }
     }
 
+    const phoneError = validatePhoneWithCountry(formData.phone, formData.phoneCountryCode);
+    if (phoneError) errors.phone = phoneError;
+
     if (!formData.regions.length) {
-      errors.regions = 'Please select at least one region';
+      errors.regions = 'Please select at least one Region.';
     }
 
     setFieldErrors(errors);
+
+    // If basic validation passes, check email availability
+    if (Object.keys(errors).length === 0) {
+      setCheckingEmail(true);
+      try {
+        const response = await api.post('/auth/check-email', { email: formData.email });
+        if (!response.data.available) {
+          errors.email = response.data.message || 'This email is already registered.';
+          setFieldErrors(errors);
+          return false;
+        }
+      } catch (err) {
+        // If check fails, proceed anyway (will be caught at payment step)
+        console.error('Email check failed:', err);
+      } finally {
+        setCheckingEmail(false);
+      }
+    }
+
     return Object.keys(errors).length === 0;
   };
 
   const validateStep2 = () => {
     const errors = {};
 
-    const firstNameError = validateName(formData.firstName, 'First name');
+    const firstNameError = validateName(formData.firstName, 'First Name');
     if (firstNameError) errors.firstName = firstNameError;
 
-    const lastNameError = validateName(formData.lastName, 'Last name');
+    const lastNameError = validateName(formData.lastName, 'Last Name');
     if (lastNameError) errors.lastName = lastNameError;
 
     const passwordError = validatePassword(formData.password);
     if (passwordError) errors.password = passwordError;
 
     if (formData.password !== formData.confirmPassword) {
-      errors.confirmPassword = 'Passwords do not match';
+      errors.confirmPassword = 'Passwords do not match.';
     }
 
     setFieldErrors(errors);
@@ -165,7 +260,8 @@ const RegisterCompany = () => {
     }
 
     if (step === 1) {
-      if (!validateStep1()) return;
+      const isValid = await validateStep1();
+      if (!isValid) return;
       setStep(2);
       return;
     }
@@ -185,6 +281,29 @@ const RegisterCompany = () => {
     setStep(targetStep);
   };
 
+  // Clear saved progress and start fresh
+  const handleStartFresh = () => {
+    localStorage.removeItem(REGISTRATION_STORAGE_KEY);
+    setFormData({
+      companyName: '',
+      email: '',
+      phone: '',
+      phoneCountryCode: 'IN',
+      website: '',
+      regions: [],
+      defaultCurrency: 'INR',
+      firstName: '',
+      lastName: '',
+      password: '',
+      confirmPassword: '',
+      selectedPlan: null,
+      billingPeriod: 'monthly'
+    });
+    setStep(0);
+    setError('');
+    setFieldErrors({});
+  };
+
   const handlePayment = async () => {
     const selectedPlan = getSelectedPlan();
     if (!selectedPlan) {
@@ -194,6 +313,7 @@ const RegisterCompany = () => {
 
     setPaymentProcessing(true);
     setError('');
+    setFieldErrors({});
 
     try {
       // Initialize registration payment
@@ -246,14 +366,53 @@ const RegisterCompany = () => {
       setPaymentToken(verifyResponse.data.paymentToken);
       setPaymentSuccess(true);
 
+      // Clear saved progress on successful registration
+      localStorage.removeItem(REGISTRATION_STORAGE_KEY);
+
       // Now register the company with payment token
       await completeRegistration(verifyResponse.data.paymentToken);
 
     } catch (err) {
       console.error('Payment error:', err);
-      // Extract error message from axios response or error object
-      const errorMessage = err.response?.data?.message || err.message || 'Payment failed. Please try again.';
-      setError(errorMessage);
+
+      // Check if error has validation errors array
+      const errorData = err.response?.data;
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        // Map validation errors to field errors
+        const fieldErrs = {};
+        errorData.errors.forEach(e => {
+          if (e.field) {
+            // Map backend field names to frontend field names
+            const fieldMapping = {
+              'adminData.firstName': 'firstName',
+              'adminData.lastName': 'lastName',
+              'adminData.email': 'email',
+              'adminData.password': 'password',
+              'companyData.name': 'companyName',
+              'companyData.email': 'email',
+              'companyData.phone': 'phone',
+              'companyData.website': 'website'
+            };
+            const frontendField = fieldMapping[e.field] || e.field;
+            fieldErrs[frontendField] = e.message;
+          }
+        });
+        if (Object.keys(fieldErrs).length > 0) {
+          setFieldErrors(fieldErrs);
+          // Go back to the appropriate step based on which field has error
+          if (fieldErrs.firstName || fieldErrs.lastName || fieldErrs.password || fieldErrs.confirmPassword) {
+            setStep(2); // Go back to Account step
+          } else if (fieldErrs.companyName || fieldErrs.email || fieldErrs.phone || fieldErrs.website || fieldErrs.regions) {
+            setStep(1); // Go back to Company step
+          }
+          return;
+        }
+        setError(errorData.errors.map(e => e.message).join('. '));
+      } else {
+        // Extract error message from axios response or error object
+        const errorMessage = errorData?.message || err.message || 'Payment failed. Please try again.';
+        setError(errorMessage);
+      }
     } finally {
       setPaymentProcessing(false);
     }
@@ -265,8 +424,34 @@ const RegisterCompany = () => {
       await registerCompany({ paymentToken: token });
       // Registration complete, show success screen
     } catch (err) {
-      const message = err.response?.data?.message || 'Registration failed. Please contact support.';
-      setError(message);
+      const errorData = err.response?.data;
+
+      // Check for validation errors array
+      if (errorData?.errors && Array.isArray(errorData.errors)) {
+        const fieldErrs = {};
+        errorData.errors.forEach(e => {
+          if (e.field) {
+            const fieldMapping = {
+              'adminData.firstName': 'firstName',
+              'adminData.lastName': 'lastName',
+              'adminData.email': 'email',
+              'adminData.password': 'password'
+            };
+            const frontendField = fieldMapping[e.field] || e.field;
+            fieldErrs[frontendField] = e.message;
+          }
+        });
+        if (Object.keys(fieldErrs).length > 0) {
+          setFieldErrors(fieldErrs);
+          // Go back to Account step if there are field errors
+          setStep(2);
+          return;
+        }
+        setError(errorData.errors.map(e => e.message).join('. '));
+      } else {
+        const message = errorData?.message || 'Registration failed. Please contact support.';
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -277,7 +462,7 @@ const RegisterCompany = () => {
   };
 
   const formatPrice = (price, currency, billingPeriod) => {
-    const symbols = { INR: '₹', AED: 'د.إ', USD: '$' };
+    const symbols = { INR: '₹', AED: 'AED ', USD: '$' };
     const symbol = symbols[currency] || '$';
     const total = billingPeriod === 'yearly' ? price * 12 : price;
     return `${symbol}${total.toLocaleString()}`;
@@ -332,14 +517,14 @@ const RegisterCompany = () => {
                 onClick={() => navigate('/login')}
                 className="text-sm font-medium text-blue-600 hover:text-blue-500 mt-1"
               >
-                go to login
+                go to sign in
               </button>
             </div>
             <Link
               to="/login"
               className="inline-flex items-center justify-center w-full py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
             >
-              Go to Login
+              Go to Sign In
             </Link>
           </div>
         </div>
@@ -458,6 +643,33 @@ const RegisterCompany = () => {
             </div>
           </div>
 
+          {/* Restored Progress Banner */}
+          {restoredFromStorage && (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="text-sm text-blue-700">
+                    <p className="font-medium">Your progress has been restored</p>
+                    <p className="text-blue-600 mt-1">Continue where you left off or start fresh.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleStartFresh();
+                    setRestoredFromStorage(false);
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                >
+                  Start Fresh
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -472,7 +684,7 @@ const RegisterCompany = () => {
 
           {/* Step 0: Plan Selection */}
           {step === 0 && (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               <p className="text-sm text-gray-600 mb-4">
                 Choose a plan that best fits your business needs. You can upgrade or change later.
               </p>
@@ -576,7 +788,7 @@ const RegisterCompany = () => {
 
           {/* Step 1: Company Information */}
           {step === 1 && (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               {getSelectedPlan() && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
                   <div className="flex items-center justify-between">
@@ -597,7 +809,7 @@ const RegisterCompany = () => {
 
               <div>
                 <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-2">
-                  Company Name *
+                  Company Name<span className="text-red-500">*</span>
                 </label>
                 <input
                   id="companyName"
@@ -606,6 +818,7 @@ const RegisterCompany = () => {
                   required
                   value={formData.companyName}
                   onChange={handleChange}
+                  minLength={2}
                   maxLength={100}
                   className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.companyName ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                   placeholder="ABC Developers"
@@ -615,7 +828,7 @@ const RegisterCompany = () => {
 
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                  Company Email *
+                  Company Email ID<span className="text-red-500">*</span>
                 </label>
                 <input
                   id="email"
@@ -631,44 +844,37 @@ const RegisterCompany = () => {
                 {fieldErrors.email && <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone
-                  </label>
-                  <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={handlePhoneChange}
-                    maxLength={16}
-                    className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                    placeholder="10-digit mobile number"
-                  />
-                  {fieldErrors.phone && <p className="mt-1 text-sm text-red-600">{fieldErrors.phone}</p>}
-                </div>
-                <div>
-                  <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-2">
-                    Website
-                  </label>
-                  <input
-                    id="website"
-                    name="website"
-                    type="url"
-                    value={formData.website}
-                    onChange={handleChange}
-                    maxLength={200}
-                    className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.website ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                    placeholder="https://..."
-                  />
-                  {fieldErrors.website && <p className="mt-1 text-sm text-red-600">{fieldErrors.website}</p>}
-                </div>
+              <PhoneInput
+                value={formData.phone}
+                onChange={handlePhoneChange}
+                countryCode={formData.phoneCountryCode}
+                onCountryChange={handlePhoneCountryChange}
+                error={fieldErrors.phone}
+                onError={handlePhoneError}
+                required={true}
+                label="Contact Number"
+              />
+
+              <div>
+                <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-2">
+                  Website
+                </label>
+                <input
+                  id="website"
+                  name="website"
+                  type="url"
+                  value={formData.website}
+                  onChange={handleChange}
+                  maxLength={200}
+                  className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.website ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="https://..."
+                />
+                {fieldErrors.website && <p className="mt-1 text-sm text-red-600">{fieldErrors.website}</p>}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Operating Regions *
+                  Operating Regions<span className="text-red-500">*</span>
                 </label>
                 <div className="space-y-3">
                   <label className="flex items-center p-3 border border-gray-200 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
@@ -709,7 +915,7 @@ const RegisterCompany = () => {
                   className="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 >
                   <option value="INR">INR (₹) - Indian Rupee</option>
-                  <option value="AED">AED (د.إ) - UAE Dirham</option>
+                  <option value="AED">AED - UAE Dirham</option>
                 </select>
               </div>
 
@@ -723,9 +929,17 @@ const RegisterCompany = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  disabled={checkingEmail}
+                  className="flex-1 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
                 >
-                  Next Step
+                  {checkingEmail ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Checking...
+                    </>
+                  ) : (
+                    'Next Step'
+                  )}
                 </button>
               </div>
             </form>
@@ -733,7 +947,7 @@ const RegisterCompany = () => {
 
           {/* Step 2: Admin Account */}
           {step === 2 && (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               <p className="text-sm text-gray-600 mb-4">
                 Create your administrator account. This will be the primary account for managing your company.
               </p>
@@ -741,7 +955,7 @@ const RegisterCompany = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
-                    First Name *
+                    First Name<span className="text-red-500">*</span>
                   </label>
                   <input
                     id="firstName"
@@ -758,7 +972,7 @@ const RegisterCompany = () => {
                 </div>
                 <div>
                   <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
-                    Last Name *
+                    Last Name<span className="text-red-500">*</span>
                   </label>
                   <input
                     id="lastName"
@@ -777,7 +991,7 @@ const RegisterCompany = () => {
 
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                  Password *
+                  Password<span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -788,8 +1002,8 @@ const RegisterCompany = () => {
                     value={formData.password}
                     onChange={handleChange}
                     maxLength={128}
-                    className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                    placeholder="Min 8 chars, uppercase, lowercase, number"
+                    className={`block w-full px-4 pr-10 py-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.password ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                    placeholder="Min 8 chars, uppercase, lowercase, number, special char"
                   />
                   <button
                     type="button"
@@ -813,7 +1027,7 @@ const RegisterCompany = () => {
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirm Password *
+                  Confirm Password<span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -824,8 +1038,8 @@ const RegisterCompany = () => {
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     maxLength={128}
-                    className={`block w-full px-4 pr-12 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                    placeholder="Confirm password"
+                    className={`block w-full px-4 pr-10 py-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 ${fieldErrors.confirmPassword ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                    placeholder="Confirm Password"
                   />
                   <button
                     type="button"

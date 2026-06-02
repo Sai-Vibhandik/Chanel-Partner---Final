@@ -3,21 +3,38 @@ import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
 
 const CommissionDetails = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const config = sidebarConfig[user?.role] || sidebarConfig.finance_manager;
+
+  // Get basePath based on role for consistent URLs
+  const getBasePath = () => {
+    switch (user?.role) {
+      case 'company_superadmin':
+        return '/company/commissions';
+      case 'partner_manager':
+        return '/partner-manager/commissions';
+      default:
+        return '/finance-manager/commissions';
+    }
+  };
+  const basePath = getBasePath();
+
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [commission, setCommission] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [showPayModal, setShowPayModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [payForm, setPayForm] = useState({
     paymentReference: '',
@@ -45,7 +62,7 @@ const CommissionDetails = () => {
       const response = await api.get(`/commissions/${id}`);
       setCommission(response.data.data.commission);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load commission');
+      toast.error(err.response?.data?.message || 'Failed to load commission');
     } finally {
       setLoading(false);
     }
@@ -54,6 +71,24 @@ const CommissionDetails = () => {
   const handleApprove = async (e) => {
     e.preventDefault();
 
+    // Validate form
+    const errors = {};
+    if (approveForm.enableOverride) {
+      if (!approveForm.overrideValue || approveForm.overrideValue <= 0) {
+        errors.overrideValue = approveForm.overrideType === 'amount'
+          ? 'Commission Amount must be greater than 0.'
+          : 'Percentage must be between 0 and 100.';
+      }
+      if (!approveForm.overrideReason?.trim()) {
+        errors.overrideReason = 'Override Reason is required.';
+      }
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
+    setFieldErrors({});
     const payload = {
       notes: approveForm.notes
     };
@@ -80,8 +115,9 @@ const CommissionDetails = () => {
         overrideReason: ''
       });
       fetchCommission();
+      toast.success('Commission approved successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to approve commission');
+      toast.error(err.response?.data?.message || 'Failed to approve commission.');
     } finally {
       setSubmitting(false);
     }
@@ -90,9 +126,14 @@ const CommissionDetails = () => {
   const handlePay = async (e) => {
     e.preventDefault();
 
-    // Payment reference is required for non-cash payment methods
-    if (payForm.paymentMethod !== 'cash' && !payForm.paymentReference) {
-      setError('Payment reference is required for this payment method');
+    // Validate payment reference for non-cash payment methods
+    const errors = {};
+    if (payForm.paymentMethod !== 'cash' && !payForm.paymentReference?.trim()) {
+      errors.paymentReference = 'Payment Reference is required.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -101,9 +142,11 @@ const CommissionDetails = () => {
       await api.put(`/commissions/${id}/pay`, payForm);
       setShowPayModal(false);
       setPayForm({ paymentReference: '', paymentMethod: 'bank_transfer', notes: '' });
+      setFieldErrors({});
       fetchCommission();
+      toast.success('Commission marked as paid successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to mark as paid');
+      toast.error(err.response?.data?.message || 'Failed to mark as paid.');
     } finally {
       setSubmitting(false);
     }
@@ -111,8 +154,15 @@ const CommissionDetails = () => {
 
   const handleReject = async (e) => {
     e.preventDefault();
-    if (!rejectReason) {
-      setError('Rejection reason is required');
+
+    // Validate rejection reason
+    const errors = {};
+    if (!rejectReason?.trim()) {
+      errors.rejectReason = 'Rejection Reason is required.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -121,9 +171,11 @@ const CommissionDetails = () => {
       await api.put(`/commissions/${id}/reject`, { reason: rejectReason });
       setShowRejectModal(false);
       setRejectReason('');
+      setFieldErrors({});
       fetchCommission();
+      toast.success('Commission rejected successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reject commission');
+      toast.error(err.response?.data?.message || 'Failed to reject commission.');
     } finally {
       setSubmitting(false);
     }
@@ -138,16 +190,6 @@ const CommissionDetails = () => {
       cancelled: 'bg-gray-100 text-gray-800'
     };
     return styles[status] || 'bg-gray-100 text-gray-800';
-  };
-
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount?.toLocaleString() || '0'}`;
   };
 
   const formatDate = (date) => {
@@ -175,7 +217,7 @@ const CommissionDetails = () => {
         <div className="text-center py-12">
           <p className="text-gray-500">Commission not found</p>
           <button
-            onClick={() => navigate('/finance-manager/commissions')}
+            onClick={() => navigate(basePath)}
             className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg"
           >
             Back to Commissions
@@ -187,13 +229,9 @@ const CommissionDetails = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Commission Details" subtitle={`ID: ${commission._id?.slice(-8).toUpperCase()}`} color={config.color}>
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
-      )}
-
       {/* Back Button */}
       <button
-        onClick={() => navigate('/finance-manager/commissions')}
+        onClick={() => navigate(basePath)}
         className="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -221,13 +259,13 @@ const CommissionDetails = () => {
                 {user?.role !== 'partner_manager' && (
                   <>
                     <button
-                      onClick={() => setShowApproveModal(true)}
+                      onClick={() => { setFieldErrors({}); setShowApproveModal(true); }}
                       className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                     >
                       Approve
                     </button>
                     <button
-                      onClick={() => setShowRejectModal(true)}
+                      onClick={() => { setShowRejectModal(true); }}
                       className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                     >
                       Reject
@@ -238,7 +276,7 @@ const CommissionDetails = () => {
             )}
             {commission.status === 'approved' && user?.role !== 'partner_manager' && (
               <button
-                onClick={() => setShowPayModal(true)}
+                onClick={() => { setShowPayModal(true); }}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
               >
                 Mark as Paid
@@ -312,12 +350,12 @@ const CommissionDetails = () => {
               <span className="font-medium">{commission.saleDetails?.buyerName}</span>
             </div>
             <div className="flex justify-between py-3 border-b border-gray-100">
-              <span className="text-gray-600">Buyer Phone</span>
+              <span className="text-gray-600">Contact Number</span>
               <span className="font-medium">{commission.saleDetails?.buyerPhone}</span>
             </div>
             {commission.saleDetails?.buyerEmail && (
               <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Buyer Email</span>
+                <span className="text-gray-600">Buyer Email ID</span>
                 <span className="font-medium">{commission.saleDetails.buyerEmail}</span>
               </div>
             )}
@@ -488,7 +526,7 @@ const CommissionDetails = () => {
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
               <h3 className="text-lg font-semibold text-gray-900">Mark as Paid</h3>
               <button
-                onClick={() => setShowPayModal(false)}
+                onClick={() => { setShowPayModal(false); }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -497,7 +535,7 @@ const CommissionDetails = () => {
               </button>
             </div>
 
-            <form onSubmit={handlePay} className="p-6 space-y-4">
+            <form onSubmit={handlePay} className="p-6 space-y-4" noValidate>
               <div>
                 <p className="text-sm text-gray-600 mb-4">
                   Commission Amount: <span className="font-bold">
@@ -511,18 +549,22 @@ const CommissionDetails = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Payment Reference {payForm.paymentMethod === 'cash' ? '(Optional)' : '*'}
+                  {payForm.paymentMethod === 'cash' ? (
+                    'Payment Reference (Optional)'
+                  ) : (
+                    <>Payment Reference<span className="text-red-500">*</span></>
+                  )}
                 </label>
                 <input
                   type="text"
                   value={payForm.paymentReference}
-                  onChange={(e) => setPayForm({ ...payForm, paymentReference: e.target.value })}
-                  placeholder={payForm.paymentMethod === 'cash' ? 'Optional - e.g., Receipt Number' : 'Transaction ID / Cheque Number'}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  required={payForm.paymentMethod !== 'cash'}
+                  onChange={(e) => { setPayForm({ ...payForm, paymentReference: e.target.value }); setFieldErrors({}); }}
+                  placeholder={payForm.paymentMethod === 'cash' ? 'e.g., Receipt Number' : 'Transaction ID / Cheque Number'}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.paymentReference ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                 />
-                {payForm.paymentMethod === 'cash' && (
-                  <p className="text-xs text-gray-500 mt-1">Payment reference is optional for cash payments</p>
+                {fieldErrors.paymentReference && <p className="text-sm text-red-600 mt-1">{fieldErrors.paymentReference}</p>}
+                {payForm.paymentMethod === 'cash' && !fieldErrors.paymentReference && (
+                  <p className="text-xs text-gray-500 mt-1">Payment reference is optional for cash payments.</p>
                 )}
               </div>
 
@@ -553,7 +595,7 @@ const CommissionDetails = () => {
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
-                  onClick={() => setShowPayModal(false)}
+                  onClick={() => { setShowPayModal(false); }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
@@ -578,7 +620,7 @@ const CommissionDetails = () => {
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
               <h3 className="text-lg font-semibold text-gray-900">Reject Commission</h3>
               <button
-                onClick={() => setShowRejectModal(false)}
+                onClick={() => { setShowRejectModal(false); }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -587,23 +629,23 @@ const CommissionDetails = () => {
               </button>
             </div>
 
-            <form onSubmit={handleReject} className="p-6 space-y-4">
+            <form onSubmit={handleReject} className="p-6 space-y-4" noValidate>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Rejection Reason *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Rejection Reason<span className="text-red-500">*</span></label>
                 <textarea
                   value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
+                  onChange={(e) => { setRejectReason(e.target.value); setFieldErrors({}); }}
                   rows={3}
-                  placeholder="Please provide a reason for rejection..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  required
+                  placeholder="Please provide a reason for rejection."
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.rejectReason ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                 />
+                {fieldErrors.rejectReason && <p className="text-sm text-red-600 mt-1">{fieldErrors.rejectReason}</p>}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
-                  onClick={() => setShowRejectModal(false)}
+                  onClick={() => { setShowRejectModal(false); }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
@@ -628,7 +670,7 @@ const CommissionDetails = () => {
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
               <h3 className="text-lg font-semibold text-gray-900">Approve Commission</h3>
               <button
-                onClick={() => setShowApproveModal(false)}
+                onClick={() => { setFieldErrors({}); setShowApproveModal(false); }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -637,7 +679,7 @@ const CommissionDetails = () => {
               </button>
             </div>
 
-            <form onSubmit={handleApprove} className="p-6 space-y-4">
+            <form onSubmit={handleApprove} className="p-6 space-y-4" noValidate>
               {/* Current Commission Info */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-sm text-gray-600 mb-1">Current Commission Amount</p>
@@ -709,17 +751,25 @@ const CommissionDetails = () => {
                       <input
                         type="number"
                         value={approveForm.overrideValue}
-                        onChange={(e) => setApproveForm({ ...approveForm, overrideValue: e.target.value })}
+                        onChange={(e) => {
+                          setApproveForm({ ...approveForm, overrideValue: e.target.value });
+                          if (fieldErrors.overrideValue) {
+                            setFieldErrors(prev => ({ ...prev, overrideValue: '' }));
+                          }
+                        }}
                         placeholder={approveForm.overrideType === 'amount' ? 'Enter amount' : 'Enter percentage (0-100)'}
-                        className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 ${
-                          approveForm.overrideType !== 'amount' ? 'pl-8' : 'pl-8'
-                        }`}
+                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
+                          fieldErrors.overrideValue ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                        } ${approveForm.overrideType !== 'amount' ? 'pl-8' : 'pl-8'}`}
                         min="0"
                         max={approveForm.overrideType === 'percentage' ? 100 : undefined}
                         step={approveForm.overrideType === 'percentage' ? '0.1' : '1'}
                       />
                     </div>
-                    {approveForm.overrideType === 'percentage' && approveForm.overrideValue && (
+                    {fieldErrors.overrideValue && (
+                      <p className="text-sm text-red-600 mt-1">{fieldErrors.overrideValue}</p>
+                    )}
+                    {approveForm.overrideType === 'percentage' && approveForm.overrideValue && !fieldErrors.overrideValue && (
                       <p className="text-xs text-gray-600 mt-1">
                         = {formatCurrency(
                           Math.round(commission.saleDetails?.salePrice * (parseFloat(approveForm.overrideValue) / 100)),
@@ -730,15 +780,25 @@ const CommissionDetails = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Override Reason *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Override Reason<span className="text-red-500">*</span></label>
                     <textarea
                       value={approveForm.overrideReason}
-                      onChange={(e) => setApproveForm({ ...approveForm, overrideReason: e.target.value })}
-                      placeholder="Please provide a reason for the override..."
+                      onChange={(e) => {
+                        setApproveForm({ ...approveForm, overrideReason: e.target.value });
+                        if (fieldErrors.overrideReason) {
+                          setFieldErrors(prev => ({ ...prev, overrideReason: '' }));
+                        }
+                      }}
+                      placeholder="Please provide a reason for the override."
                       rows={2}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
+                        fieldErrors.overrideReason ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                      }`}
                       required
                     />
+                    {fieldErrors.overrideReason && (
+                      <p className="text-sm text-red-600 mt-1">{fieldErrors.overrideReason}</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -758,7 +818,7 @@ const CommissionDetails = () => {
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
-                  onClick={() => setShowApproveModal(false)}
+                  onClick={() => { setShowApproveModal(false); }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel

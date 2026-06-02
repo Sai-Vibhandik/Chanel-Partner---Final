@@ -20,8 +20,7 @@ export const FormField = ({
   <div className={`${fullWidth ? 'w-full' : ''} ${className}`}>
     {label && (
       <label className="block text-sm font-medium text-gray-700 mb-1">
-        {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
+        {label}{required && <span className="text-red-500">*</span>}
       </label>
     )}
     {children}
@@ -146,17 +145,17 @@ export const Checkbox = ({
   id,
   className = ''
 }) => (
-  <label htmlFor={id} className={`flex items-center gap-2 cursor-pointer ${disabled ? 'opacity-50' : ''} ${className}`}>
+  <div className={`flex items-center gap-2 ${disabled ? 'opacity-50' : ''} ${className}`}>
     <input
       type="checkbox"
       id={id}
       checked={checked}
       onChange={onChange}
       disabled={disabled}
-      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer disabled:cursor-not-allowed"
     />
     <span className="text-sm text-gray-700">{label}</span>
-  </label>
+  </div>
 );
 
 /**

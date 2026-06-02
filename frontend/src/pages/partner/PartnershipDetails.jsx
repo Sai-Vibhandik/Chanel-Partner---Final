@@ -3,19 +3,20 @@ import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api, { getDocumentViewUrl } from '../../utils/api';
 
 const PartnershipDetails = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const config = sidebarConfig.partner;
+  const toast = useToast();
   const [partnership, setPartnership] = useState(null);
   const [kycSummary, setKycSummary] = useState(null);
   const [agreements, setAgreements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(null);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [uploading, setUploading] = useState(null);
 
   // Agreement signing state
   const [currentAgreementIndex, setCurrentAgreementIndex] = useState(0);
@@ -25,6 +26,10 @@ const PartnershipDetails = () => {
 
   const navigate = useNavigate();
 
+  // Allowed file types and max size for KYC documents
+  const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
   useEffect(() => {
     fetchPartnership();
   }, [id]);
@@ -32,6 +37,7 @@ const PartnershipDetails = () => {
   const fetchPartnership = async () => {
     try {
       setLoading(true);
+      setError('');
       const [partnershipRes, kycRes, agreementsRes] = await Promise.all([
         api.get(`/partner-company/${id}`),
         api.get(`/partner-company/${id}/kyc`),
@@ -47,7 +53,9 @@ const PartnershipDetails = () => {
         setCurrentAgreementIndex(unsignedIndex);
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partnership');
+      const errorMessage = err.response?.data?.message || 'Failed to load partnership.';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -57,10 +65,22 @@ const PartnershipDetails = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validate file type
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      toast.error('Invalid file format. Please upload a JPG, PNG, or PDF file.');
+      e.target.value = '';
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(`File size exceeds 10MB limit. Please upload a smaller file (current size: ${(file.size / 1024 / 1024).toFixed(2)}MB).`);
+      e.target.value = '';
+      return;
+    }
+
     try {
       setUploading(`${docType}-${region}`);
-      setError('');
-      setSuccess('');
 
       const formData = new FormData();
       formData.append('file', file);
@@ -76,12 +96,12 @@ const PartnershipDetails = () => {
         region
       });
 
-      setSuccess('Document uploaded successfully');
+      toast.success('Document uploaded successfully.');
 
       const kycRes = await api.get(`/partner-company/${id}/kyc`);
       setKycSummary(kycRes.data.data.kycSummary);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to upload document');
+      toast.error(err.response?.data?.message || 'Failed to upload document. Please try again.');
     } finally {
       setUploading(null);
       e.target.value = '';
@@ -90,7 +110,7 @@ const PartnershipDetails = () => {
 
   const handleSignAgreement = async () => {
     if (!typedName.trim()) {
-      setError('Please type your name to sign');
+      toast.error('Please type your name to sign.');
       return;
     }
 
@@ -99,7 +119,6 @@ const PartnershipDetails = () => {
 
     try {
       setSigning(true);
-      setError('');
 
       await api.post(`/agreements/partner/agreements/${currentAgreement._id}/sign`, {
         partnershipId: id,
@@ -117,10 +136,10 @@ const PartnershipDetails = () => {
         setTypedName('');
       } else {
         setShowAgreementModal(false);
-        setSuccess('All agreements signed successfully!');
+        toast.success('All agreements signed successfully.');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to sign agreement');
+      toast.error(err.response?.data?.message || 'Failed to sign agreement.');
     } finally {
       setSigning(false);
     }
@@ -200,18 +219,6 @@ const PartnershipDetails = () => {
       subtitle="Manage your partnership"
       color={config.color}
     >
-      {/* Messages */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-          {success}
-        </div>
-      )}
-
       {/* Back Button */}
       <button
         onClick={() => navigate('/partner/my-companies')}
@@ -309,9 +316,11 @@ const PartnershipDetails = () => {
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-gray-100">
           <div>
-            <p className="text-sm text-gray-500">Operating Regions</p>
+            <p className="text-sm text-gray-500">Your Operating Regions</p>
             <p className="text-gray-900">
-              {company?.regions?.map(r => r === 'india' ? '🇮🇳 India' : '🇦🇪 Dubai').join(', ')}
+              {partnership?.regions && partnership.regions.length > 0
+                ? partnership.regions.map(r => r === 'india' ? '🇮🇳 India' : '🇦🇪 Dubai').join(', ')
+                : company?.regions?.map(r => r === 'india' ? '🇮🇳 India' : '🇦🇪 Dubai').join(', ') || 'Not specified'}
             </p>
           </div>
           <div>
@@ -695,11 +704,6 @@ const PartnershipDetails = () => {
 
             {/* Signature Section */}
             <div className="p-6 border-t border-gray-200 bg-gray-50">
-              {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                  {error}
-                </div>
-              )}
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

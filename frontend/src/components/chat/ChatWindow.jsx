@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '../../context/SocketContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 
 const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) => {
+  const toast = useToast();
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -213,7 +215,7 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
       setAttachments(prev => [...prev, ...uploadedFiles]);
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('Failed to upload file. Please try again.');
+      toast.error(error.response?.data?.message || 'Failed to upload file. Please try again.');
     } finally {
       setUploadingFile(false);
       // Reset file input
@@ -539,6 +541,7 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
             type="submit"
             disabled={(!newMessage.trim() && attachments.length === 0) || sending}
             className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Send Message"
           >
             {sending ? (
               <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">

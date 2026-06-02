@@ -20,7 +20,7 @@ const LegalPage = ({ slug }) => {
       setPage(response.data.data);
     } catch (err) {
       console.error('Error loading legal page:', err);
-      setError('Failed to load page');
+      setError('Failed to load page.');
     } finally {
       setIsLoading(false);
     }

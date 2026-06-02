@@ -3,18 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
 
 const Commissions = () => {
   const { user } = useAuth();
   const config = sidebarConfig.partner;
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [commissions, setCommissions] = useState([]);
   const [stats, setStats] = useState(null);
   const [activeCurrencies, setActiveCurrencies] = useState(['INR']);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
@@ -32,7 +34,7 @@ const Commissions = () => {
       setStats(response.data.data.stats);
       setActiveCurrencies(response.data.data.activeCurrencies || ['INR']);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load commissions');
+      toast.error(err.response?.data?.message || 'Failed to load commissions');
     } finally {
       setLoading(false);
     }
@@ -58,14 +60,30 @@ const Commissions = () => {
     return texts[status] || status;
   };
 
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount?.toLocaleString() || '0'}`;
+  const getAmountBoxStyle = (status) => {
+    const styles = {
+      pending: {
+        bg: 'bg-yellow-50',
+        currencyText: 'text-yellow-600',
+        amountText: 'text-yellow-700'
+      },
+      approved: {
+        bg: 'bg-green-50',
+        currencyText: 'text-green-600',
+        amountText: 'text-green-700'
+      },
+      paid: {
+        bg: 'bg-purple-50',
+        currencyText: 'text-purple-600',
+        amountText: 'text-purple-700'
+      },
+      cancelled: {
+        bg: 'bg-gray-100',
+        currencyText: 'text-gray-500',
+        amountText: 'text-gray-600'
+      }
+    };
+    return styles[status] || styles.pending;
   };
 
   const getCurrencyLabel = (currency) => {
@@ -92,10 +110,6 @@ const Commissions = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="My Commissions" subtitle="Track your earned commissions" color={config.color}>
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
-      )}
-
       {/* Welcome Section */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900">Commission Dashboard</h2>
@@ -229,6 +243,14 @@ const Commissions = () => {
             <option value="paid">Paid</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          {statusFilter && (
+            <button
+              onClick={() => setStatusFilter('')}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -249,11 +271,11 @@ const Commissions = () => {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-start gap-4">
                     {/* Amount Box */}
-                    <div className="bg-green-50 rounded-lg p-4 text-center min-w-[120px]">
-                      <p className="text-sm text-green-600 font-medium">
+                    <div className={`${getAmountBoxStyle(commission.status).bg} rounded-lg p-4 text-center min-w-[120px]`}>
+                      <p className={`text-sm ${getAmountBoxStyle(commission.status).currencyText} font-medium`}>
                         {commission.commission?.currency || 'INR'}
                       </p>
-                      <p className="text-xl font-bold text-green-700">
+                      <p className={`text-xl font-bold ${getAmountBoxStyle(commission.status).amountText}`}>
                         {formatCurrency(
                           commission.commission?.calculatedAmount,
                           commission.commission?.currency

@@ -86,9 +86,12 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
   const secondaryColor = companyBranding.secondaryColor || '#764BA2';
   const buttonColor = companyBranding.buttonColor || primaryColor;
   const headerBg = companyBranding.headerBackgroundColor || primaryColor;
-  const logoUrl = companyBranding.logoUrl || '';
-  const showLogo = companyBranding.showLogoInEmails !== false && logoUrl;
   const footerText = companyBranding.footerText || '';
+
+  // Footer HTML: use custom footer if provided, otherwise use default copyright
+  const footerHtml = footerText
+    ? `<p>${footerText}</p>`
+    : `<p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>`;
 
   const templates = {
     // Email verification for new registrations
@@ -104,7 +107,6 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
             <h1 style="color: white; margin: 0;">Welcome to ${companyName}!</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
@@ -126,8 +128,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </p>
           </div>
           <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
-            ${footerText ? `<p>${footerText}</p>` : ''}
-            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+            ${footerHtml}
           </div>
         </body>
         </html>
@@ -147,7 +148,6 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
             <h1 style="color: white; margin: 0;">Reset Your Password</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
@@ -169,8 +169,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </p>
           </div>
           <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
-            ${footerText ? `<p>${footerText}</p>` : ''}
-            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+            ${footerHtml}
           </div>
         </body>
         </html>
@@ -190,7 +189,6 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
             <h1 style="color: white; margin: 0;">🏠 New Property Listed!</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
@@ -200,7 +198,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
               <h2 style="margin-top: 0; color: ${primaryColor};">${data.propertyName}</h2>
               <p><strong>Price:</strong> <span style="color: #10b981;">${data.propertyPrice || 'Contact for Price'}</span></p>
-              <p><strong>Commission:</strong> ${data.commission || 'Standard rates apply'}</p>
+              <p><strong>Commission:</strong> ${data.commission || 'Commission based on partner tier'}</p>
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
@@ -211,8 +209,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </div>
           </div>
           <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
-            ${footerText ? `<p>${footerText}</p>` : ''}
-            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+            ${footerHtml}
           </div>
         </body>
         </html>
@@ -242,7 +239,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; text-align: center;">
               <p style="color: #6b7280; margin: 0;">Your Tier</p>
               <p style="font-size: 24px; font-weight: bold; color: ${data.tier === 'platinum' ? '#9333ea' : data.tier === 'gold' ? '#eab308' : data.tier === 'silver' ? '#6b7280' : '#f97316'}; margin: 10px 0; text-transform: capitalize;">${data.tier || 'Bronze'}</p>
-              <p style="color: #10b981; font-weight: bold;">${data.commissionRate || 'Standard'} Commission Rate</p>
+              <p style="color: #10b981; font-weight: bold;">Commission Rate: ${data.commissionRate || '30%'}</p>
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
@@ -253,8 +250,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </div>
           </div>
           <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
-            ${footerText ? `<p>${footerText}</p>` : ''}
-            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+            ${footerHtml}
           </div>
         </body>
         </html>
@@ -274,7 +270,6 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
             <h1 style="color: white; margin: 0;">📅 New Visit Scheduled</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
@@ -283,6 +278,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
 
             <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: ${primaryColor};">${data.propertyName}</h3>
+              <p><strong>Location:</strong> ${data.propertyLocation}</p>
               <p><strong>Date:</strong> ${data.visitDate}</p>
               <p><strong>Time:</strong> ${data.visitTime}</p>
               <p><strong>Type:</strong> ${data.visitType}</p>
@@ -297,8 +293,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </div>
           </div>
           <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
-            ${footerText ? `<p>${footerText}</p>` : ''}
-            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+            ${footerHtml}
           </div>
         </body>
         </html>
@@ -327,6 +322,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
 
             <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: ${primaryColor};">${data.propertyName}</h3>
+              <p><strong>Location:</strong> ${data.propertyLocation}</p>
               <p><strong>Date:</strong> ${data.visitDate}</p>
               <p><strong>Time:</strong> ${data.visitTime}</p>
               <p><strong>Visit Type:</strong> ${data.visitType === 'virtual' ? 'Virtual Meeting' : 'Office Visit'}</p>
@@ -357,8 +353,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </p>
           </div>
           <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
-            ${footerText ? `<p>${footerText}</p>` : ''}
-            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+            ${footerHtml}
           </div>
         </body>
         </html>
@@ -387,6 +382,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
 
             <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: ${primaryColor};">${data.propertyName}</h3>
+              <p><strong>Location:</strong> ${data.propertyLocation}</p>
               <p><strong>Requested Date:</strong> ${data.visitDate}</p>
               <p><strong>Requested Time:</strong> ${data.visitTime}</p>
             </div>
@@ -407,8 +403,56 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </p>
           </div>
           <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
-            ${footerText ? `<p>${footerText}</p>` : ''}
-            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+            ${footerHtml}
+          </div>
+        </body>
+        </html>
+      `
+    },
+
+    // Visit cancelled due to property status change (off_market/sold_out)
+    visitCancelledPropertyStatus: {
+      subject: `Visit Cancelled - Property No Longer Available - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Visit Cancelled</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">⚠️ Visit Cancelled</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.partnerName},</p>
+            <p>We regret to inform you that your scheduled visit has been <strong style="color: #f97316;">automatically cancelled</strong> due to a change in property availability.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: ${primaryColor};">${data.propertyName}</h3>
+              <p><strong>Location:</strong> ${data.propertyLocation}</p>
+              <p><strong>Visit Date:</strong> ${data.visitDate}</p>
+              <p><strong>Visit Time:</strong> ${data.visitTime}</p>
+              <p><strong>Visit Type:</strong> ${data.visitType === 'office' ? 'Office Visit' : 'Virtual Meeting'}</p>
+            </div>
+
+            <div style="background: #fff7ed; border-left: 4px solid #f97316; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0;"><strong>Reason:</strong> ${data.cancellationReason || 'The property is no longer available for visits.'}</p>
+            </div>
+
+            <p>We apologize for any inconvenience this may cause. If you have any questions, please contact our support team.</p>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${baseUrl}/partner/properties"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                Browse Other Properties
+              </a>
+            </div>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerHtml}
           </div>
         </body>
         </html>
@@ -428,7 +472,6 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
             <h1 style="color: white; margin: 0;">👋 Welcome to the Team!</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
@@ -438,6 +481,10 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             <div style="background: white; border-radius: 10px; padding: 25px; margin: 20px 0; border: 2px solid ${primaryColor};">
               <h3 style="margin-top: 0; color: ${primaryColor}; text-align: center;">Your Login Credentials</h3>
               <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Role:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><strong>${data.roleName}</strong></td>
+                </tr>
                 <tr>
                   <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Email:</td>
                   <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.email}</td>
@@ -471,8 +518,311 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </p>
           </div>
           <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
-            ${footerText ? `<p>${footerText}</p>` : ''}
-            <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+            ${footerHtml}
+          </div>
+        </body>
+        </html>
+      `
+    },
+
+    // Commission created notification
+    commission_created: {
+      subject: `New Commission Created - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>New Commission Created</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0;">💰 New Commission Created</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.partnerName},</p>
+            <p>Great news! A new commission has been created for your property transaction.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; border: 2px solid ${primaryColor};">
+              <h3 style="margin-top: 0; color: ${primaryColor};">${data.propertyName}</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Commission Amount:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 18px; color: #10b981; font-weight: bold;">${data.commissionAmount}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Details:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.commissionDetails}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Sale Price:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.salePrice}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #6b7280;">Buyer:</td>
+                  <td style="padding: 10px;">${data.buyerName}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0;"><strong>Status:</strong> ${data.status}</p>
+              <p style="margin: 5px 0 0 0; font-size: 14px; color: #6b7280;">Your commission will be processed after approval.</p>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.loginUrl}"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                View Commission Details
+              </a>
+            </div>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerHtml}
+          </div>
+        </body>
+        </html>
+      `
+    },
+
+    // Commission approved notification
+    commission_approved: {
+      subject: `Commission Approved - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Commission Approved</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">✅ Commission Approved</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.partnerName},</p>
+            <p>Great news! Your commission has been approved and is now being processed for payment.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; border: 2px solid #10b981;">
+              <h3 style="margin-top: 0; color: #10b981;">${data.propertyName}</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Approved Amount:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 24px; color: #10b981; font-weight: bold;">${data.commissionAmount}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #6b7280;">Approved Date:</td>
+                  <td style="padding: 10px;">${data.approvedDate}</td>
+                </tr>
+              </table>
+              ${data.overrideInfo || ''}
+            </div>
+
+            <div style="background: #d1fae5; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0;"><strong>Status:</strong> ${data.status}</p>
+              <p style="margin: 5px 0 0 0; font-size: 14px; color: #6b7280;">Your payment will be processed according to your company's payment schedule.</p>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.loginUrl}"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                View Commission Details
+              </a>
+            </div>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerHtml}
+          </div>
+        </body>
+        </html>
+      `
+    },
+
+    // Commission paid notification
+    commission_paid: {
+      subject: `Commission Paid - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Commission Paid</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">🎉 Commission Paid!</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.partnerName},</p>
+            <p>Excellent news! Your commission has been paid successfully.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; border: 2px solid #10b981;">
+              <h3 style="margin-top: 0; color: #10b981;">${data.propertyName}</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Amount Paid:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 24px; color: #10b981; font-weight: bold;">${data.commissionAmount}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Payment Method:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.paymentMethod}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Reference:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;"><code style="background: #f3f4f6; padding: 5px 10px; border-radius: 4px;">${data.paymentReference}</code></td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #6b7280;">Paid Date:</td>
+                  <td style="padding: 10px;">${data.paidDate}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background: #d1fae5; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0;">The payment has been processed to your registered account. If you have any questions about this payment, please contact your company administrator.</p>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.loginUrl}"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                View Commission History
+              </a>
+            </div>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerHtml}
+          </div>
+        </body>
+        </html>
+      `
+    },
+
+    // Commission cancelled notification
+    commission_cancelled: {
+      subject: `Commission Cancelled - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Commission Cancelled</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">❌ Commission Cancelled</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.partnerName},</p>
+            <p>Unfortunately, your commission has been cancelled.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; border: 2px solid #ef4444;">
+              <h3 style="margin-top: 0; color: #ef4444;">${data.propertyName}</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Commission Amount:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 20px; color: #ef4444; font-weight: bold;">${data.commissionAmount}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #6b7280;">Reason:</td>
+                  <td style="padding: 10px;">${data.reason}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0;">If you believe this was an error or have questions, please contact your company administrator.</p>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.loginUrl}"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                View Commission History
+              </a>
+            </div>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerHtml}
+          </div>
+        </body>
+        </html>
+      `
+    },
+
+    // Partner visit cancelled notification (to company admin)
+    partnerVisitCancelled: {
+      subject: `Visit Cancelled by Partner - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Visit Cancelled</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">❌ Visit Cancelled</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.adminName},</p>
+            <p>A partner has cancelled their scheduled visit.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; border: 2px solid #ef4444;">
+              <h3 style="margin-top: 0; color: #ef4444;">${data.propertyName}</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Partner:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.partnerName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Location:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.propertyLocation}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Visit Date:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.visitDate}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Visit Time:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.visitTime}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Visit Type:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.visitType === 'office' ? 'Office Visit' : 'Virtual Meeting'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Client Name:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.clientName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #6b7280;">Client Phone:</td>
+                  <td style="padding: 10px;">${data.clientPhone}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0; font-weight: bold; color: #991b1b;">Cancellation Reason:</p>
+              <p style="margin: 5px 0 0 0;">${data.cancellationReason}</p>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.loginUrl}"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                View All Visits
+              </a>
+            </div>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerHtml}
           </div>
         </body>
         </html>
@@ -496,18 +846,18 @@ export const sendEmail = async (options) => {
 
   // Fetch company branding if companyId provided
   let companyBranding = {};
+  let resolvedCompanyId = companyId;
+
   if (companyId) {
     try {
-      const company = await Company.findById(companyId).select('name logo emailBranding');
+      const company = await Company.findById(companyId).select('name emailBranding');
       if (company) {
         companyBranding = {
           primaryColor: company.emailBranding?.primaryColor || '#4F46E5',
           secondaryColor: company.emailBranding?.secondaryColor || '#764BA2',
           buttonColor: company.emailBranding?.buttonColor || company.emailBranding?.primaryColor || '#4F46E5',
           headerBackgroundColor: company.emailBranding?.headerBackgroundColor || company.emailBranding?.primaryColor || '#4F46E5',
-          footerText: company.emailBranding?.footerText || '',
-          showLogoInEmails: company.emailBranding?.showLogoInEmails !== false,
-          logoUrl: company.logo?.url || ''
+          footerText: company.emailBranding?.footerText || ''
         };
         // Use company name if not provided in data
         if (!data.companyName) {
@@ -522,15 +872,16 @@ export const sendEmail = async (options) => {
   // Get template with branding
   const template = getEmailTemplate(type, data, companyBranding);
 
-  // Create email log entry
+  // Create email log entry - only if companyId is provided
   const emailLogData = {
-    companyId: companyId || null,
+    companyId: resolvedCompanyId,
     recipient: {
       email: to,
       userId: userId || null,
       name: data.userName || data.recipientName || null
     },
     type: type || 'other',
+    subject: subject || template.subject,
     status: 'pending'
   };
 
@@ -542,7 +893,7 @@ export const sendEmail = async (options) => {
       html: template.html
     };
 
-    console.log("📤 Sending email to:", to);
+    console.log("📤 Sending email to:", to, "Type:", type);
 
     const result = await getTransporter().sendMail(mailOptions);
 
@@ -550,13 +901,14 @@ export const sendEmail = async (options) => {
     emailLogData.status = 'sent';
     emailLogData.providerId = result.messageId;
     emailLogData.sentAt = new Date();
-    emailLogData.subject = mailOptions.subject;
     emailLogData.content = { html: template.html };
 
-    // Save log asynchronously (don't wait for it)
-    EmailLog.create(emailLogData).catch(err => {
-      console.error('Failed to save email log:', err.message);
-    });
+    // Save log asynchronously (only if companyId exists)
+    if (resolvedCompanyId) {
+      EmailLog.create(emailLogData).catch(err => {
+        console.error('Failed to save email log:', err.message);
+      });
+    }
 
     console.log(`✅ Email sent successfully to ${to} (${type})`);
     return { success: true, messageId: result.messageId };
@@ -567,12 +919,13 @@ export const sendEmail = async (options) => {
     // Update email log with failure
     emailLogData.status = 'failed';
     emailLogData.errorMessage = error.message;
-    emailLogData.subject = subject || type;
 
-    // Save log asynchronously
-    EmailLog.create(emailLogData).catch(err => {
-      console.error('Failed to save email log:', err.message);
-    });
+    // Save log asynchronously (only if companyId exists)
+    if (resolvedCompanyId) {
+      EmailLog.create(emailLogData).catch(err => {
+        console.error('Failed to save email log:', err.message);
+      });
+    }
 
     return { success: false, error: error.message };
   }
@@ -619,6 +972,20 @@ export const sendPasswordResetEmail = async (user, token) => {
 export const sendNewPropertyEmail = async (partners, property, company) => {
   const results = [];
 
+  // Format commission info for display
+  let commissionDisplay;
+  if (property.commission?.isFixed && property.commission?.fixedAmount) {
+    // Fixed commission amount
+    const currency = property.pricing?.currency === 'AED' ? 'AED ' : '₹';
+    commissionDisplay = `Fixed commission: ${currency}${property.commission.fixedAmount.toLocaleString()}`;
+  } else if (property.commission?.basePercentage) {
+    // Percentage-based commission
+    commissionDisplay = `${property.commission.basePercentage}% base commission`;
+  } else {
+    // No commission set - will use tier-based rates
+    commissionDisplay = 'Commission based on partner tier';
+  }
+
   for (const partner of partners) {
     const result = await sendEmail({
       to: partner.email,
@@ -633,9 +1000,7 @@ export const sendNewPropertyEmail = async (partners, property, company) => {
         propertyPrice: property.pricing?.basePrice
           ? `${property.pricing.currency === 'INR' ? '₹' : 'AED '}${(property.pricing.basePrice / 100000).toFixed(1)} Lac`
           : 'Contact for Price',
-        commission: property.commission?.basePercentage
-          ? `${property.commission.basePercentage}% base commission`
-          : 'Standard rates apply',
+        commission: commissionDisplay,
         propertyDescription: property.description,
         propertyId: property._id,
         companyName: company?.name || 'Channel Partner Portal'
@@ -654,10 +1019,15 @@ export const sendNewPropertyEmail = async (partners, property, company) => {
 export const sendPartnershipApprovedEmail = async (partner, company, tier, commissionRate) => {
   const tierRates = {
     bronze: '30%',
-    silver: '35%',
+    silver: '40%',
     gold: '50%',
-    platinum: '75%'
+    platinum: '60%'
   };
+
+  // Ensure tier has a valid value
+  const validTier = tier || 'bronze';
+  // Always calculate commission rate based on tier if not provided
+  const effectiveCommissionRate = commissionRate || tierRates[validTier] || '30%';
 
   return sendEmail({
     to: partner.email,
@@ -667,8 +1037,8 @@ export const sendPartnershipApprovedEmail = async (partner, company, tier, commi
     data: {
       partnerName: partner.firstName,
       companyName: company?.name,
-      tier,
-      commissionRate: commissionRate || tierRates[tier]
+      tier: validTier,
+      commissionRate: effectiveCommissionRate
     }
   });
 };
@@ -703,6 +1073,7 @@ export const sendVisitApprovedEmail = async (visit, partner, property, company, 
     data: {
       partnerName: partner.firstName,
       propertyName: property.name,
+      propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
       visitDate: formatDate(visit.scheduledDate),
       visitTime: formatTime(visit.scheduledTime),
       visitType: visit.visitType || 'office',
@@ -746,6 +1117,7 @@ export const sendVisitRejectedEmail = async (visit, partner, property, company, 
     data: {
       partnerName: partner.firstName,
       propertyName: property.name,
+      propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
       visitDate: formatDate(visit.scheduledDate),
       visitTime: formatTime(visit.scheduledTime),
       rejectionReason: rejectionReason || 'Unfortunately, we could not accommodate your visit request at this time.',
@@ -767,7 +1139,12 @@ export const sendTeamInviteEmail = async (user, temporaryPassword, company, invi
     viewer: 'Viewer'
   };
 
-  return sendEmail({
+  console.log('📧 Sending team invite email to:', user.email);
+  console.log('   Company:', company?.name || 'Unknown');
+  console.log('   Role:', roleNames[user.role] || user.role);
+  console.log('   CompanyId:', company?._id || 'null');
+
+  const result = await sendEmail({
     to: user.email,
     type: 'teamInvite',
     companyId: company?._id || null,
@@ -781,6 +1158,231 @@ export const sendTeamInviteEmail = async (user, temporaryPassword, company, invi
       companyName: company?.name || 'Channel Partner Portal'
     }
   });
+
+  console.log('📧 Team invite email result:', result.success ? 'Success' : 'Failed', result.messageId || result.error);
+  return result;
+};
+
+/**
+ * Send visit cancelled email to partner (due to property status change)
+ */
+export const sendVisitCancelledEmail = async (visit, partner, property, company, cancellationReason) => {
+  const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  return sendEmail({
+    to: partner.email,
+    type: 'visitCancelledPropertyStatus',
+    companyId: company?._id || null,
+    userId: partner._id,
+    data: {
+      partnerName: partner.firstName,
+      propertyName: property.name,
+      propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
+      visitDate: formatDate(visit.scheduledDate),
+      visitTime: formatTime(visit.scheduledTime),
+      visitType: visit.visitType || 'office',
+      cancellationReason: cancellationReason || 'The property is no longer available for visits.',
+      companyName: company?.name || 'Channel Partner Portal'
+    }
+  });
+};
+
+/**
+ * Send visit cancellation notification to company admin (when partner cancels)
+ */
+export const sendPartnerVisitCancelledEmail = async (adminUser, visit, partner, property, company, cancellationReason) => {
+  const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  const partnerName = `${partner.firstName} ${partner.lastName}`;
+
+  return sendEmail({
+    to: adminUser.email,
+    type: 'partnerVisitCancelled',
+    companyId: company?._id || null,
+    userId: adminUser._id,
+    data: {
+      adminName: adminUser.firstName,
+      partnerName: partnerName,
+      propertyName: property.name,
+      propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
+      visitDate: formatDate(visit.scheduledDate),
+      visitTime: formatTime(visit.scheduledTime),
+      visitType: visit.visitType || 'office',
+      cancellationReason: cancellationReason || 'No reason provided',
+      clientName: visit.clientDetails?.name || 'N/A',
+      clientPhone: visit.clientDetails?.phone || 'N/A',
+      companyName: company?.name || 'Channel Partner Portal',
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/operations/visits`
+    }
+  });
+};
+
+/**
+ * Send commission created email to partner
+ */
+export const sendCommissionCreatedEmail = async (partner, commission, property, company) => {
+  const currency = commission.commission?.currency || 'INR';
+  const currencySymbol = currency === 'INR' ? '₹' : 'AED ';
+  const amount = commission.commission?.calculatedAmount || 0;
+  const formattedAmount = `${currencySymbol}${amount.toLocaleString()}`;
+
+  const commissionDetails = commission.commission?.isFixed
+    ? `Fixed Amount: ${formattedAmount}`
+    : `${commission.commission?.effectivePercentage || 0}% of sale price`;
+
+  return sendEmail({
+    to: partner.email,
+    type: 'commission_created',
+    companyId: company?._id || null,
+    userId: partner._id,
+    data: {
+      partnerName: partner.firstName,
+      propertyName: property.name,
+      commissionAmount: formattedAmount,
+      commissionDetails: commissionDetails,
+      salePrice: commission.saleDetails?.salePrice
+        ? `${currencySymbol}${commission.saleDetails.salePrice.toLocaleString()}`
+        : 'N/A',
+      buyerName: commission.saleDetails?.buyerName || 'N/A',
+      status: 'Pending Approval',
+      companyName: company?.name || 'Channel Partner Portal',
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/partner/commissions`
+    }
+  });
+};
+
+/**
+ * Send commission approved email to partner
+ */
+export const sendCommissionApprovedEmail = async (partner, commission, property, company) => {
+  const currency = commission.commission?.currency || 'INR';
+  const currencySymbol = currency === 'INR' ? '₹' : 'AED ';
+  const amount = commission.commission?.calculatedAmount || 0;
+  const formattedAmount = `${currencySymbol}${amount.toLocaleString()}`;
+
+  // Check if amount was overridden
+  const overrideInfo = commission.approval?.override?.isOverridden
+    ? `<p style="color: #f59e0b;"><strong>Note:</strong> The commission amount was adjusted from ${currencySymbol}${commission.approval.override.originalAmount?.toLocaleString() || 'N/A'} to ${formattedAmount}.</p>`
+    : '';
+
+  return sendEmail({
+    to: partner.email,
+    type: 'commission_approved',
+    companyId: company?._id || null,
+    userId: partner._id,
+    data: {
+      partnerName: partner.firstName,
+      propertyName: property.name,
+      commissionAmount: formattedAmount,
+      overrideInfo: overrideInfo,
+      approvedDate: new Date(commission.approval?.approvedAt || Date.now()).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }),
+      status: 'Approved - Pending Payment',
+      companyName: company?.name || 'Channel Partner Portal',
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/partner/commissions`
+    }
+  });
+};
+
+/**
+ * Send commission paid email to partner
+ */
+export const sendCommissionPaidEmail = async (partner, commission, property, company) => {
+  const currency = commission.commission?.currency || 'INR';
+  const currencySymbol = currency === 'INR' ? '₹' : 'AED ';
+  const amount = commission.commission?.calculatedAmount || 0;
+  const formattedAmount = `${currencySymbol}${amount.toLocaleString()}`;
+
+  const paymentMethod = commission.payout?.paymentMethod === 'cash'
+    ? 'Cash'
+    : commission.payout?.paymentMethod === 'bank_transfer'
+    ? 'Bank Transfer'
+    : commission.payout?.paymentMethod || 'Bank Transfer';
+
+  const paymentRef = commission.payout?.paymentReference || 'N/A';
+
+  return sendEmail({
+    to: partner.email,
+    type: 'commission_paid',
+    companyId: company?._id || null,
+    userId: partner._id,
+    data: {
+      partnerName: partner.firstName,
+      propertyName: property.name,
+      commissionAmount: formattedAmount,
+      paymentMethod: paymentMethod,
+      paymentReference: paymentRef,
+      paidDate: new Date(commission.payout?.paidAt || Date.now()).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }),
+      companyName: company?.name || 'Channel Partner Portal',
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/partner/commissions`
+    }
+  });
+};
+
+/**
+ * Send commission cancelled email to partner
+ */
+export const sendCommissionCancelledEmail = async (partner, commission, property, company, reason) => {
+  const currency = commission.commission?.currency || 'INR';
+  const currencySymbol = currency === 'INR' ? '₹' : 'AED ';
+  const amount = commission.commission?.calculatedAmount || 0;
+  const formattedAmount = `${currencySymbol}${amount.toLocaleString()}`;
+
+  return sendEmail({
+    to: partner.email,
+    type: 'commission_cancelled',
+    companyId: company?._id || null,
+    userId: partner._id,
+    data: {
+      partnerName: partner.firstName,
+      propertyName: property.name,
+      commissionAmount: formattedAmount,
+      reason: reason || 'No reason provided',
+      companyName: company?.name || 'Channel Partner Portal',
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/partner/commissions`
+    }
+  });
 };
 
 export default {
@@ -791,5 +1393,11 @@ export default {
   sendPartnershipApprovedEmail,
   sendVisitApprovedEmail,
   sendVisitRejectedEmail,
-  sendTeamInviteEmail
+  sendVisitCancelledEmail,
+  sendPartnerVisitCancelledEmail,
+  sendTeamInviteEmail,
+  sendCommissionCreatedEmail,
+  sendCommissionApprovedEmail,
+  sendCommissionPaidEmail,
+  sendCommissionCancelledEmail
 };

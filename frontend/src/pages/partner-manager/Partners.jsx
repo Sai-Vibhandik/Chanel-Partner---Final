@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import Pagination from '../../components/common/Pagination';
 import ExportButton from '../../components/common/ExportButton';
@@ -13,9 +14,10 @@ const Partners = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const config = sidebarConfig.partner_manager;
+  const toast = useToast();
   const [partnerships, setPartnerships] = useState([]);
+  const [companySettings, setCompanySettings] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [kycFilter, setKycFilter] = useState('');
@@ -23,19 +25,32 @@ const Partners = () => {
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [pagination, setPagination] = useState({
     total: 0,
     page: 1,
     pages: 0
   });
-  const itemsPerPage = 10;
 
   // Debounce search for real-time filtering
   const debouncedSearch = useDebounce(search, 300);
 
   useEffect(() => {
     fetchPartnerships();
-  }, [debouncedSearch, statusFilter, kycFilter, currentPage]);
+  }, [debouncedSearch, statusFilter, kycFilter, currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    fetchCompanySettings();
+  }, []);
+
+  const fetchCompanySettings = async () => {
+    try {
+      const response = await api.get(`/companies/${user.companyId}/settings`);
+      setCompanySettings(response.data.data);
+    } catch (err) {
+      console.error('Failed to fetch company settings:', err);
+    }
+  };
 
   const fetchPartnerships = async () => {
     try {
@@ -51,7 +66,7 @@ const Partners = () => {
       setPartnerships(response.data.data.partnerships || []);
       setPagination(response.data.data.pagination || { total: 0, page: 1, pages: 0 });
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partners');
+      toast.error(err.response?.data?.message || 'Failed to load partners');
     } finally {
       setLoading(false);
     }
@@ -61,11 +76,17 @@ const Partners = () => {
     setCurrentPage(page);
   };
 
+  const handleItemsPerPageChange = (newLimit) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1);
+  };
+
   const getStatusBadge = (status) => {
     const styles = {
       pending: 'bg-yellow-100 text-yellow-800',
       active: 'bg-green-100 text-green-800',
-      suspended: 'bg-red-100 text-red-800'
+      suspended: 'bg-red-100 text-red-800',
+      rejected: 'bg-gray-100 text-gray-800'
     };
     return styles[status] || 'bg-gray-100 text-gray-800';
   };
@@ -95,6 +116,8 @@ const Partners = () => {
     total: pagination.total || partnerships.length,
     active: partnerships.filter(p => p.status === 'active').length,
     pending: partnerships.filter(p => p.status === 'pending').length,
+    suspended: partnerships.filter(p => p.status === 'suspended').length,
+    rejected: partnerships.filter(p => p.status === 'rejected').length,
     kycPending: partnerships.filter(p => p.kycStatus !== 'verified').length
   };
 
@@ -102,18 +125,29 @@ const Partners = () => {
   const exportColumns = [
     { key: 'partnerId.firstName', header: 'First Name' },
     { key: 'partnerId.lastName', header: 'Last Name' },
-    { key: 'partnerId.email', header: 'Email' },
-    { key: 'partnerId.phone', header: 'Phone' },
+    { key: 'partnerId.email', header: 'Email ID' },
     { key: 'status', header: 'Status' },
+    { key: 'kycStatus', header: 'KYC Status', format: (item) => item.kycStatus || 'pending' },
     { key: 'tier', header: 'Tier' },
-    { key: 'kycStatus', header: 'KYC Status' },
-    { key: 'createdAt', header: 'Joined Date' }
+    { key: 'commissionPercentage', header: 'Commission', format: (item) => {
+      if (item.commissionOverride?.percentage) {
+        return `${item.commissionOverride.percentage}%`;
+      }
+      const tierPercentages = {
+        bronze: companySettings?.settings?.tierPercentages?.bronze || 25,
+        silver: companySettings?.settings?.tierPercentages?.silver || 35,
+        gold: companySettings?.settings?.tierPercentages?.gold || 50,
+        platinum: companySettings?.settings?.tierPercentages?.platinum || 75
+      };
+      return `${tierPercentages[item.tier] || tierPercentages.bronze}%`;
+    }},
+    { key: 'createdAt', header: 'Joined Date', format: (item) => new Date(item.createdAt).toLocaleDateString() }
   ];
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Partners" subtitle="Manage your company's partners" color={config.color}>
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <p className="text-sm text-gray-500">Total Partners</p>
           <p className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</p>
@@ -127,8 +161,12 @@ const Partners = () => {
           <p className="text-3xl font-bold text-yellow-600 mt-1">{stats.pending}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <p className="text-sm text-gray-500">KYC Pending</p>
-          <p className="text-3xl font-bold text-purple-600 mt-1">{stats.kycPending}</p>
+          <p className="text-sm text-gray-500">Suspended</p>
+          <p className="text-3xl font-bold text-red-600 mt-1">{stats.suspended}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <p className="text-sm text-gray-500">Rejected</p>
+          <p className="text-3xl font-bold text-gray-600 mt-1">{stats.rejected}</p>
         </div>
       </div>
 
@@ -144,8 +182,18 @@ const Partners = () => {
               placeholder="Search by name or email..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-              className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              className="w-full py-2 pl-10 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             />
+            {search && (
+              <button
+                onClick={() => { setSearch(''); setCurrentPage(1); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
           <select
             value={statusFilter}
@@ -156,6 +204,7 @@ const Partners = () => {
             <option value="pending">Pending</option>
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
+            <option value="rejected">Rejected</option>
           </select>
           <select
             value={kycFilter}
@@ -167,6 +216,14 @@ const Partners = () => {
             <option value="submitted">KYC Submitted</option>
             <option value="verified">KYC Verified</option>
           </select>
+          {(statusFilter || kycFilter || search) && (
+            <button
+              onClick={() => { setStatusFilter(''); setKycFilter(''); setSearch(''); setCurrentPage(1); }}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Clear Filters
+            </button>
+          )}
           <ExportButton
             data={partnerships}
             columns={exportColumns}
@@ -179,7 +236,7 @@ const Partners = () => {
       {/* Partners Table/Cards */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {/* View Toggle Header */}
-        {!loading && !error && partnerships.length > 0 && (
+        {!loading && partnerships.length > 0 && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
             <p className="text-sm text-gray-500">
               Total Partners: <span className="font-semibold text-gray-900">{pagination.total}</span>
@@ -211,8 +268,6 @@ const Partners = () => {
           <div className="flex items-center justify-center min-h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
           </div>
-        ) : error ? (
-          <div className="p-6 text-center text-red-600">{error}</div>
         ) : partnerships.length === 0 ? (
           <div className="p-8 text-center">
             <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -228,7 +283,7 @@ const Partners = () => {
               {partnerships.map((partnership) => (
                 <div
                   key={partnership._id}
-                  onClick={() => navigate(`/partner-manager/partnership/${partnership._id}`)}
+                  onClick={() => navigate(`/partner-manager/partners/${partnership._id}`)}
                   className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md hover:border-purple-200 transition-all cursor-pointer group"
                 >
                   <div className="flex items-start justify-between mb-4">
@@ -286,6 +341,7 @@ const Partners = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sr. No.</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Partner</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
@@ -296,8 +352,11 @@ const Partners = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {partnerships.map((partnership) => (
+                {partnerships.map((partnership, index) => (
                   <tr key={partnership._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {(currentPage - 1) * itemsPerPage + index + 1}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold">
@@ -334,7 +393,7 @@ const Partners = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
-                        onClick={() => navigate(`/partner-manager/partnership/${partnership._id}`)}
+                        onClick={() => navigate(`/partner-manager/partners/${partnership._id}`)}
                         className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
                       >
                         View Details
@@ -348,12 +407,14 @@ const Partners = () => {
         )}
 
         {/* Pagination */}
-        {pagination.pages > 1 && (
+        {pagination.total > 0 && (
           <Pagination
             currentPage={currentPage}
             totalPages={pagination.pages}
             total={pagination.total}
+            itemsPerPage={itemsPerPage}
             onPageChange={handlePageChange}
+            onItemsPerPageChange={handleItemsPerPageChange}
           />
         )}
       </div>

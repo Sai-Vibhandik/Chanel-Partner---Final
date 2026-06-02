@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
+import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
 
-const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'indigo' }) => {
+const DashboardLayout = ({ children, sidebarLinks: propSidebarLinks, title, subtitle, color: propColor }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
@@ -12,9 +13,14 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
   const [notificationLoading, setNotificationLoading] = useState(false);
   const notificationRef = useRef(null);
   const sidebarRef = useRef(null);
-  const { user, logout } = useAuth();
+  const { user, company, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Automatically get sidebar config based on user role
+  const userConfig = user?.role ? sidebarConfig[user.role] : null;
+  const sidebarLinks = propSidebarLinks || userConfig?.links || [];
+  const color = propColor || userConfig?.color || 'indigo';
 
   // Get unread chat count from socket context
   const { unreadCount: chatUnreadCount, toastNotification, dismissToast } = useSocket() || { unreadCount: 0, toastNotification: null, dismissToast: () => {} };
@@ -337,7 +343,7 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
         `}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-4 border-b border-white/10 flex-shrink-0">
+        <div className={`flex items-center h-16 px-4 border-b border-white/10 flex-shrink-0 ${sidebarOpen ? 'lg:justify-between' : 'lg:justify-center'} justify-between`}>
           <Link to="/" className="flex items-center gap-2">
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -355,16 +361,32 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-          {/* Collapse button for desktop */}
+          {/* Toggle button for desktop - only show when expanded */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="hidden p-2 rounded-lg hover:bg-white/10 transition-colors lg:flex"
+            className={`hidden p-2 rounded-lg hover:bg-white/10 transition-colors ${sidebarOpen ? 'lg:block' : 'lg:hidden'}`}
+            title="Collapse sidebar"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
         </div>
+
+        {/* Expand button for desktop - only show when collapsed */}
+        {!sidebarOpen && (
+          <div className="hidden lg:flex justify-center py-3 border-b border-white/5">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+              title="Expand sidebar"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Navigation */}
         <nav
@@ -429,6 +451,9 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
                 {user?.firstName} {user?.lastName}
               </Link>
               <p className="text-xs text-white/70 truncate">{getRoleDisplayName(user?.role)}</p>
+              {company && (
+                <p className="text-xs text-white/50 truncate mt-0.5">{company.name}</p>
+              )}
             </div>
           </div>
           <div className={`mt-3 space-y-1 ${sidebarOpen ? 'lg:block' : 'lg:hidden'} ${mobileSidebarOpen ? 'block' : 'hidden'}`}>
@@ -449,7 +474,7 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
-              Logout
+              Log Out
             </button>
           </div>
         </div>
@@ -474,7 +499,13 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
                 </button>
                 <div className="min-w-0">
                   <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate">{title}</h1>
-                  {subtitle && <p className="text-xs sm:text-sm text-gray-500 mt-0.5 truncate">{subtitle}</p>}
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {subtitle && <p className="text-xs sm:text-sm text-gray-500 truncate">{subtitle}</p>}
+                    {company && subtitle && <span className="text-gray-300">•</span>}
+                    {company && (
+                      <p className="text-xs sm:text-sm text-indigo-600 font-medium truncate">{company.name}</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -578,7 +609,7 @@ const DashboardLayout = ({ children, sidebarLinks, title, subtitle, color = 'ind
         </header>
 
         {/* Page Content */}
-        <main className="p-4 sm:p-6 animate-fade-in">
+        <main className="p-4 sm:p-6">
           {children}
         </main>
       </div>

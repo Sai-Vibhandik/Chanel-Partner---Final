@@ -8,6 +8,8 @@ import Commission from '../models/Commission.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { sendPartnershipApprovedEmail } from '../services/email.service.js';
 import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
+import { checkAllRequiredAgreementsSigned, getPendingAgreementNames } from '../utils/agreementValidation.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
 /**
  * @desc    Partner applies to join a company
@@ -16,7 +18,7 @@ import { createNotification, createNotificationsForRecipients } from './notifica
  */
 export const applyToCompany = async (req, res, next) => {
   try {
-    const { companyId } = req.body;
+    const { companyId, regions } = req.body;
     const partnerId = req.user._id;
 
     // Verify user is a partner
@@ -52,6 +54,23 @@ export const applyToCompany = async (req, res, next) => {
       throw new ApiError(400, 'This company is not accepting applications at this time');
     }
 
+    // Validate regions - partner can only select regions the company operates in
+    const companyRegions = company.regions || ['india'];
+    let partnerRegions = [];
+
+    if (regions && Array.isArray(regions) && regions.length > 0) {
+      // Validate each selected region is within company's regions
+      for (const region of regions) {
+        if (!companyRegions.includes(region)) {
+          throw new ApiError(400, `Invalid region selected. Company does not operate in ${region}`);
+        }
+      }
+      partnerRegions = regions;
+    } else {
+      // Default to company's first region if none selected
+      partnerRegions = [companyRegions[0]];
+    }
+
     // Check if already applied/joined
     const existing = await PartnerCompany.findOne({ partnerId, companyId });
     if (existing) {
@@ -63,7 +82,8 @@ export const applyToCompany = async (req, res, next) => {
       partnerId,
       companyId,
       status: 'pending',
-      tier: 'bronze'
+      tier: 'bronze',
+      regions: partnerRegions
     });
 
     // Get partner details for notification
@@ -196,7 +216,7 @@ export const getMyCompanies = async (req, res, next) => {
 export const getCompanyPartners = async (req, res, next) => {
   try {
     const { companyId } = req.params;
-    const { status, tier, search, page = 1, limit = 10 } = req.query;
+    const { status, tier, kycStatus, search, page = 1, limit = 10 } = req.query;
 
     // Verify access
     if (req.user.role !== 'platform_admin' && req.user.companyId?.toString() !== companyId) {
@@ -218,7 +238,7 @@ export const getCompanyPartners = async (req, res, next) => {
     const total = await PartnerCompany.countDocuments(query);
 
     const partnerships = await PartnerCompany.find(query)
-      .populate('partnerId', 'firstName lastName email phone avatar')
+      .populate('partnerId', 'firstName lastName email phone avatar partnerProfile')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -232,6 +252,11 @@ export const getCompanyPartners = async (req, res, next) => {
         searchRegex.test(p.partnerId?.lastName) ||
         searchRegex.test(p.partnerId?.email)
       );
+    }
+
+    // Filter by KYC status if provided
+    if (kycStatus) {
+      filteredPartnerships = filteredPartnerships.filter(p => p.kycStatus === kycStatus);
     }
 
     res.status(200).json({
@@ -288,7 +313,7 @@ export const getPartnership = async (req, res, next) => {
 };
 
 /**
- * @desc    Update partnership status (approve/suspend)
+ * @desc    Update partnership status (approve/reject/suspend)
  * @route   PUT /api/partner-company/:id/status
  * @access  Private (Partner Manager, Company SuperAdmin)
  */
@@ -310,10 +335,27 @@ export const updatePartnershipStatus = async (req, res, next) => {
       throw new ApiError(403, 'Access denied');
     }
 
-    // Simplified status: pending -> active -> suspended
-    const validStatuses = ['pending', 'active', 'suspended'];
+    // Status options: pending -> active/rejected, active -> suspended
+    const validStatuses = ['pending', 'active', 'suspended', 'rejected'];
     if (!validStatuses.includes(status)) {
-      throw new ApiError(400, 'Invalid status. Use: pending, active, or suspended');
+      throw new ApiError(400, 'Invalid status. Use: pending, active, suspended, or rejected');
+    }
+
+    // Check if all required agreements are signed before approving to active status
+    if (status === 'active' && partnership.status !== 'active') {
+      const agreementCheck = await checkAllRequiredAgreementsSigned(
+        partnership._id,
+        partnership.companyId._id
+      );
+
+      if (!agreementCheck.allSigned) {
+        const pendingNames = getPendingAgreementNames(agreementCheck.pendingAgreements);
+        throw new ApiError(
+          400,
+          `Cannot approve partnership. Partner must sign the following required agreements: ${pendingNames}. ` +
+          `Signed: ${agreementCheck.signedCount}/${agreementCheck.totalCount}`
+        );
+      }
     }
 
     const previousStatus = partnership.status;
@@ -321,9 +363,16 @@ export const updatePartnershipStatus = async (req, res, next) => {
     // Update status
     partnership.status = status;
 
-    if (status === 'active') {
+    // Only set approvedAt if it's not already set (first-time approval)
+    // This preserves the original approval date even if partner is suspended and reactivated
+    if (status === 'active' && !partnership.approvedAt) {
       partnership.approvedAt = new Date();
       partnership.approvedBy = req.user._id;
+    }
+
+    // Store rejection reason when rejecting
+    if (status === 'rejected' && reason) {
+      partnership.rejectionReason = reason;
     }
 
     if (reason) {
@@ -332,20 +381,18 @@ export const updatePartnershipStatus = async (req, res, next) => {
 
     await partnership.save();
 
-    // Send approval email to partner when partnership is approved
+    // Send approval email to partner when partnership is approved (non-blocking)
     if (status === 'active' && previousStatus === 'pending') {
-      try {
-        await sendPartnershipApprovedEmail(
-          partnership.partnerId,
-          partnership.companyId,
-          partnership.tier
-        );
-      } catch (emailError) {
+      // Send email in background (non-blocking for faster response)
+      sendPartnershipApprovedEmail(
+        partnership.partnerId,
+        partnership.companyId,
+        partnership.tier
+      ).catch(emailError => {
         console.error('Failed to send partnership approval email:', emailError);
-        // Don't fail the request if email fails
-      }
+      });
 
-      // Create notification for partner
+      // Create notification for partner (non-blocking)
       createNotification({
         recipientId: partnership.partnerId._id,
         type: 'partnership_approved',
@@ -361,11 +408,45 @@ export const updatePartnershipStatus = async (req, res, next) => {
       });
     }
 
-    // Create notification for partnership rejection/suspension
-    if (status === 'suspended' && previousStatus === 'active') {
+    // Send notification when partner is rejected
+    if (status === 'rejected' && previousStatus === 'pending') {
       createNotification({
         recipientId: partnership.partnerId._id,
         type: 'partnership_rejected',
+        title: 'Partnership Application Rejected',
+        message: `Your partnership application with ${partnership.companyId?.name || 'the company'} has been rejected. ${reason ? `Reason: ${reason}` : ''}`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner/my-companies'
+      }).catch(err => {
+        console.error('Failed to create partnership rejection notification:', err.message);
+      });
+    }
+
+    // Send notification when status changes to pending (from active/suspended)
+    if (status === 'pending' && previousStatus !== 'pending') {
+      createNotification({
+        recipientId: partnership.partnerId._id,
+        type: 'partnership_pending',
+        title: 'Partnership Status Updated',
+        message: `Your partnership with ${partnership.companyId?.name || 'the company'} has been set to pending. ${reason ? `Reason: ${reason}` : 'Please wait for approval.'}`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner/my-companies'
+      }).catch(err => {
+        console.error('Failed to create partnership pending notification:', err.message);
+      });
+    }
+
+    // Create notification for partnership suspension
+    if (status === 'suspended' && previousStatus === 'active') {
+      createNotification({
+        recipientId: partnership.partnerId._id,
+        type: 'partnership_suspended',
         title: 'Partnership Suspended',
         message: `Your partnership with ${partnership.companyId?.name || 'the company'} has been suspended. ${reason ? `Reason: ${reason}` : ''}`,
         data: {
@@ -375,6 +456,40 @@ export const updatePartnershipStatus = async (req, res, next) => {
         link: '/partner/my-companies'
       }).catch(err => {
         console.error('Failed to create partnership suspension notification:', err.message);
+      });
+    }
+
+    // Create notification for partnership reactivation (from suspended to active)
+    if (status === 'active' && previousStatus === 'suspended') {
+      createNotification({
+        recipientId: partnership.partnerId._id,
+        type: 'partnership_reactivated',
+        title: 'Partnership Reactivated',
+        message: `Your partnership with ${partnership.companyId?.name || 'the company'} has been reactivated. ${reason ? `Note: ${reason}` : 'You can now access properties and book visits.'}`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner/my-companies'
+      }).catch(err => {
+        console.error('Failed to create partnership reactivation notification:', err.message);
+      });
+    }
+
+    // Create notification for general status changes (with note)
+    if (reason && status !== 'pending' && previousStatus === status) {
+      createNotification({
+        recipientId: partnership.partnerId._id,
+        type: 'partnership_update',
+        title: 'Partnership Updated',
+        message: `Your partnership with ${partnership.companyId?.name || 'the company'} has been updated. Note: ${reason}`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner/my-companies'
+      }).catch(err => {
+        console.error('Failed to create partnership update notification:', err.message);
       });
     }
 
@@ -424,6 +539,59 @@ export const updatePartnershipTier = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: `Tier updated to ${tier}`,
+      data: { partnership }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update partner's operating regions
+ * @route   PUT /api/partner-company/:id/regions
+ * @access  Private (Partner - own partnership only)
+ */
+export const updatePartnerRegions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { regions } = req.body;
+
+    const partnership = await PartnerCompany.findById(id)
+      .populate('companyId', 'name regions');
+
+    if (!partnership) {
+      throw new ApiError(404, 'Partnership not found');
+    }
+
+    // Verify ownership
+    if (req.user._id.toString() !== partnership.partnerId.toString()) {
+      throw new ApiError(403, 'You can only update your own partnership');
+    }
+
+    // Validate regions
+    if (!regions || !Array.isArray(regions) || regions.length === 0) {
+      throw new ApiError(400, 'At least one region must be selected');
+    }
+
+    // Validate that selected regions are within company's regions
+    const companyRegions = partnership.companyId.regions || ['india'];
+    for (const region of regions) {
+      if (!companyRegions.includes(region)) {
+        throw new ApiError(400, `Invalid region: ${region}. Company does not operate in this region.`);
+      }
+    }
+
+    // Update regions
+    partnership.regions = regions;
+    await partnership.save();
+
+    // Populate for response
+    await partnership.populate('partnerId', 'firstName lastName email');
+    await partnership.populate('companyId', 'name logo regions');
+
+    res.status(200).json({
+      success: true,
+      message: 'Operating regions updated successfully',
       data: { partnership }
     });
   } catch (error) {
@@ -491,46 +659,43 @@ export const uploadKYCForPartnership = async (req, res, next) => {
 
     await partnership.save();
 
-    // Notify company admins about KYC document submission
-    try {
-      const companyAdmins = await User.find({
-        companyId: partnership.companyId,
-        role: { $in: ['company_superadmin', 'partner_manager'] },
-        isActive: true
-      });
+    // Notify company admins about KYC document submission (non-blocking)
+    const companyAdmins = await User.find({
+      companyId: partnership.companyId,
+      role: { $in: ['company_superadmin', 'partner_manager'] },
+      isActive: true
+    }).select('_id');
 
-      const partner = await User.findById(partnership.partnerId).select('firstName lastName');
-      const partnerName = partner ? `${partner.firstName} ${partner.lastName}` : 'Partner';
+    const partner = await User.findById(partnership.partnerId).select('firstName lastName');
+    const partnerName = partner ? `${partner.firstName} ${partner.lastName}` : 'Partner';
 
-      const documentTypeNames = {
-        pan_card: 'PAN Card',
-        gst_certificate: 'GST Certificate',
-        rera_certificate: 'RERA Certificate',
-        address_proof: 'Address Proof',
-        cancelled_cheque: 'Cancelled Cheque',
-        trade_license: 'Trade License',
-        rera_registration_card: 'RERA Registration Card',
-        emirates_id: 'Emirates ID',
-        passport_copy: 'Passport Copy',
-        visa_copy: 'Visa Copy',
-        other: 'Other Document'
-      };
+    const documentTypeNames = {
+      pan_card: 'PAN Card',
+      gst_certificate: 'GST Certificate',
+      rera_certificate: 'RERA Certificate',
+      address_proof: 'Address Proof',
+      cancelled_cheque: 'Cancelled Cheque',
+      trade_license: 'Trade License',
+      rera_registration_card: 'RERA Registration Card',
+      emirates_id: 'Emirates ID',
+      passport_copy: 'Passport Copy',
+      visa_copy: 'Visa Copy',
+      other: 'Other Document'
+    };
 
-      for (const admin of companyAdmins) {
-        createNotification({
-          recipientId: admin._id,
-          type: 'kyc_submitted',
-          title: 'KYC Document Submitted',
-          message: `${partnerName} has submitted ${documentTypeNames[type] || type} for verification.`,
-          data: {
-            partnershipId: partnership._id,
-            companyId: partnership.companyId
-          },
-          link: '/partner-manager/partners'
-        }).catch(err => console.error('Failed to create KYC submission notification:', err.message));
-      }
-    } catch (notifyError) {
-      console.error('Error sending KYC submission notifications:', notifyError.message);
+    // Create notifications in parallel (non-blocking)
+    const adminIds = companyAdmins.map(admin => admin._id);
+    if (adminIds.length > 0) {
+      createNotificationsForRecipients(adminIds, {
+        type: 'kyc_submitted',
+        title: 'KYC Document Submitted',
+        message: `${partnerName} has submitted ${documentTypeNames[type] || type} for verification.`,
+        data: {
+          partnershipId: partnership._id,
+          companyId: partnership.companyId
+        },
+        link: '/partner-manager/partners'
+      }).catch(err => console.error('Failed to create KYC submission notifications:', err.message));
     }
 
     res.status(200).json({
@@ -569,10 +734,35 @@ export const getKYCForPartnership = async (req, res, next) => {
       throw new ApiError(403, 'Access denied');
     }
 
-    // Get company's operating regions
+    // Get company for reference
     const company = await Company.findById(partnership.companyId._id);
 
-    // Define required documents based on regions
+    // Determine which regions to use for KYC requirements
+    let partnerRegions;
+    if (partnership.regions && partnership.regions.length > 0) {
+      // Partner has explicitly selected their operating regions
+      partnerRegions = partnership.regions;
+    } else {
+      // If partner hasn't set regions, infer from uploaded documents
+      const uploadedDocRegions = [...new Set(
+        partnership.kycDocuments
+          .map(doc => doc.region)
+          .filter(region => region) // Remove undefined/null
+      )];
+
+      if (uploadedDocRegions.length > 0) {
+        // Use regions from uploaded documents
+        partnerRegions = uploadedDocRegions;
+      } else if (company?.regions && company.regions.length > 0) {
+        // Legacy fallback: use first company region only
+        partnerRegions = [company.regions[0]];
+      } else {
+        // Default fallback
+        partnerRegions = ['india'];
+      }
+    }
+
+    // Define required documents based on partner's selected regions
     const getRequiredDocuments = (regions) => {
       const indiaDocs = [
         { type: 'pan_card', name: 'PAN Card', region: 'india', required: true },
@@ -605,7 +795,7 @@ export const getKYCForPartnership = async (req, res, next) => {
       return requiredDocs;
     };
 
-    const requiredDocs = getRequiredDocuments(company?.regions);
+    const requiredDocs = getRequiredDocuments(partnerRegions);
 
     // Populate verifiedBy for documents
     await partnership.populate('kycDocuments.verifiedBy', 'firstName lastName email');
@@ -631,9 +821,8 @@ export const getKYCForPartnership = async (req, res, next) => {
       doc => requiredTypes.includes(doc.type) && doc.status === 'verified'
     );
 
-    // If company has only one region, be flexible with region matching
-    const companyRegions = company?.regions || ['india'];
-    const singleRegion = companyRegions.length === 1 ? companyRegions[0] : null;
+    // If partner has only one region, be flexible with region matching
+    const singleRegion = partnerRegions.length === 1 ? partnerRegions[0] : null;
 
     // Build summary
     const summary = {
@@ -664,6 +853,30 @@ export const getKYCForPartnership = async (req, res, next) => {
       }),
       uploadedDocuments: uploadedDocs
     };
+
+    // Check and correct KYC status if needed
+    // If all required documents are verified but status is not 'verified', update it
+    const allRequiredDocsVerified = requiredDocs.filter(d => d.required).every(reqDoc => {
+      let uploaded;
+      if (singleRegion) {
+        uploaded = uploadedDocs.find(d =>
+          d.type === reqDoc.type && d.status === 'verified' && (!d.region || d.region === singleRegion)
+        );
+      } else {
+        uploaded = uploadedDocs.find(d =>
+          d.type === reqDoc.type && d.region === reqDoc.region && d.status === 'verified'
+        );
+      }
+      return !!uploaded;
+    });
+
+    // If all required docs are verified but status is not 'verified', update it
+    if (allRequiredDocsVerified && partnership.kycStatus !== 'verified') {
+      partnership.kycStatus = 'verified';
+      partnership.kycVerifiedAt = partnership.kycVerifiedAt || new Date();
+      await partnership.save();
+      summary.kycStatus = 'verified';
+    }
 
     res.status(200).json({
       success: true,
@@ -711,9 +924,34 @@ export const verifyKYCForPartnership = async (req, res, next) => {
       document.rejectionReason = reason;
     }
 
-    // Check if all required documents are verified based on company's regions
+    // Check if all required documents are verified based on partner's selected regions
     const company = await Company.findById(partnership.companyId);
-    const regions = company?.regions || ['india'];
+
+    // Determine which regions to check for required documents
+    let partnerRegions;
+    if (partnership.regions && partnership.regions.length > 0) {
+      // Partner has explicitly selected their operating regions
+      partnerRegions = partnership.regions;
+    } else {
+      // If partner hasn't set regions, infer from uploaded documents
+      const uploadedDocRegions = [...new Set(
+        partnership.kycDocuments
+          .map(doc => doc.region)
+          .filter(region => region) // Remove undefined/null
+      )];
+
+      if (uploadedDocRegions.length > 0) {
+        // Use regions from uploaded documents
+        partnerRegions = uploadedDocRegions;
+      } else if (company?.regions && company.regions.length > 0) {
+        // Legacy fallback: use first company region only
+        // This avoids requiring docs for all company regions when partner hasn't specified
+        partnerRegions = [company.regions[0]];
+      } else {
+        // Default fallback
+        partnerRegions = ['india'];
+      }
+    }
 
     // Define required documents per region (only required docs, matching the KYC summary)
     const requiredDocsPerRegion = {
@@ -724,23 +962,23 @@ export const verifyKYCForPartnership = async (req, res, next) => {
     // Check if all required documents for each region are verified
     let allRequiredVerified = true;
 
-    // If company has only one region, be flexible with region matching
+    // If partner has only one region, be flexible with region matching
     // (for backward compatibility with documents that may not have region set)
-    const singleRegion = regions.length === 1 ? regions[0] : null;
+    const singleRegion = partnerRegions.length === 1 ? partnerRegions[0] : null;
 
-    for (const region of regions) {
+    for (const region of partnerRegions) {
       const requiredTypes = requiredDocsPerRegion[region] || [];
       for (const type of requiredTypes) {
         let doc;
         if (singleRegion) {
-          // Single region company - be flexible with region matching
+          // Single region partner - be flexible with region matching
           // Check for document with matching type and status, regardless of region
           // OR document with matching type, region, and status
           doc = partnership.kycDocuments.find(
             d => d.type === type && d.status === 'verified' && (!d.region || d.region === singleRegion)
           );
         } else {
-          // Multi-region company - strict region matching required
+          // Multi-region partner - strict region matching required
           doc = partnership.kycDocuments.find(
             d => d.type === type && d.region === region && d.status === 'verified'
           );
@@ -771,6 +1009,22 @@ export const verifyKYCForPartnership = async (req, res, next) => {
       }).catch(err => {
         console.error('Failed to create KYC approval notification:', err.message);
       });
+
+      // Log activity for KYC approval
+      const partnerUser = await User.findById(partnership.partnerId);
+      await logActivity({
+        userId: req.user._id,
+        companyId: partnership.companyId,
+        action: ActionTypes.PARTNER_KYC_APPROVED,
+        resourceType: ResourceTypes.PARTNER,
+        resourceId: partnership.partnerId,
+        resourceTitle: `${partnerUser?.firstName || ''} ${partnerUser?.lastName || ''}`.trim(),
+        details: {
+          partnerEmail: partnerUser?.email,
+          partnershipId: partnership._id
+        },
+        ...getRequestMetadata(req)
+      });
     }
 
     // If document was rejected, notify the partner
@@ -790,6 +1044,22 @@ export const verifyKYCForPartnership = async (req, res, next) => {
         link: '/partner/my-companies'
       }).catch(err => {
         console.error('Failed to create KYC rejection notification:', err.message);
+      });
+
+      // Log activity for KYC rejection
+      await logActivity({
+        userId: req.user._id,
+        companyId: partnership.companyId,
+        action: ActionTypes.PARTNER_KYC_REJECTED,
+        resourceType: ResourceTypes.PARTNER,
+        resourceId: partnership.partnerId,
+        resourceTitle: `${partner?.firstName || ''} ${partner?.lastName || ''}`.trim(),
+        details: {
+          partnerEmail: partner?.email,
+          documentType: document.type,
+          reason: reason || undefined
+        },
+        ...getRequestMetadata(req)
       });
     }
 
@@ -931,7 +1201,8 @@ export const getKYCReviews = async (req, res, next) => {
         documents,
         statusCounts,
         completionPercentage,
-        allRequiredVerified: verifiedRequired === requiredCount
+        allRequiredVerified: verifiedRequired === requiredCount,
+        updatedAt: partnership.updatedAt || partnership.createdAt
       };
     });
 
@@ -945,6 +1216,14 @@ export const getKYCReviews = async (req, res, next) => {
       result = kycReviews.filter(r => r.statusCounts.rejected > 0);
     }
 
+    // Calculate overall stats (before pagination)
+    const overallStats = {
+      total: kycReviews.length,
+      pending: kycReviews.filter(r => r.statusCounts.pending > 0 || r.statusCounts.notUploaded > 0).length,
+      verified: kycReviews.filter(r => r.allRequiredVerified).length,
+      hasRejected: kycReviews.filter(r => r.statusCounts.rejected > 0).length
+    };
+
     // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = result.length;
@@ -956,6 +1235,7 @@ export const getKYCReviews = async (req, res, next) => {
         reviews: paginatedResult,
         requiredDocs,
         regions,
+        stats: overallStats,
         pagination: {
           total,
           page: parseInt(page),
@@ -995,6 +1275,75 @@ export const leaveCompany = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'You have left the company'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Withdraw a pending partnership request (Partner)
+ * @route   DELETE /api/partner-company/:id/withdraw
+ * @access  Private (Partner - own partnership only, status must be pending)
+ */
+export const withdrawPartnershipRequest = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const partnership = await PartnerCompany.findById(id)
+      .populate('companyId', 'name')
+      .populate('partnerId', 'firstName lastName email');
+
+    if (!partnership) {
+      throw new ApiError(404, 'Partnership request not found');
+    }
+
+    // Verify ownership
+    if (req.user._id.toString() !== partnership.partnerId._id.toString()) {
+      throw new ApiError(403, 'You can only withdraw your own partnership requests');
+    }
+
+    // Can only withdraw pending requests
+    if (partnership.status !== 'pending') {
+      throw new ApiError(400, 'Can only withdraw pending partnership requests');
+    }
+
+    // Store details before deletion
+    const partnerName = `${partnership.partnerId.firstName} ${partnership.partnerId.lastName}`;
+    const companyName = partnership.companyId.name;
+    const companyId = partnership.companyId._id;
+
+    // Delete the partnership
+    await PartnerCompany.findByIdAndDelete(id);
+
+    // Notify company admins and partner managers about the withdrawal
+    try {
+      const companyAdmins = await User.find({
+        companyId: companyId,
+        role: { $in: ['company_superadmin', 'partner_manager'] },
+        isActive: true
+      }).select('_id');
+
+      if (companyAdmins.length > 0) {
+        await createNotificationsForRecipients({
+          recipientIds: companyAdmins.map(admin => admin._id),
+          type: 'partnership_withdrawn',
+          title: 'Partnership Request Withdrawn',
+          message: `${partnerName} has withdrawn their partnership request to join ${companyName}.`,
+          data: {
+            partnerId: partnership.partnerId._id,
+            companyId: companyId
+          },
+          link: '/company/partners'
+        });
+      }
+    } catch (notifyError) {
+      console.error('Failed to send withdrawal notification:', notifyError.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Partnership request withdrawn successfully'
     });
   } catch (error) {
     next(error);
@@ -1106,7 +1455,13 @@ export const getPerformanceReport = async (req, res, next) => {
           totalCommissions: {
             $sum: {
               $map: {
-                input: '$commissions',
+                input: {
+                  $filter: {
+                    input: '$commissions',
+                    as: 'commission',
+                    cond: { $ne: ['$$commission.status', 'cancelled'] }
+                  }
+                },
                 as: 'commission',
                 in: '$$commission.commission.calculatedAmount'
               }
@@ -1143,7 +1498,12 @@ export const getPerformanceReport = async (req, res, next) => {
                             $filter: {
                               input: '$commissions',
                               as: 'c',
-                              cond: { $eq: ['$$c.commission.currency', '$$currency'] }
+                              cond: {
+                                $and: [
+                                  { $eq: ['$$c.commission.currency', '$$currency'] },
+                                  { $ne: ['$$c.status', 'cancelled'] }
+                                ]
+                              }
                             }
                           },
                           as: 'filtered',
@@ -1194,9 +1554,13 @@ export const getPerformanceReport = async (req, res, next) => {
       { $limit: parseInt(limit) }
     ]);
 
+    // Build filter for summary stats (includes tier filter if provided)
+    const summaryMatchQuery = { companyId, status: 'active' };
+    if (tier) summaryMatchQuery.tier = tier;
+
     // Calculate summary stats
     const summary = await PartnerCompany.aggregate([
-      { $match: { companyId, status: 'active' } },
+      { $match: summaryMatchQuery },
       {
         $group: {
           _id: null,
@@ -1205,9 +1569,9 @@ export const getPerformanceReport = async (req, res, next) => {
       }
     ]);
 
-    // Calculate tier breakdown
+    // Calculate tier breakdown (filter by tier if provided)
     const tierBreakdown = await PartnerCompany.aggregate([
-      { $match: { companyId, status: 'active' } },
+      { $match: summaryMatchQuery },
       {
         $group: {
           _id: '$tier',
@@ -1216,14 +1580,21 @@ export const getPerformanceReport = async (req, res, next) => {
       }
     ]);
 
-    // Calculate total visits and commissions
+    // Get partner IDs for tier-filtered stats (visits and commissions)
+    let partnerIdsForTier = null;
+    if (tier) {
+      const tierPartners = await PartnerCompany.find({ companyId, status: 'active', tier }, { partnerId: 1 }).lean();
+      partnerIdsForTier = tierPartners.map(p => p.partnerId);
+    }
+
+    // Calculate total visits and commissions (filtered by tier if provided)
+    const visitMatchQuery = { companyId, ...dateFilter };
+    if (partnerIdsForTier) {
+      visitMatchQuery.partner = { $in: partnerIdsForTier };
+    }
+
     const visitStats = await Visit.aggregate([
-      {
-        $match: {
-          companyId,
-          ...dateFilter
-        }
-      },
+      { $match: visitMatchQuery },
       {
         $group: {
           _id: null,
@@ -1235,13 +1606,13 @@ export const getPerformanceReport = async (req, res, next) => {
       }
     ]);
 
+    const commissionMatchQuery = { companyId, ...dateFilter };
+    if (partnerIdsForTier) {
+      commissionMatchQuery.partner = { $in: partnerIdsForTier };
+    }
+
     const commissionStats = await Commission.aggregate([
-      {
-        $match: {
-          companyId,
-          ...dateFilter
-        }
-      },
+      { $match: commissionMatchQuery },
       {
         $group: {
           _id: '$commission.currency',
@@ -1335,15 +1706,19 @@ export const getCommissionReport = async (req, res, next) => {
       byTier,
       byPeriod
     ] = await Promise.all([
-      Commission.countDocuments({ companyId, ...dateFilter }),
+      Commission.countDocuments({ companyId, ...dateFilter, status: { $ne: 'cancelled' } }),
       // Summary by currency
       Commission.aggregate([
         { $match: { companyId, ...dateFilter } },
         {
           $group: {
             _id: '$commission.currency',
-            totalAmount: { $sum: '$commission.calculatedAmount' },
-            count: { $sum: 1 },
+            totalAmount: {
+              $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 0, '$commission.calculatedAmount'] }
+            },
+            count: {
+              $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 0, 1] }
+            },
             pendingAmount: {
               $sum: { $cond: [{ $eq: ['$status', 'pending'] }, '$commission.calculatedAmount', 0] }
             },
@@ -1384,17 +1759,20 @@ export const getCommissionReport = async (req, res, next) => {
       ]),
       // By tier
       Commission.aggregate([
-        { $match: { companyId, ...dateFilter } },
+        { $match: { companyId, ...dateFilter, status: { $ne: 'cancelled' } } },
         { $group: { _id: '$commission.partnerTier', count: { $sum: 1 }, amount: { $sum: '$commission.calculatedAmount' } } }
       ]),
-      // By period
+      // By period (grouped by month and currency)
       Commission.aggregate([
         { $match: { companyId, ...dateFilter } },
         {
           $group: {
-            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-            count: { $sum: 1 },
-            amount: { $sum: '$commission.calculatedAmount' },
+            _id: {
+              period: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+              currency: { $ifNull: ['$commission.currency', 'INR'] }
+            },
+            count: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 0, 1] } },
+            amount: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 0, '$commission.calculatedAmount'] } },
             paidAmount: {
               $sum: {
                 $cond: [{ $eq: ['$status', 'paid'] }, '$commission.calculatedAmount', 0]
@@ -1402,8 +1780,8 @@ export const getCommissionReport = async (req, res, next) => {
             }
           }
         },
-        { $sort: { _id: -1 } },
-        { $limit: 12 }
+        { $sort: { '_id.period': -1 } },
+        { $limit: 24 }
       ])
     ]);
 
@@ -1456,7 +1834,9 @@ export const getCommissionReport = async (req, res, next) => {
       {
         $group: {
           _id: '$partner',
-          totalCommissions: { $sum: '$commission.calculatedAmount' },
+          totalCommissions: {
+            $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 0, '$commission.calculatedAmount'] }
+          },
           paidCommissions: {
             $sum: {
               $cond: [{ $eq: ['$status', 'paid'] }, '$commission.calculatedAmount', 0]
@@ -1467,7 +1847,7 @@ export const getCommissionReport = async (req, res, next) => {
               $cond: [{ $eq: ['$status', 'pending'] }, '$commission.calculatedAmount', 0]
             }
           },
-          commissionCount: { $sum: 1 },
+          commissionCount: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 0, 1] } },
           commissions: { $push: '$$ROOT' }
         }
       },
@@ -1527,7 +1907,12 @@ export const getCommissionReport = async (req, res, next) => {
                             $filter: {
                               input: '$commissions',
                               as: 'c',
-                              cond: { $eq: ['$$c.commission.currency', '$$currency'] }
+                              cond: {
+                                $and: [
+                                  { $eq: ['$$c.commission.currency', '$$currency'] },
+                                  { $ne: ['$$c.status', 'cancelled'] }
+                                ]
+                              }
                             }
                           },
                           as: 'filtered',

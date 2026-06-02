@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
-import { validatePhone, validateEmail, validatePrice, handlePhoneInput, handleDecimalInput } from '../../utils/validation';
+import { validatePhoneWithCountry, validateEmail, validatePrice, handleDecimalInput } from '../../utils/validation';
+import PhoneInput from '../../components/common/PhoneInput';
+import { formatCurrency } from '../../utils/currency';
 
 // Default tier percentages (what % of property's base commission each tier gets)
 // Example: If property has 5% base, Gold tier (50%) gets 2.5% effective rate
@@ -18,12 +21,24 @@ const DEFAULT_TIER_PERCENTAGES = {
 const CommissionForm = () => {
   const { user } = useAuth();
   const config = sidebarConfig[user?.role] || sidebarConfig.finance_manager;
-  // All roles use the same path since routes are under /finance-manager
-  const basePath = '/finance-manager/commissions';
+
+  // Get basePath based on role for consistent URLs
+  const getBasePath = () => {
+    switch (user?.role) {
+      case 'company_superadmin':
+        return '/company/commissions';
+      case 'partner_manager':
+        return '/partner-manager/commissions';
+      default:
+        return '/finance-manager/commissions';
+    }
+  };
+  const basePath = getBasePath();
+
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [partnerships, setPartnerships] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -43,6 +58,7 @@ const CommissionForm = () => {
       saleDate: '',
       buyerName: '',
       buyerPhone: '',
+      buyerPhoneCountryCode: 'IN',
       buyerEmail: ''
     },
     notes: ''
@@ -198,13 +214,27 @@ const CommissionForm = () => {
     }
   };
 
-  const handlePhoneChange = (e) => {
-    const value = handlePhoneInput(e, null, null);
+  const handlePhoneChange = (value) => {
     setFormData(prev => ({
       ...prev,
       saleDetails: { ...prev.saleDetails, buyerPhone: value }
     }));
     if (fieldErrors['saleDetails.buyerPhone']) {
+      setFieldErrors(prev => ({ ...prev, ['saleDetails.buyerPhone']: '' }));
+    }
+  };
+
+  const handlePhoneCountryChange = (countryCode) => {
+    setFormData(prev => ({
+      ...prev,
+      saleDetails: { ...prev.saleDetails, buyerPhoneCountryCode: countryCode }
+    }));
+  };
+
+  const handlePhoneError = (error) => {
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, ['saleDetails.buyerPhone']: error }));
+    } else if (fieldErrors['saleDetails.buyerPhone']) {
       setFieldErrors(prev => ({ ...prev, ['saleDetails.buyerPhone']: '' }));
     }
   };
@@ -224,25 +254,25 @@ const CommissionForm = () => {
     const errors = {};
 
     if (!formData.partnershipId) {
-      errors.partnershipId = 'Please select a partner';
+      errors.partnershipId = 'Please select a Partner.';
     }
 
     if (!formData.propertyId) {
-      errors.propertyId = 'Please select a property';
+      errors.propertyId = 'Please select a Property.';
     }
 
-    const priceError = validatePrice(formData.saleDetails.salePrice, 'Sale price');
+    const priceError = validatePrice(formData.saleDetails.salePrice, 'Sale Price');
     if (priceError) errors['saleDetails.salePrice'] = priceError;
 
     if (!formData.saleDetails.buyerName || formData.saleDetails.buyerName.trim() === '') {
-      errors['saleDetails.buyerName'] = 'Buyer name is required';
+      errors['saleDetails.buyerName'] = 'Buyer Name is required.';
     }
 
-    const phoneError = validatePhone(formData.saleDetails.buyerPhone);
+    const phoneError = validatePhoneWithCountry(formData.saleDetails.buyerPhone, formData.saleDetails.buyerPhoneCountryCode, 'Contact Number');
     if (phoneError) errors['saleDetails.buyerPhone'] = phoneError;
 
     if (formData.saleDetails.buyerEmail) {
-      const emailError = validateEmail(formData.saleDetails.buyerEmail);
+      const emailError = validateEmail(formData.saleDetails.buyerEmail, 'Buyer Email ID');
       if (emailError) errors['saleDetails.buyerEmail'] = emailError;
     }
 
@@ -252,7 +282,6 @@ const CommissionForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
 
     if (!validateForm()) {
       return;
@@ -278,22 +307,13 @@ const CommissionForm = () => {
         notes: formData.notes || null
       });
 
+      toast.success('Commission created successfully.');
       navigate(basePath);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create commission');
+      toast.error(err.response?.data?.message || 'Failed to create commission.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount?.toLocaleString() || '0'}`;
   };
 
   const selectedPartnership = partnerships.find(p => p._id === formData.partnershipId);
@@ -301,11 +321,7 @@ const CommissionForm = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Create Commission" subtitle="Add a new commission entry" color={config.color}>
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-8" noValidate>
         {/* Source & Deal Info */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Deal Source</h3>
@@ -351,14 +367,13 @@ const CommissionForm = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Partner *
+                Select Partner<span className="text-red-500">*</span>
               </label>
               <select
                 name="partnershipId"
                 value={formData.partnershipId}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                required
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.partnershipId ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
               >
                 <option value="">Select a partner</option>
                 {partnerships.map((p) => (
@@ -367,6 +382,7 @@ const CommissionForm = () => {
                   </option>
                 ))}
               </select>
+              {fieldErrors.partnershipId && <p className="text-sm text-red-600 mt-1">{fieldErrors.partnershipId}</p>}
               {selectedPartnership && (
                 <div className="mt-2 p-3 bg-gray-50 rounded-lg">
                   <p className="text-sm text-gray-600">
@@ -387,14 +403,13 @@ const CommissionForm = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Property *
+                Select Property<span className="text-red-500">*</span>
               </label>
               <select
                 name="propertyId"
                 value={formData.propertyId}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                required
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.propertyId ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
               >
                 <option value="">Select a property</option>
                 {properties.map((p) => (
@@ -403,6 +418,7 @@ const CommissionForm = () => {
                   </option>
                 ))}
               </select>
+              {fieldErrors.propertyId && <p className="text-sm text-red-600 mt-1">{fieldErrors.propertyId}</p>}
             </div>
           </div>
         </div>
@@ -414,7 +430,7 @@ const CommissionForm = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Sale Price *
+                Sale Price<span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -424,7 +440,6 @@ const CommissionForm = () => {
                 placeholder="Enter sale price"
                 maxLength={15}
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors['saleDetails.salePrice'] ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                required
               />
               {fieldErrors['saleDetails.salePrice'] && <p className="text-sm text-red-600 mt-1">{fieldErrors['saleDetails.salePrice']}</p>}
               {selectedProperty && (
@@ -449,7 +464,7 @@ const CommissionForm = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Buyer Name *
+                Buyer Name<span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -459,38 +474,30 @@ const CommissionForm = () => {
                 placeholder="Enter buyer name"
                 maxLength={100}
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors['saleDetails.buyerName'] ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                required
               />
               {fieldErrors['saleDetails.buyerName'] && <p className="text-sm text-red-600 mt-1">{fieldErrors['saleDetails.buyerName']}</p>}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Buyer Phone *
-              </label>
-              <input
-                type="tel"
-                name="saleDetails.buyerPhone"
-                value={formData.saleDetails.buyerPhone}
-                onChange={handlePhoneChange}
-                placeholder="Enter buyer phone"
-                maxLength={16}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors['saleDetails.buyerPhone'] ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                required
-              />
-              {fieldErrors['saleDetails.buyerPhone'] && <p className="text-sm text-red-600 mt-1">{fieldErrors['saleDetails.buyerPhone']}</p>}
-            </div>
+            <PhoneInput
+              value={formData.saleDetails.buyerPhone}
+              onChange={handlePhoneChange}
+              countryCode={formData.saleDetails.buyerPhoneCountryCode}
+              onCountryChange={handlePhoneCountryChange}
+              error={fieldErrors['saleDetails.buyerPhone']}
+              onError={handlePhoneError}
+              label="Contact Number"
+            />
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Buyer Email
+                Buyer Email ID
               </label>
               <input
                 type="email"
                 name="saleDetails.buyerEmail"
                 value={formData.saleDetails.buyerEmail}
                 onChange={handleInputChange}
-                placeholder="Enter buyer email (optional)"
+                placeholder="Enter buyer email ID (optional)"
                 maxLength={100}
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors['saleDetails.buyerEmail'] ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
               />

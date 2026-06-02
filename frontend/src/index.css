@@ -59,7 +59,7 @@ body {
 
 /* Card hover effect */
 .card-hover {
-  @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+  @apply hover:shadow-lg hover:-translate-y-1 transition-transform transition-shadow duration-300;
 }
 
 /* Input focus */
@@ -433,4 +433,20 @@ input:focus, select:focus, textarea:focus {
 
 html {
   scroll-behavior: smooth;
+}
+
+/* React Datepicker - Blocked Dates Styles */
+.react-datepicker__day--blocked {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
+  cursor: not-allowed !important;
+}
+
+.react-datepicker__day--blocked:hover {
+  background-color: #fecaca !important;
+}
+
+.react-datepicker__day--blocked.react-datepicker__day--disabled {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
 }

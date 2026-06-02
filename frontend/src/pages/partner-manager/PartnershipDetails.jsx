@@ -3,17 +3,19 @@ import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api, { getDocumentViewUrl } from '../../utils/api';
 
 const PartnershipDetails = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const config = sidebarConfig.partner_manager;
+  const toast = useToast();
   const [partnership, setPartnership] = useState(null);
+  const [companySettings, setCompanySettings] = useState(null);
   const [kycSummary, setKycSummary] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState(null);
   const [updating, setUpdating] = useState(null);
   const [statusModal, setStatusModal] = useState(false);
   const [tierModal, setTierModal] = useState(false);
@@ -27,9 +29,23 @@ const PartnershipDetails = () => {
     fetchPartnership();
   }, [id]);
 
+  useEffect(() => {
+    fetchCompanySettings();
+  }, []);
+
+  const fetchCompanySettings = async () => {
+    try {
+      const response = await api.get(`/companies/${user.companyId}/settings`);
+      setCompanySettings(response.data.data);
+    } catch (err) {
+      console.error('Failed to fetch company settings:', err);
+    }
+  };
+
   const fetchPartnership = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [partnershipRes, kycRes] = await Promise.all([
         api.get(`/partner-company/${id}`),
         api.get(`/partner-company/${id}/kyc`)
@@ -37,7 +53,9 @@ const PartnershipDetails = () => {
       setPartnership(partnershipRes.data.data.partnership);
       setKycSummary(kycRes.data.data.kycSummary);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load partnership');
+      const errorMessage = err.response?.data?.message || 'Failed to load partnership';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -46,21 +64,19 @@ const PartnershipDetails = () => {
   const handleVerifyDocument = async (documentId, status, rejectionReason = '') => {
     try {
       setUpdating(documentId);
-      setError('');
-      setSuccess('');
 
       await api.put(`/partner-company/${id}/kyc/${documentId}/verify`, {
         status,
         reason: rejectionReason
       });
 
-      setSuccess(`Document ${status === 'verified' ? 'verified' : 'rejected'} successfully`);
+      toast.success(`Document ${status === 'verified' ? 'verified' : 'rejected'} successfully`);
 
       // Refresh KYC summary
       const kycRes = await api.get(`/partner-company/${id}/kyc`);
       setKycSummary(kycRes.data.data.kycSummary);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to verify document');
+      toast.error(err.response?.data?.message || 'Failed to verify document');
     } finally {
       setUpdating(null);
     }
@@ -77,9 +93,18 @@ const PartnershipDetails = () => {
       });
       setStatusModal(false);
       setReason('');
+
+      // Set success message based on status change
+      const statusMessages = {
+        pending: 'Partnership status changed to Pending. The partner will need to be approved again.',
+        active: 'Partnership has been approved successfully.',
+        suspended: 'Partnership has been suspended.'
+      };
+      toast.success(statusMessages[newStatus] || 'Status updated successfully.');
+
       fetchPartnership();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update status');
+      toast.error(err.response?.data?.message || 'Failed to update status');
     } finally {
       setUpdating(null);
     }
@@ -94,9 +119,19 @@ const PartnershipDetails = () => {
         tier: newTier
       });
       setTierModal(false);
+
+      // Set success message based on tier change
+      const tierNames = {
+        bronze: 'Bronze',
+        silver: 'Silver',
+        gold: 'Gold',
+        platinum: 'Platinum'
+      };
+      toast.success(`Partner tier updated to ${tierNames[newTier] || newTier}.`);
+
       fetchPartnership();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update tier');
+      toast.error(err.response?.data?.message || 'Failed to update tier');
     } finally {
       setUpdating(null);
     }
@@ -166,10 +201,6 @@ const PartnershipDetails = () => {
       subtitle="Partnership Details"
       color={config.color}
     >
-      {/* Messages */}
-      {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>}
-      {success && <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>}
-
       {/* Back Button */}
       <button
         onClick={() => navigate('/partner-manager/partners')}
@@ -469,7 +500,8 @@ const PartnershipDetails = () => {
                   <option value="">Select status</option>
                   <option value="pending">Pending</option>
                   <option value="active">Active (Approve)</option>
-                  <option value="suspended">Suspended</option>
+                  <option value="suspended">Suspend</option>
+                  <option value="rejected">Reject</option>
                 </select>
               </div>
               <div>
@@ -478,9 +510,11 @@ const PartnershipDetails = () => {
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                  maxLength={500}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 resize-none"
                   placeholder="Enter reason or notes..."
                 />
+                <p className="text-xs text-gray-500 mt-1">{reason.length}/500 characters</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
@@ -516,10 +550,10 @@ const PartnershipDetails = () => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="">Select tier</option>
-                  <option value="bronze">Bronze (30% commission)</option>
-                  <option value="silver">Silver (40% commission)</option>
-                  <option value="gold">Gold (50% commission)</option>
-                  <option value="platinum">Platinum (60% commission)</option>
+                  <option value="bronze">Bronze ({companySettings?.settings?.tierPercentages?.bronze || 25}% commission)</option>
+                  <option value="silver">Silver ({companySettings?.settings?.tierPercentages?.silver || 35}% commission)</option>
+                  <option value="gold">Gold ({companySettings?.settings?.tierPercentages?.gold || 50}% commission)</option>
+                  <option value="platinum">Platinum ({companySettings?.settings?.tierPercentages?.platinum || 75}% commission)</option>
                 </select>
               </div>
             </div>

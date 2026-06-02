@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { getPlans, createOrder, verifyPayment, getSubscription, openRazorpayCheckout, loadRazorpayScript } from '../../services/payment.service.js';
@@ -9,6 +10,7 @@ import { Check, Loader2, AlertCircle, CreditCard, Building2, Shield } from 'luci
 const Payment = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const planIdFromUrl = searchParams.get('plan');
   const sidebarLinks = sidebarConfig[user?.role]?.links || sidebarConfig.company_superadmin.links;
@@ -50,7 +52,7 @@ const Payment = () => {
         }
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError('Failed to load plans. Please try again.');
+        toast.error('Failed to load plans. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -60,7 +62,7 @@ const Payment = () => {
   }, [planIdFromUrl]);
 
   const formatPrice = (price, currency) => {
-    const symbols = { INR: '₹', AED: 'د.إ', USD: '$' };
+    const symbols = { INR: '₹', AED: 'AED ', USD: '$' };
     const symbol = symbols[currency] || '$';
     if (price === 0) return 'Custom';
     return `${symbol}${price.toLocaleString()}`;
@@ -74,7 +76,7 @@ const Payment = () => {
 
   const handlePayment = async () => {
     if (!selectedPlan) {
-      setError('Please select a plan');
+      toast.error('Please select a plan.');
       return;
     }
 
@@ -85,7 +87,6 @@ const Payment = () => {
     }
 
     setProcessing(true);
-    setError('');
 
     try {
       // Load Razorpay script
@@ -129,7 +130,7 @@ const Payment = () => {
       }
     } catch (err) {
       console.error('Payment error:', err);
-      setError(err.response?.data?.message || err.message || 'Payment failed. Please try again.');
+      toast.error(err.response?.data?.message || err.message || 'Payment failed. Please try again.');
     } finally {
       setProcessing(false);
     }
@@ -178,18 +179,6 @@ const Payment = () => {
                 <p className="text-sm text-blue-800">
                   You already have an active subscription. Changing plans will take effect at the end of your current billing period.
                 </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm text-red-800">{error}</p>
               </div>
             </div>
           </div>

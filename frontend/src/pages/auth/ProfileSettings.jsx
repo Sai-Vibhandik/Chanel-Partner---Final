@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
-import { validatePhone, validateName, validatePassword, handlePhoneInput } from '../../utils/validation';
+import { validatePhoneWithCountry, validateName, validatePassword } from '../../utils/validation';
+import PhoneInput from '../../components/common/PhoneInput';
+import DashboardLayout from '../../components/layout/DashboardLayout';
+import { sidebarConfig } from '../../config/sidebar';
 
 const ProfileSettings = () => {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('profile');
 
   // Profile form state
@@ -14,6 +19,7 @@ const ProfileSettings = () => {
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     phone: user?.phone || '',
+    phoneCountryCode: 'IN',
     email: user?.email || ''
   });
 
@@ -29,8 +35,6 @@ const ProfileSettings = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
 
   const handleProfileChange = (e) => {
@@ -42,10 +46,21 @@ const ProfileSettings = () => {
     }
   };
 
-  const handlePhoneChange = (e) => {
-    const value = handlePhoneInput(e, null, null);
+  const handlePhoneChange = (value) => {
     setProfileData(prev => ({ ...prev, phone: value }));
     if (fieldErrors.phone) {
+      setFieldErrors(prev => ({ ...prev, phone: '' }));
+    }
+  };
+
+  const handlePhoneCountryChange = (countryCode) => {
+    setProfileData(prev => ({ ...prev, phoneCountryCode: countryCode }));
+  };
+
+  const handlePhoneError = (error) => {
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, phone: error }));
+    } else if (fieldErrors.phone) {
       setFieldErrors(prev => ({ ...prev, phone: '' }));
     }
   };
@@ -61,14 +76,14 @@ const ProfileSettings = () => {
   const validateProfileForm = () => {
     const errors = {};
 
-    const firstNameError = validateName(profileData.firstName, 'First name');
+    const firstNameError = validateName(profileData.firstName, 'First Name');
     if (firstNameError) errors.firstName = firstNameError;
 
-    const lastNameError = validateName(profileData.lastName, 'Last name');
+    const lastNameError = validateName(profileData.lastName, 'Last Name');
     if (lastNameError) errors.lastName = lastNameError;
 
     if (profileData.phone) {
-      const phoneError = validatePhone(profileData.phone);
+      const phoneError = validatePhoneWithCountry(profileData.phone, profileData.phoneCountryCode);
       if (phoneError) errors.phone = phoneError;
     }
 
@@ -80,14 +95,14 @@ const ProfileSettings = () => {
     const errors = {};
 
     if (!passwordData.currentPassword) {
-      errors.currentPassword = 'Current password is required';
+      errors.currentPassword = 'Current Password is required.';
     }
 
     const passwordError = validatePassword(passwordData.newPassword);
     if (passwordError) errors.newPassword = passwordError;
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      errors.confirmPassword = 'Passwords do not match';
+      errors.confirmPassword = 'Passwords do not match.';
     }
 
     setFieldErrors(errors);
@@ -96,8 +111,6 @@ const ProfileSettings = () => {
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
 
     if (!validateProfileForm()) {
       return;
@@ -108,10 +121,10 @@ const ProfileSettings = () => {
     try {
       const response = await api.put('/auth/profile', profileData);
       updateUser(response.data.data.user);
-      setSuccess('Profile updated successfully!');
+      toast.success('Profile updated successfully.');
       setFieldErrors({});
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update profile');
+      toast.error(err.response?.data?.message || 'Failed to update profile');
     } finally {
       setLoading(false);
     }
@@ -119,8 +132,6 @@ const ProfileSettings = () => {
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
 
     if (!validatePasswordForm()) {
       return;
@@ -133,11 +144,11 @@ const ProfileSettings = () => {
         currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword
       });
-      setSuccess('Password changed successfully!');
+      toast.success('Password changed successfully.');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setFieldErrors({});
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to change password');
+      toast.error(err.response?.data?.message || 'Failed to change password');
     } finally {
       setLoading(false);
     }
@@ -160,86 +171,56 @@ const ProfileSettings = () => {
     return `${user?.firstName?.charAt(0) || ''}${user?.lastName?.charAt(0) || ''}`.toUpperCase();
   };
 
+  // Get sidebar config based on user role
+  const config = sidebarConfig[user?.role] || sidebarConfig.partner;
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
-      {/* Back Button */}
-      <button
-        onClick={() => navigate(-1)}
-        className="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors group"
-      >
-        <svg className="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        <span className="font-medium">Back</span>
-      </button>
-
-      {/* Header */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center">
-            <span className="text-xl font-bold text-indigo-600">{getInitials()}</span>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {user?.firstName} {user?.lastName}
-            </h1>
-            <p className="text-gray-500">{user?.email}</p>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 mt-1">
-              {getRoleDisplayName(user?.role)}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="border-b border-gray-200">
-          <nav className="flex -mb-px">
-            <button
-              onClick={() => { setActiveTab('profile'); setError(''); setSuccess(''); }}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'profile'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Profile Information
-            </button>
-            <button
-              onClick={() => { setActiveTab('security'); setError(''); setSuccess(''); }}
-              className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'security'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Security
-            </button>
-          </nav>
-        </div>
-
-        {/* Messages */}
-        {error && (
-          <div className="p-4 bg-red-50 border-b border-red-100">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-sm text-red-700">{error}</p>
+    <DashboardLayout sidebarLinks={config.links} title="Profile Settings" subtitle="Manage your account" color={config.color}>
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center">
+              <span className="text-xl font-bold text-indigo-600">{getInitials()}</span>
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {user?.firstName} {user?.lastName}
+              </h2>
+              <p className="text-gray-500">{user?.email}</p>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 mt-1">
+                {getRoleDisplayName(user?.role)}
+              </span>
             </div>
           </div>
-        )}
+        </div>
 
-        {success && (
-          <div className="p-4 bg-green-50 border-b border-green-100">
-            <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <p className="text-sm text-green-700">{success}</p>
-            </div>
+        {/* Tabs */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px">
+              <button
+                onClick={() => setActiveTab('profile')}
+                className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'profile'
+                    ? 'border-indigo-500 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Profile Information
+              </button>
+              <button
+                onClick={() => setActiveTab('security')}
+                className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'security'
+                    ? 'border-indigo-500 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Security
+              </button>
+            </nav>
           </div>
-        )}
 
         {/* Profile Tab */}
         {activeTab === 'profile' && (
@@ -293,22 +274,16 @@ const ProfileSettings = () => {
                 <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
               </div>
 
-              <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                  Phone Number
-                </label>
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  value={profileData.phone}
-                  onChange={handlePhoneChange}
-                  maxLength={16}
-                  className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.phone ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                  placeholder="+91 9876543210"
-                />
-                {fieldErrors.phone && <p className="text-sm text-red-600 mt-1">{fieldErrors.phone}</p>}
-              </div>
+              <PhoneInput
+                value={profileData.phone}
+                onChange={handlePhoneChange}
+                countryCode={profileData.phoneCountryCode}
+                onCountryChange={handlePhoneCountryChange}
+                error={fieldErrors.phone}
+                onError={handlePhoneError}
+                required={false}
+                label="Contact Number"
+              />
 
               <div className="flex justify-end">
                 <button
@@ -339,6 +314,7 @@ const ProfileSettings = () => {
                     type={showCurrentPassword ? 'text' : 'password'}
                     value={passwordData.currentPassword}
                     onChange={handlePasswordChange}
+                    maxLength={128}
                     className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.currentPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                     placeholder="Enter current password"
                   />
@@ -395,7 +371,7 @@ const ProfileSettings = () => {
                   </button>
                 </div>
                 {fieldErrors.newPassword && <p className="text-sm text-red-600 mt-1">{fieldErrors.newPassword}</p>}
-                <p className="mt-1 text-xs text-gray-500">Must be at least 8 characters with uppercase, lowercase, and number</p>
+                <p className="mt-1 text-xs text-gray-500">Must be at least 8 characters with uppercase, lowercase, number, and special character</p>
               </div>
 
               <div>
@@ -411,7 +387,7 @@ const ProfileSettings = () => {
                     onChange={handlePasswordChange}
                     maxLength={128}
                     className={`block w-full px-4 py-3 pr-12 border rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${fieldErrors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                    placeholder="Confirm new password"
+                    placeholder="Confirm New Password"
                   />
                   <button
                     type="button"
@@ -446,7 +422,8 @@ const ProfileSettings = () => {
           </form>
         )}
       </div>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 };
 

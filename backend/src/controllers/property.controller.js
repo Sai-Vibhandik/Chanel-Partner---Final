@@ -3,9 +3,12 @@ import Property from '../models/Property.js';
 import Company from '../models/Company.js';
 import PartnerCompany from '../models/PartnerCompany.js';
 import User from '../models/User.js';
+import Visit from '../models/Visit.js';
 import { ApiError } from '../middlewares/error.middleware.js';
-import { sendNewPropertyEmail } from '../services/email.service.js';
-import { createNotificationsForRecipients } from './notification.controller.js';
+import { sendNewPropertyEmail, sendVisitCancelledEmail } from '../services/email.service.js';
+import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
+import { checkAllRequiredAgreementsSigned } from '../utils/agreementValidation.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
 /**
  * @desc    Create new property
@@ -37,6 +40,7 @@ export const createProperty = async (req, res, next) => {
     } = req.body;
 
     console.log('Extracted images:', images);
+    console.log('Brochure data received:', brochure);
     console.log('Commission data received:', commission);
 
     // Validate region-specific details
@@ -96,6 +100,9 @@ export const createProperty = async (req, res, next) => {
       status: propertyStatus,
       publishedAt: propertyStatus === 'active' ? new Date() : undefined
     });
+
+    console.log('Property created - saved brochure:', property.brochure);
+    console.log('Property created - saved floorPlans:', property.floorPlans?.length, 'plans');
 
     await property.populate('createdBy', 'firstName lastName');
     await property.populate('companyId', 'name logo regions');
@@ -176,6 +183,23 @@ export const createProperty = async (req, res, next) => {
         : 'Property created successfully',
       data: { property }
     });
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: req.user.companyId,
+      action: propertyStatus === 'active' ? ActionTypes.PROPERTY_PUBLISHED : ActionTypes.PROPERTY_CREATED,
+      resourceType: ResourceTypes.PROPERTY,
+      resourceId: property._id,
+      resourceTitle: property.name,
+      details: {
+        propertyName: property.name,
+        propertyType: property.type,
+        status: propertyStatus,
+        region: property.region
+      },
+      ...getRequestMetadata(req)
+    });
   } catch (error) {
     next(error);
   }
@@ -255,7 +279,37 @@ export const getProperties = async (req, res, next) => {
           });
         }
 
-        query.companyId = { $in: activeCompanyIds };
+        // Filter out companies where partner hasn't signed all required agreements
+        const companiesWithAllAgreementsSigned = [];
+        for (const partnership of activePartnerships) {
+          // Only check companies that are in the active subscription list
+          if (activeCompanyIds.some(id => id.toString() === partnership.companyId.toString())) {
+            const agreementCheck = await checkAllRequiredAgreementsSigned(
+              partnership._id,
+              partnership.companyId
+            );
+            if (agreementCheck.allSigned) {
+              companiesWithAllAgreementsSigned.push(partnership.companyId);
+            }
+          }
+        }
+
+        if (companiesWithAllAgreementsSigned.length === 0) {
+          // Partner hasn't signed all agreements for any company
+          return res.status(200).json({
+            success: true,
+            data: {
+              properties: [],
+              pagination: {
+                total: 0,
+                page: parseInt(page),
+                pages: 0
+              }
+            }
+          });
+        }
+
+        query.companyId = { $in: companiesWithAllAgreementsSigned };
         query.status = { $in: ['active', 'sold_out'] }; // Show active and sold properties to partners
         // Visibility logic: 'all' = show to all, 'selected' = show to selected partners, 'hidden' = hide from selected partners
         query.$and = query.$and || [];
@@ -431,6 +485,7 @@ export const updateProperty = async (req, res, next) => {
       hasVideos: !!req.body.videos,
       videosCount: req.body.videos?.length || 0,
       hasBrochure: !!req.body.brochure,
+      brochureData: req.body.brochure,
       hasFloorPlans: !!req.body.floorPlans,
       floorPlansCount: req.body.floorPlans?.length || 0,
       commission: req.body.commission
@@ -459,24 +514,28 @@ export const updateProperty = async (req, res, next) => {
       'images', 'videos', 'brochure', 'floorPlans'
     ];
 
+    console.log('Update request body keys:', Object.keys(req.body));
+    console.log('Brochure in request:', JSON.stringify(req.body.brochure, null, 2));
+    console.log('Floor plans in request:', req.body.floorPlans);
+
     updateFields.forEach(field => {
       if (req.body[field] !== undefined) {
         if (field === 'commission') {
           // Handle commission specifically to ensure proper number parsing
           const commissionData = req.body[field];
           console.log('Updating commission - received:', commissionData);
-          property[field] = {
+          property.set('commission', {
             basePercentage: parseFloat(commissionData?.basePercentage) || 0,
             isFixed: Boolean(commissionData?.isFixed),
             fixedAmount: commissionData?.fixedAmount !== undefined && commissionData?.fixedAmount !== null && commissionData?.fixedAmount !== ''
               ? parseFloat(commissionData.fixedAmount)
               : null
-          };
-          console.log('Commission after update:', property[field]);
+          });
+          console.log('Commission after update:', property.commission);
         } else if (field === 'visibility') {
           // Handle visibility specifically to ensure partnerIds are ObjectIds
           const visibilityData = req.body[field];
-          property[field] = {
+          property.set('visibility', {
             type: visibilityData?.type || 'all',
             showPrice: visibilityData?.showPrice ?? true,
             showContact: visibilityData?.showContact ?? true,
@@ -484,8 +543,29 @@ export const updateProperty = async (req, res, next) => {
               // Convert to ObjectId if string, otherwise use as is
               return typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
             })
-          };
-          console.log('Visibility after update:', property[field]);
+          });
+          console.log('Visibility after update:', property.visibility);
+        } else if (field === 'brochure') {
+          // Handle brochure explicitly to ensure Mongoose detects changes
+          const brochureData = req.body.brochure;
+          console.log('Setting brochure to:', JSON.stringify(brochureData, null, 2));
+          if (brochureData && brochureData.url) {
+            property.set('brochure', {
+              url: String(brochureData.url),
+              publicId: String(brochureData.publicId || ''),
+              name: String(brochureData.name || '')
+            });
+          } else if (brochureData === null) {
+            // Clear brochure if explicitly set to null
+            property.brochure = undefined;
+          } else {
+            property.set('brochure', brochureData);
+          }
+          console.log('Brochure after update:', property.brochure);
+        } else if (field === 'floorPlans') {
+          // Handle floorPlans explicitly for arrays
+          property.set('floorPlans', req.body.floorPlans);
+          console.log('FloorPlans after update:', property.floorPlans?.length, 'plans');
         } else {
           property[field] = req.body[field];
         }
@@ -497,8 +577,26 @@ export const updateProperty = async (req, res, next) => {
     property.updatedBy = req.user._id;
     await property.save();
 
+    console.log('Property saved - brochure:', property.brochure);
+    console.log('Property saved - floorPlans:', property.floorPlans?.length, 'plans');
+
     await property.populate('companyId', 'name logo regions');
     await property.populate('updatedBy', 'firstName lastName');
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: req.user.companyId,
+      action: ActionTypes.PROPERTY_UPDATED,
+      resourceType: ResourceTypes.PROPERTY,
+      resourceId: property._id,
+      resourceTitle: property.name,
+      details: {
+        propertyName: property.name,
+        propertyType: property.type
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
@@ -528,7 +626,25 @@ export const deleteProperty = async (req, res, next) => {
       throw new ApiError(403, 'Access denied');
     }
 
+    const propertyName = property.name;
+    const propertyId = property._id;
+    const companyId = property.companyId;
+
     await property.deleteOne();
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: companyId,
+      action: ActionTypes.PROPERTY_DELETED,
+      resourceType: ResourceTypes.PROPERTY,
+      resourceId: propertyId,
+      resourceTitle: propertyName,
+      details: {
+        propertyName: propertyName
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
@@ -573,6 +689,82 @@ export const updatePropertyStatus = async (req, res, next) => {
     }
 
     await property.save();
+
+    // Handle visit cancellations when property becomes unavailable
+    if (['off_market', 'sold_out'].includes(status)) {
+      console.log('📧 Property status changed to', status, ', checking for visits to cancel...');
+      console.log('   Property:', property.name);
+      console.log('   Property ID:', property._id);
+
+      try {
+        // Find ALL visits for this property (pending, approved, scheduled)
+        // Note: We cancel ALL future visits, not just pending/approved
+        const affectedVisits = await Visit.find({
+          property: property._id,
+          status: { $in: ['pending', 'approved', 'scheduled'] }
+        }).populate('partner', 'firstName lastName email');
+
+        console.log('   Found', affectedVisits.length, 'visits to cancel');
+
+        if (affectedVisits.length > 0) {
+          // Get company info for email
+          const company = await Company.findById(property.companyId);
+
+          // Determine cancellation reason
+          const cancellationReason = status === 'sold_out'
+            ? 'This property has been sold and is no longer available for visits.'
+            : 'This property has been taken off the market and is no longer available for visits.';
+
+          let cancelledCount = 0;
+          let errorCount = 0;
+
+          // Cancel each visit and notify partner
+          for (const visit of affectedVisits) {
+            try {
+              // Update visit status
+              visit.status = 'cancelled';
+              visit.cancellationReason = cancellationReason;
+              await visit.save();
+              cancelledCount++;
+              console.log(`   ✓ Cancelled visit ${visit._id} for partner ${visit.partner?._id}`);
+
+              // Skip if no partner
+              if (!visit.partner) continue;
+
+              // Create in-app notification
+              await createNotification({
+                recipientId: visit.partner._id,
+                type: 'visit_cancelled',
+                title: 'Visit Cancelled',
+                message: `Your visit to "${property.name}" on ${new Date(visit.scheduledDate).toLocaleDateString()} has been cancelled. ${cancellationReason}`,
+                data: {
+                  visitId: visit._id,
+                  propertyId: property._id,
+                  companyId: property.companyId
+                },
+                link: '/partner/visits'
+              });
+
+              // Send email notification
+              if (visit.partner.email) {
+                sendVisitCancelledEmail(visit, visit.partner, property, company, cancellationReason).catch(err => {
+                  console.error('   ❌ Failed to send visit cancellation email to', visit.partner.email, err);
+                });
+              }
+            } catch (visitError) {
+              errorCount++;
+              console.error(`   ❌ Error cancelling visit ${visit._id}:`, visitError);
+            }
+          }
+
+          console.log(`   ✓ Cancelled ${cancelledCount} visits, ${errorCount} errors`);
+        }
+      } catch (cancelError) {
+        // Log error but still continue with the response
+        console.error('   ❌ Error in visit cancellation process:', cancelError);
+        // Don't throw - still return success for property status update
+      }
+    }
 
     // Send email notification to partners when property becomes active
     if (status === 'active' && previousStatus !== 'active') {
@@ -633,6 +825,24 @@ export const updatePropertyStatus = async (req, res, next) => {
     } else if (status === 'active' && previousStatus === 'active') {
       console.log('📧 Property was already active, skipping email notification');
     }
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: property.companyId,
+      action: status === 'active' && previousStatus !== 'active'
+        ? ActionTypes.PROPERTY_PUBLISHED
+        : ActionTypes.PROPERTY_STATUS_CHANGED,
+      resourceType: ResourceTypes.PROPERTY,
+      resourceId: property._id,
+      resourceTitle: property.name,
+      details: {
+        propertyName: property.name,
+        previousStatus: previousStatus,
+        newStatus: status
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
@@ -1041,6 +1251,134 @@ export const getPropertiesForPartnership = async (req, res, next) => {
           status: partnership.status
         },
         tierPercentages,
+        pagination: {
+          total,
+          page: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get properties for all partnerships of the logged-in partner
+ * @route   GET /api/properties/all-partnerships
+ * @access  Private (Partner only)
+ */
+export const getPropertiesForAllPartnerships = async (req, res, next) => {
+  try {
+    const {
+      type, region, city,
+      minPrice, maxPrice, bedrooms,
+      page = 1, limit = 10, search
+    } = req.query;
+
+    // Get all active partnerships for this partner
+    const partnerships = await PartnerCompany.find({
+      partnerId: req.user._id,
+      status: 'active'
+    }).populate('companyId', 'name logo regions address settings.tierPercentages subscription');
+
+    if (partnerships.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          properties: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page),
+            pages: 0
+          }
+        }
+      });
+    }
+
+    // Filter partnerships with active subscriptions
+    const now = new Date();
+    const activeCompanyIds = partnerships
+      .filter(p => {
+        const company = p.companyId;
+        if (!company) return false;
+        if (company.subscription?.status === 'active') return true;
+        if (company.subscription?.status === 'trial' && company.subscription?.trialEndsAt && new Date(company.subscription.trialEndsAt) > now) return true;
+        return false;
+      })
+      .map(p => p.companyId._id);
+
+    if (activeCompanyIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          properties: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page),
+            pages: 0
+          }
+        }
+      });
+    }
+
+    // Build query for properties from all active companies
+    const query = {
+      companyId: { $in: activeCompanyIds },
+      status: { $in: ['active', 'sold_out'] }
+    };
+
+    // Add visibility filter for partner
+    query.$and = query.$and || [];
+    query.$and.push({
+      $or: [
+        { 'visibility.type': 'all' },
+        { 'visibility.type': { $exists: false } },
+        { 'visibility.type': 'selected', 'visibility.partnerIds': req.user._id },
+        { 'visibility.type': 'hidden', 'visibility.partnerIds': { $ne: req.user._id } }
+      ]
+    });
+
+    // Filters
+    if (type) query.type = type;
+    if (region) query.region = region;
+    if (city) query['location.city'] = new RegExp(city, 'i');
+
+    if (minPrice || maxPrice) {
+      query['pricing.basePrice'] = {};
+      if (minPrice) query['pricing.basePrice'].$gte = Number(minPrice);
+      if (maxPrice) query['pricing.basePrice'].$lte = Number(maxPrice);
+    }
+
+    if (bedrooms) {
+      if (bedrooms === '4+') {
+        query['details.bedrooms'] = { $gte: 4 };
+      } else {
+        query['details.bedrooms'] = Number(bedrooms);
+      }
+    }
+
+    if (search) {
+      query.$or = [
+        { name: new RegExp(search, 'i') },
+        { description: new RegExp(search, 'i') },
+        { 'location.city': new RegExp(search, 'i') }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const total = await Property.countDocuments(query);
+
+    const properties = await Property.find(query)
+      .populate('companyId', 'name logo regions address settings.tierPercentages')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        properties,
         pagination: {
           total,
           page: parseInt(page),

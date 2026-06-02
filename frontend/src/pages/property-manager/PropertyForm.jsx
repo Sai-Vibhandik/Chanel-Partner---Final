@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import { sidebarConfig } from '../../config/sidebar';
 
@@ -15,14 +16,26 @@ const PropertyForm = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
   const isEdit = !!id;
 
   const config = sidebarConfig[user?.role] || sidebarConfig.property_manager;
   const basePath = user?.role === 'company_superadmin' ? '/company/properties' : '/property-manager/properties';
 
+  // Handle cancel/back navigation
+  const handleCancel = () => {
+    // Check if we can go back (there's history before this page)
+    if (window.history.length > 1 && location.key !== 'default') {
+      navigate(-1);
+    } else {
+      // No history to go back to, navigate to base path
+      navigate(basePath);
+    }
+  };
+
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [uploadingImage, setUploadingImage] = useState(false);
   const [limits, setLimits] = useState(null);
@@ -90,7 +103,7 @@ const PropertyForm = () => {
       reraProjectName: '',
       reraWebsite: '',
       gstNumber: '',
-      ownershipType: '',
+      ownershipType: undefined, // Use undefined instead of empty string for optional enum
       transactionType: 'newbooking',
       possessionStatus: 'underconstruction',
       possessionDate: '',
@@ -160,6 +173,31 @@ const PropertyForm = () => {
   const [brochure, setBrochure] = useState(draft.brochure);
   const [floorPlans, setFloorPlans] = useState(draft.floorPlans);
   const [partners, setPartners] = useState([]);
+
+  // Refs for scrolling to error fields
+  const fieldRefs = useRef({});
+
+  // Scroll to first error field
+  const scrollToError = (errors) => {
+    // Order matches the form layout - top to bottom
+    const fieldOrder = [
+      'name', 'description', 'type', 'region', // Basic Information
+      'address', 'city', 'state', 'emirate', // Location
+      'currency', 'basePrice',            // Pricing
+      'basePercentage', 'fixedAmount'     // Commission
+    ];
+    for (const fieldName of fieldOrder) {
+      if (errors[fieldName] && fieldRefs.current[fieldName]) {
+        fieldRefs.current[fieldName].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Focus on the input inside the div
+        const input = fieldRefs.current[fieldName].querySelector('input, select, textarea');
+        if (input) {
+          input.focus();
+        }
+        break;
+      }
+    }
+  };
 
   // Remove fresh param from URL after first render
   useEffect(() => {
@@ -323,10 +361,15 @@ const PropertyForm = () => {
       });
       setImages(property.images || []);
       setVideos(property.videos || []);
+      console.log('Loaded property data:', {
+        hasBrochure: !!property.brochure,
+        brochure: property.brochure,
+        floorPlansCount: property.floorPlans?.length || 0
+      });
       setBrochure(property.brochure || null);
       setFloorPlans(property.floorPlans || []);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load property');
+      toast.error(err.response?.data?.message || 'Failed to load property.');
     } finally {
       setLoading(false);
     }
@@ -382,19 +425,18 @@ const PropertyForm = () => {
 
     try {
       setUploadingImage(true);
-      setError('');
 
       for (const file of files) {
         // Validate file type
         const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
         if (!allowedTypes.includes(file.type)) {
-          setError(`${file.name} is not a valid image file. Only JPEG, PNG, and WebP are allowed.`);
+          toast.error(`${file.name} is not a valid image file. Only JPEG, PNG, and WebP are allowed.`);
           continue;
         }
 
         // Validate file size (5MB max)
         if (file.size > 5 * 1024 * 1024) {
-          setError(`${file.name} is too large. Maximum size is 5MB.`);
+          toast.error(`${file.name} is too large. Maximum size is 5MB.`);
           continue;
         }
 
@@ -422,7 +464,7 @@ const PropertyForm = () => {
     } catch (err) {
       console.error('Upload error:', err);
       console.error('Error response:', err.response?.data);
-      setError(err.response?.data?.message || 'Failed to upload image. Please try again.');
+      toast.error(err.response?.data?.message || 'Failed to upload image. Please try again.');
     } finally {
       setUploadingImage(false);
     }
@@ -455,7 +497,6 @@ const PropertyForm = () => {
     e.preventDefault();
 
     // Clear previous errors
-    setError('');
     setFieldErrors({});
 
     // Check limits for new properties
@@ -463,22 +504,64 @@ const PropertyForm = () => {
       const errorMsg = !limits?.subscription?.isActive
         ? 'Your subscription is not active. Please renew to add more properties.'
         : 'You have reached your property limit. Please upgrade your plan to add more properties.';
-      setError(errorMsg);
+      toast.error(errorMsg);
       return;
     }
 
-    // Basic validation - only check required fields when publishing
+    // Basic validation - check required fields when publishing
     if (publishStatus === 'active') {
       const errors = {};
+
+      // Basic Information
       if (!formData.name.trim()) {
-        errors.name = 'Property name is required';
+        errors.name = 'Property name is required.';
+      }
+      if (!formData.description.trim()) {
+        errors.description = 'Description is required.';
+      }
+      if (!formData.type) {
+        errors.type = 'Property type is required.';
+      }
+      if (!formData.region) {
+        errors.region = 'Region is required.';
+      }
+
+      // Location
+      if (!formData.location.address.trim()) {
+        errors.address = 'Address is required.';
+      }
+      if (!formData.location.city.trim()) {
+        errors.city = 'City is required.';
+      }
+      if (formData.region === 'india' && !formData.location.state) {
+        errors.state = 'State is required.';
+      }
+      if (formData.region === 'dubai' && !formData.location.emirate) {
+        errors.emirate = 'Emirate is required.';
+      }
+
+      // Pricing
+      if (!formData.pricing.currency) {
+        errors.currency = 'Currency is required.';
       }
       if (!formData.pricing.basePrice || formData.pricing.basePrice <= 0) {
-        errors.basePrice = 'Base price is required';
+        errors.basePrice = 'Base price is required and must be greater than 0.';
+      }
+
+      // Commission - validate based on isFixed
+      if (!formData.commission.isFixed) {
+        if (!formData.commission.basePercentage || formData.commission.basePercentage <= 0) {
+          errors.basePercentage = 'Base commission percentage is required when using percentage-based commission.';
+        }
+      } else {
+        if (!formData.commission.fixedAmount || formData.commission.fixedAmount <= 0) {
+          errors.fixedAmount = 'Fixed commission amount is required when using fixed commission.';
+        }
       }
 
       if (Object.keys(errors).length > 0) {
         setFieldErrors(errors);
+        scrollToError(errors);
         return;
       }
     }
@@ -496,12 +579,17 @@ const PropertyForm = () => {
       };
 
       console.log('Submitting property data:', {
+        isEdit,
         imagesCount: images.length,
         images: images,
         videosCount: videos.length,
         hasBrochure: !!brochure,
-        floorPlansCount: floorPlans.length
+        brochure: brochure,
+        floorPlansCount: floorPlans.length,
+        floorPlans: floorPlans
       });
+
+      console.log('Full submitData brochure field:', JSON.stringify(submitData.brochure, null, 2));
 
       // Ensure commission is properly formatted
       if (submitData.commission) {
@@ -514,8 +602,22 @@ const PropertyForm = () => {
         console.log('Commission data being sent:', submitData.commission);
       }
 
+      // Clean up empty string values for enum fields - convert to undefined
+      // This prevents Mongoose validation errors for enum fields
+      if (submitData.indiaDetails) {
+        // ownershipType enum: 'freehold', 'leasehold', 'cooperative', 'powerofattorney'
+        if (submitData.indiaDetails.ownershipType === '') {
+          submitData.indiaDetails.ownershipType = undefined;
+        }
+      }
+
       if (isEdit) {
-        await api.put(`/properties/${id}`, submitData);
+        const response = await api.put(`/properties/${id}`, submitData);
+        console.log('Property updated successfully:', {
+          hasBrochure: !!response.data?.data?.property?.brochure,
+          brochure: response.data?.data?.property?.brochure,
+          floorPlansCount: response.data?.data?.property?.floorPlans?.length || 0
+        });
         navigate(basePath);
       } else {
         await api.post('/properties', submitData);
@@ -536,8 +638,10 @@ const PropertyForm = () => {
           fieldErrs[fieldName] = e.message;
         });
         setFieldErrors(fieldErrs);
+        // Scroll to the first error field
+        scrollToError(fieldErrs);
       } else {
-        setError(errorData?.message || 'Failed to save property');
+        toast.error(errorData?.message || 'Failed to save property.');
       }
     } finally {
       setSaving(false);
@@ -588,10 +692,6 @@ const PropertyForm = () => {
         </div>
       )}
 
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
-      )}
-
       {/* {!isEdit && (
         <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-blue-700 text-sm">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -624,8 +724,10 @@ const PropertyForm = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Property Name *</label>
+            <div ref={el => fieldRefs.current.name = el}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Property Name<span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
                 name="name"
@@ -640,8 +742,10 @@ const PropertyForm = () => {
               {fieldErrors.name && <p className="text-sm text-red-600 mt-1">{fieldErrors.name}</p>}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Property Type *</label>
+            <div ref={el => fieldRefs.current.type = el}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Property Type<span className="text-red-500">*</span>
+              </label>
               <select
                 name="type"
                 value={formData.type}
@@ -658,8 +762,10 @@ const PropertyForm = () => {
               {fieldErrors.type && <p className="text-sm text-red-600 mt-1">{fieldErrors.type}</p>}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Region *</label>
+            <div ref={el => fieldRefs.current.region = el}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Region<span className="text-red-500">*</span>
+              </label>
               <select
                 name="region"
                 value={formData.region}
@@ -675,16 +781,21 @@ const PropertyForm = () => {
               {fieldErrors.region && <p className="text-sm text-red-600 mt-1">{fieldErrors.region}</p>}
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <div className="md:col-span-2" ref={el => fieldRefs.current.description = el}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description<span className="text-red-500">*</span>
+              </label>
               <textarea
                 name="description"
                 value={formData.description}
                 onChange={handleChange}
                 rows={4}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.description ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Describe your property..."
               />
+              {fieldErrors.description && <p className="text-sm text-red-600 mt-1">{fieldErrors.description}</p>}
             </div>
           </div>
         </div>
@@ -694,71 +805,93 @@ const PropertyForm = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Location</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+            <div className="md:col-span-2" ref={el => fieldRefs.current.address = el}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Address<span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
                 name="location.address"
                 value={formData.location.address}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.address ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="Full address"
               />
+              {fieldErrors.address && <p className="text-sm text-red-600 mt-1">{fieldErrors.address}</p>}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+            <div ref={el => fieldRefs.current.city = el}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City<span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
                 name="location.city"
                 value={formData.location.city}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  fieldErrors.city ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                }`}
                 placeholder="City"
               />
+              {fieldErrors.city && <p className="text-sm text-red-600 mt-1">{fieldErrors.city}</p>}
             </div>
 
             {formData.region === 'india' ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+              <div ref={el => fieldRefs.current.state = el}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State<span className="text-red-500">*</span>
+                </label>
                 <select
                   name="location.state"
                   value={formData.location.state}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                    fieldErrors.state ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                  }`}
                 >
                   <option value="">Select State</option>
                   {indianStates.map(state => (
                     <option key={state} value={state}>{state}</option>
                   ))}
                 </select>
+                {fieldErrors.state && <p className="text-sm text-red-600 mt-1">{fieldErrors.state}</p>}
               </div>
             ) : (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Emirate</label>
+              <div ref={el => fieldRefs.current.emirate = el}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Emirate<span className="text-red-500">*</span>
+                </label>
                 <select
                   name="location.emirate"
                   value={formData.location.emirate}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                    fieldErrors.emirate ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
+                  }`}
                 >
                   <option value="">Select Emirate</option>
                   {dubaiEmirates.map(emirate => (
                     <option key={emirate} value={emirate}>{emirate}</option>
                   ))}
                 </select>
+                {fieldErrors.emirate && <p className="text-sm text-red-600 mt-1">{fieldErrors.emirate}</p>}
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Postal Code
+              </label>
               <input
                 type="text"
                 name="location.zipCode"
                 value={formData.location.zipCode}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="ZIP Code"
+                placeholder="Enter postal code"
               />
             </div>
 
@@ -816,33 +949,30 @@ const PropertyForm = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Currency Selector */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Currency *</label>
+            <div ref={el => fieldRefs.current.currency = el}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Currency<span className="text-red-500">*</span>
+              </label>
               <select
                 name="pricing.currency"
                 value={formData.pricing.currency}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                disabled
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-gray-50 cursor-not-allowed"
               >
                 <option value="INR">₹ INR (Indian Rupee)</option>
-                <option value="AED">د.إ AED (UAE Dirham)</option>
+                <option value="AED">AED (UAE Dirham)</option>
               </select>
-              {formData.region === 'dubai' && formData.pricing.currency === 'INR' && (
-                <p className="mt-1 text-xs text-amber-600">
-                  ⚠️ Dubai properties typically use AED
-                </p>
-              )}
-              {formData.region === 'india' && formData.pricing.currency === 'AED' && (
-                <p className="mt-1 text-xs text-amber-600">
-                  ⚠️ India properties typically use INR
-                </p>
-              )}
+              {fieldErrors.currency && <p className="text-sm text-red-600 mt-1">{fieldErrors.currency}</p>}
+              <p className="text-xs text-gray-500 mt-1">
+                {formData.region === 'india' ? 'Currency is automatically set to INR for India properties' : 'Currency is automatically set to AED for Dubai properties'}
+              </p>
             </div>
 
-            <div>
+            <div ref={el => fieldRefs.current.basePrice = el}>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Base Price {formData.pricing.currency === 'INR' ? '(₹)' : '(د.إ)'} *
+                Base Price {formData.pricing.currency === 'INR' ? '(₹)' : '(AED)'}<span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
@@ -879,7 +1009,7 @@ const PropertyForm = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Booking Amount {formData.pricing.currency === 'INR' ? '(₹)' : '(د.إ)'}
+                Booking Amount {formData.pricing.currency === 'INR' ? '(₹)' : '(AED)'}
               </label>
               <input
                 type="number"
@@ -897,7 +1027,7 @@ const PropertyForm = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Maintenance Charges {formData.pricing.currency === 'INR' ? '(₹)' : '(د.إ)'}
+                Maintenance Charges {formData.pricing.currency === 'INR' ? '(₹)' : '(AED)'}
               </label>
               <input
                 type="number"
@@ -915,7 +1045,7 @@ const PropertyForm = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Other Charges {formData.pricing.currency === 'INR' ? '(₹)' : '(د.إ)'}
+                Other Charges {formData.pricing.currency === 'INR' ? '(₹)' : '(AED)'}
               </label>
               <input
                 type="number"
@@ -1286,7 +1416,7 @@ const PropertyForm = () => {
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Approved By</label>
                 <div className="flex flex-wrap gap-4">
-                  {['bank', 'rera', 'developmentauthority', 'township'].map(approval => (
+                  {['Bank', 'Rera', 'Development Authority', 'Township'].map(approval => (
                     <label key={approval} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1550,25 +1680,45 @@ const PropertyForm = () => {
               onChange={async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
+
+                // Clear previous errors
+                setFieldErrors(prev => ({ ...prev, brochure: '' }));
+
+                // Check file size (10MB max)
+                const maxSize = 10 * 1024 * 1024; // 10MB
+                if (file.size > maxSize) {
+                  setFieldErrors(prev => ({ ...prev, brochure: 'File upload limit is 10MB' }));
+                  e.target.value = ''; // Clear the input
+                  return;
+                }
+
                 try {
                   setUploadingImage(true);
                   const formDataToSend = new FormData();
                   formDataToSend.append('file', file);
                   formDataToSend.append('folder', `properties/brochures`);
                   const response = await api.post('/upload/document', formDataToSend);
-                  setBrochure({
+                  console.log('Brochure upload response:', response.data);
+                  const newBrochure = {
                     url: response.data.data.url,
                     publicId: response.data.data.publicId,
                     name: file.name
-                  });
+                  };
+                  console.log('Setting brochure state:', newBrochure);
+                  setBrochure(newBrochure);
                 } catch (err) {
-                  setError('Failed to upload brochure');
+                  console.error('Brochure upload error:', err);
+                  const errorMsg = err.response?.data?.message || 'Upload failed. Please try again.';
+                  setFieldErrors(prev => ({ ...prev, brochure: errorMsg }));
                 } finally {
                   setUploadingImage(false);
                 }
               }}
               className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
             />
+            {fieldErrors.brochure && (
+              <p className="mt-1 text-sm text-red-600">{fieldErrors.brochure}</p>
+            )}
             {brochure && (
               <div className="mt-2 flex items-center gap-2 p-2 bg-gray-50 rounded">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1599,6 +1749,19 @@ const PropertyForm = () => {
               onChange={async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
+
+                // Clear previous errors
+                setFieldErrors(prev => ({ ...prev, floorPlans: '' }));
+
+                // Check file sizes (10MB max per file)
+                const maxSize = 10 * 1024 * 1024; // 10MB
+                const oversizedFiles = files.filter(f => f.size > maxSize);
+                if (oversizedFiles.length > 0) {
+                  setFieldErrors(prev => ({ ...prev, floorPlans: 'File upload limit is 10MB' }));
+                  e.target.value = ''; // Clear the input
+                  return;
+                }
+
                 try {
                   setUploadingImage(true);
                   for (const file of files) {
@@ -1610,7 +1773,9 @@ const PropertyForm = () => {
                     setFloorPlans(prev => [...prev, { url, publicId, name: file.name }]);
                   }
                 } catch (err) {
-                  setError('Failed to upload floor plan');
+                  console.error('Floor plan upload error:', err);
+                  const errorMsg = err.response?.data?.message || 'Upload failed. Please try again.';
+                  setFieldErrors(prev => ({ ...prev, floorPlans: errorMsg }));
                 } finally {
                   setUploadingImage(false);
                 }
@@ -1619,6 +1784,9 @@ const PropertyForm = () => {
               className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
             />
             {uploadingImage && <p className="text-sm text-gray-500 mt-2">Uploading...</p>}
+            {fieldErrors.floorPlans && (
+              <p className="mt-1 text-sm text-red-600">{fieldErrors.floorPlans}</p>
+            )}
           </div>
           {floorPlans && floorPlans.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1762,7 +1930,7 @@ const PropertyForm = () => {
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
+            <div ref={el => fieldRefs.current.basePercentage = el}>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Base Commission (%)
                 {!formData.commission.isFixed && <span className="text-red-500 ml-1">*</span>}
@@ -1791,9 +1959,9 @@ const PropertyForm = () => {
               </p>
             </div>
 
-            <div>
+            <div ref={el => fieldRefs.current.fixedAmount = el}>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Fixed Amount ({formData.pricing.currency})
+                Fixed Amount {formData.pricing.currency === 'INR' ? '(₹)' : '(AED)'}
                 {formData.commission.isFixed && <span className="text-red-500 ml-1">*</span>}
               </label>
               <input
@@ -1847,7 +2015,7 @@ const PropertyForm = () => {
           <div className="flex gap-4 ml-auto">
             <button
               type="button"
-              onClick={() => navigate(basePath)}
+              onClick={handleCancel}
               className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
             >
               Cancel

@@ -4,6 +4,7 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
+import Pagination from '../../components/common/Pagination';
 
 const AgreementDetail = () => {
   const { partnershipId } = useParams();
@@ -14,9 +15,14 @@ const AgreementDetail = () => {
   const [partner, setPartner] = useState(null);
   const [partnership, setPartnership] = useState(null);
   const [templates, setTemplates] = useState([]);
-  const [signatures, setSignatures] = useState([]);
+  const [currentSignatures, setCurrentSignatures] = useState([]); // Current valid signatures
+  const [signatures, setSignatures] = useState([]); // History (expired/old signatures only)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Pagination states
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyItemsPerPage, setHistoryItemsPerPage] = useState(10);
 
   // Modal states
   const [viewingSignature, setViewingSignature] = useState(null);
@@ -36,7 +42,8 @@ const AgreementDetail = () => {
       setPartner(response.data.data.partner);
       setPartnership(response.data.data.partnership);
       setTemplates(response.data.data.templates);
-      setSignatures(response.data.data.signatures);
+      setCurrentSignatures(response.data.data.currentSignatures || []);
+      setSignatures(response.data.data.signatures || []);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load agreement details');
     } finally {
@@ -49,10 +56,18 @@ const AgreementDetail = () => {
       setLoadingContent(true);
       setViewingSignature(signature);
 
-      const response = await api.get(`/agreements/${signature.agreementTemplateId._id}`);
-      const template = response.data.data.template;
+      // Use contentSnapshot if available (preserves original content at time of signing)
+      // For current signatures without contentSnapshot, fetch from template
+      let content = signature.contentSnapshot;
 
-      let content = template.content || '';
+      if (!content) {
+        // Fallback: fetch from template API (for signatures created before contentSnapshot was added)
+        const response = await api.get(`/agreements/${signature.agreementTemplateId._id}`);
+        const template = response.data.data.template;
+        content = template.content || '';
+      }
+
+      // Replace placeholders with actual values
       content = content
         .replace(/{{partnerName}}/g, signature.typedName || '_________________')
         .replace(/{{companyName}}/g, partnership?.company?.name || '_________________')
@@ -62,7 +77,7 @@ const AgreementDetail = () => {
 
       setSignatureContent(content);
     } catch (err) {
-      setError('Failed to load agreement content');
+      setError('Failed to load agreement content.');
     } finally {
       setLoadingContent(false);
     }
@@ -95,16 +110,13 @@ const AgreementDetail = () => {
   const calculateStats = () => {
     const requiredTemplates = templates.filter(t => t.isRequired);
     const signedCount = requiredTemplates.filter(template => {
-      return signatures.some(
+      return currentSignatures.some(
         s => s.agreementTemplateId?._id?.toString() === template._id.toString() &&
              s.version === template.version && s.status === 'signed'
       );
     }).length;
 
-    const outdatedCount = signatures.filter(s => {
-      const template = templates.find(t => t._id.toString() === s.agreementTemplateId?._id?.toString());
-      return template && s.version < template.version;
-    }).length;
+    const expiredCount = signatures.filter(s => s.status === 'expired').length;
 
     const pendingCount = requiredTemplates.length - signedCount;
 
@@ -112,28 +124,20 @@ const AgreementDetail = () => {
       total: requiredTemplates.length,
       signed: signedCount,
       pending: pendingCount,
-      outdated: outdatedCount,
+      expired: expiredCount,
       percentage: requiredTemplates.length > 0 ? Math.round((signedCount / requiredTemplates.length) * 100) : 0
     };
   };
 
   // Get status for each template
   const getTemplateStatus = (template) => {
-    const currentSig = signatures.find(
+    const currentSig = currentSignatures.find(
       s => s.agreementTemplateId?._id?.toString() === template._id.toString() &&
            s.version === template.version && s.status === 'signed'
     );
 
-    const outdatedSig = signatures.find(
-      s => s.agreementTemplateId?._id?.toString() === template._id.toString() &&
-           s.version < template.version
-    );
-
     if (currentSig) {
       return { status: 'signed', signature: currentSig, label: 'Signed', color: 'green' };
-    }
-    if (outdatedSig) {
-      return { status: 'outdated', signature: outdatedSig, label: 'Needs Re-sign', color: 'yellow' };
     }
     return { status: 'pending', signature: null, label: 'Pending', color: 'gray' };
   };
@@ -222,8 +226,8 @@ const AgreementDetail = () => {
               <span className="text-sm font-medium text-gray-700">{stats.signed} Signed</span>
             </div>
             <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow-sm">
-              <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
-              <span className="text-sm font-medium text-gray-700">{stats.outdated} Outdated</span>
+              <span className="w-3 h-3 rounded-full bg-red-500"></span>
+              <span className="text-sm font-medium text-gray-700">{stats.expired} Expired</span>
             </div>
             <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow-sm">
               <span className="w-3 h-3 rounded-full bg-gray-300"></span>
@@ -379,7 +383,7 @@ const AgreementDetail = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {signatures.map((sig) => {
+                {signatures.slice((historyPage - 1) * historyItemsPerPage, historyPage * historyItemsPerPage).map((sig) => {
                   const template = templates.find(t => t._id.toString() === sig.agreementTemplateId?._id?.toString());
                   const isLatest = template && sig.version === template.version && sig.status === 'signed';
 
@@ -402,10 +406,10 @@ const AgreementDetail = () => {
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                           sig.status === 'signed' && isLatest ? 'bg-green-100 text-green-800' :
                           sig.status === 'expired' ? 'bg-red-100 text-red-800' :
-                          'bg-yellow-100 text-yellow-800'
+                          'bg-gray-100 text-gray-800'
                         }`}>
                           {sig.status === 'signed' && isLatest ? 'Current' :
-                           sig.status === 'expired' ? 'Expired' : 'Outdated'}
+                           sig.status === 'expired' ? 'Expired' : 'Previous Version'}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -425,7 +429,7 @@ const AgreementDetail = () => {
 
           {/* Mobile Card View */}
           <div className="md:hidden divide-y divide-gray-100">
-            {signatures.map((sig) => {
+            {signatures.slice((historyPage - 1) * historyItemsPerPage, historyPage * historyItemsPerPage).map((sig) => {
               const template = templates.find(t => t._id.toString() === sig.agreementTemplateId?._id?.toString());
               const isLatest = template && sig.version === template.version && sig.status === 'signed';
 
@@ -439,10 +443,10 @@ const AgreementDetail = () => {
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                       sig.status === 'signed' && isLatest ? 'bg-green-100 text-green-800' :
                       sig.status === 'expired' ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
+                      'bg-gray-100 text-gray-800'
                     }`}>
                       {sig.status === 'signed' && isLatest ? 'Current' :
-                       sig.status === 'expired' ? 'Expired' : 'Outdated'}
+                       sig.status === 'expired' ? 'Expired' : 'Previous Version'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -458,6 +462,20 @@ const AgreementDetail = () => {
               );
             })}
           </div>
+
+          {/* Pagination */}
+          {signatures.length > historyItemsPerPage && (
+            <div className="px-4 sm:px-6 py-4 border-t border-gray-100">
+              <Pagination
+                currentPage={historyPage}
+                totalPages={Math.ceil(signatures.length / historyItemsPerPage)}
+                total={signatures.length}
+                itemsPerPage={historyItemsPerPage}
+                onPageChange={setHistoryPage}
+                onItemsPerPageChange={(newLimit) => { setHistoryItemsPerPage(newLimit); setHistoryPage(1); }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -502,7 +520,7 @@ const AgreementDetail = () => {
                   <span className={`px-2 py-1 rounded text-xs font-medium ${
                     viewingSignature.status === 'signed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                   }`}>
-                    {viewingSignature.status === 'signed' ? 'Valid' : 'Expired'}
+                    {viewingSignature.status === 'signed' ? 'Signed' : 'Expired'}
                   </span>
                 </div>
               </div>

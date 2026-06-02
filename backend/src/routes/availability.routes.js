@@ -20,7 +20,7 @@ router.get(
   getAvailableSlotsForOffice
 );
 
-// Get availability for a specific office (read-only for partners)
+// Get availability for a specific office (read-only for partners, full access for admins)
 router.get(
   '/offices/:officeId/availability',
   protect,

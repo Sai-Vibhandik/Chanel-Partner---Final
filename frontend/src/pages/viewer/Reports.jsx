@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
+import Pagination from '../../components/common/Pagination';
 
 const Reports = () => {
   const config = sidebarConfig.viewer;
@@ -14,11 +16,11 @@ const Reports = () => {
 
   // Pagination
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   useEffect(() => {
     fetchAllData();
-  }, [page]);
+  }, [page, itemsPerPage]);
 
   const fetchAllData = async () => {
     try {
@@ -27,7 +29,7 @@ const Reports = () => {
       // Fetch all data in parallel
       const [overviewRes, partnersRes, visitsRes, commissionsRes] = await Promise.all([
         api.get('/properties/stats').catch(() => ({ data: { data: {} } })),
-        api.get(`/partner-company/reports/performance?page=${page}&limit=${limit}`).catch(() => ({ data: { data: { partners: [], summary: {}, pagination: null } } })),
+        api.get(`/partner-company/reports/performance?page=${page}&limit=${itemsPerPage}`).catch(() => ({ data: { data: { partners: [], summary: {}, pagination: null } } })),
         api.get('/visits/stats').catch(() => ({ data: { data: {} } })),
         api.get('/commissions/stats').catch(() => ({ data: { data: {} } }))
       ]);
@@ -43,16 +45,6 @@ const Reports = () => {
     }
   };
 
-  const formatCurrency = (amount) => {
-    if (!amount) return '₹0';
-    if (amount >= 10000000) {
-      return `₹${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `₹${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `₹${amount.toLocaleString()}`;
-  };
-
   const formatNumber = (num) => {
     if (!num) return '0';
     if (num >= 1000000) {
@@ -61,6 +53,23 @@ const Reports = () => {
       return `${(num / 1000).toFixed(1)}K`;
     }
     return num.toString();
+  };
+
+  // Format tier to title case
+  const formatTier = (tier) => {
+    if (!tier) return 'Bronze';
+    return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
+  };
+
+  // Get tier styles
+  const getTierStyles = (tier) => {
+    const styles = {
+      platinum: 'bg-purple-100 text-purple-700',
+      gold: 'bg-amber-100 text-amber-700',
+      silver: 'bg-gray-200 text-gray-700',
+      bronze: 'bg-orange-100 text-orange-700'
+    };
+    return styles[tier] || styles.bronze;
   };
 
   // Overview Tab Component
@@ -244,13 +253,8 @@ const Reports = () => {
             <div className="grid grid-cols-4 gap-4">
               {['bronze', 'silver', 'gold', 'platinum'].map((tier) => (
                 <div key={tier} className="text-center p-4 rounded-lg bg-gray-50">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
-                    tier === 'platinum' ? 'bg-purple-100 text-purple-700' :
-                    tier === 'gold' ? 'bg-amber-100 text-amber-700' :
-                    tier === 'silver' ? 'bg-gray-200 text-gray-700' :
-                    'bg-orange-100 text-orange-700'
-                  }`}>
-                    {tier}
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTierStyles(tier)}`}>
+                    {formatTier(tier)}
                   </span>
                   <p className="text-2xl font-bold text-gray-900 mt-2">{partnerData.tierBreakdown[tier] || 0}</p>
                 </div>
@@ -274,6 +278,7 @@ const Reports = () => {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sr. No.</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Partner</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tier</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Visits</th>
@@ -282,8 +287,11 @@ const Reports = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {partners.map((partner) => (
+                  {partners.map((partner, index) => (
                     <tr key={partner.partnershipId || partner.partnerId} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {index + 1}
+                      </td>
                       <td className="px-4 py-3">
                         <div>
                           <p className="font-medium text-gray-900">{partner.partnerName || partner.name}</p>
@@ -291,13 +299,8 @@ const Reports = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
-                          partner.tier === 'platinum' ? 'bg-purple-100 text-purple-700' :
-                          partner.tier === 'gold' ? 'bg-amber-100 text-amber-700' :
-                          partner.tier === 'silver' ? 'bg-gray-200 text-gray-700' :
-                          'bg-orange-100 text-orange-700'
-                        }`}>
-                          {partner.tier}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTierStyles(partner.tier)}`}>
+                          {formatTier(partner.tier)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right text-gray-900">{partner.totalVisits || 0}</td>
@@ -311,31 +314,15 @@ const Reports = () => {
           )}
 
           {/* Pagination */}
-          {pagination && pagination.pages > 1 && (
-            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-              <div className="text-sm text-gray-500">
-                Showing {((pagination.page - 1) * limit) + 1} to {Math.min(pagination.page * limit, pagination.total)} of {pagination.total} partners
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-gray-600">
-                  Page {pagination.page} of {pagination.pages}
-                </span>
-                <button
-                  onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
-                  disabled={page === pagination.pages}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+          {pagination && pagination.total > 0 && (
+            <Pagination
+              currentPage={page}
+              totalPages={pagination.pages}
+              total={pagination.total}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setPage}
+              onItemsPerPageChange={(newLimit) => { setItemsPerPage(newLimit); setPage(1); }}
+            />
           )}
         </div>
       </div>

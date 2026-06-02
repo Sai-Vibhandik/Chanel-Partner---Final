@@ -64,6 +64,7 @@ import chatRoutes from './routes/chat.routes.js';
 import loginLogRoutes from './routes/loginLog.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import emailLogRoutes from './routes/emailLog.routes.js';
+import activityLogRoutes from './routes/activityLog.routes.js';
 import landingPageRoutes from './routes/landingPage.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
 import planRoutes from './routes/plan.routes.js';
@@ -80,6 +81,9 @@ const PORT = process.env.PORT || 5000;
 
 // Initialize Socket.IO
 initializeSocket(httpServer, process.env.FRONTEND_URL || 'http://localhost:5173');
+
+// Trust proxy - needed to get real IP address behind reverse proxy
+app.set('trust proxy', true);
 
 // Security middleware
 app.use(helmet({
@@ -148,6 +152,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/login-logs', loginLogRoutes);
 app.use('/api/email-logs', emailLogRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
 
 // TODO: Add other routes as modules are implemented
 // app.use('/api/platform', platformRoutes);

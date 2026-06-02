@@ -2,16 +2,18 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
+import { formatCurrency } from '../../utils/currency';
 
 const CommissionDetails = () => {
   const { id } = useParams();
   const config = sidebarConfig.partner;
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [commission, setCommission] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchCommission();
@@ -23,7 +25,7 @@ const CommissionDetails = () => {
       const response = await api.get(`/commissions/${id}`);
       setCommission(response.data.data.commission);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load commission');
+      toast.error(err.response?.data?.message || 'Failed to load commission');
     } finally {
       setLoading(false);
     }
@@ -60,19 +62,9 @@ const CommissionDetails = () => {
       approved: { color: 'green', icon: '✓', message: 'Your commission has been approved and is awaiting payout.' },
       paid: { color: 'purple', icon: '✓✓', message: 'Your commission has been paid out successfully.' },
       rejected: { color: 'red', icon: '✗', message: 'Your commission was rejected. Please check the rejection reason below.' },
-      cancelled: { color: 'gray', icon: '-', message: 'This commission has been cancelled.' }
+      cancelled: { color: 'gray', icon: '✕', message: 'This commission has been cancelled.' }
     };
     return info[status] || info.pending_legal_review;
-  };
-
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount?.toLocaleString() || '0'}`;
   };
 
   const formatDate = (date) => {
@@ -114,10 +106,6 @@ const CommissionDetails = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Commission Details" subtitle={`ID: ${commission._id?.slice(-8).toUpperCase()}`} color={config.color}>
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
-      )}
-
       {/* Back Button */}
       <button
         onClick={() => navigate('/partner/commissions')}
@@ -200,12 +188,12 @@ const CommissionDetails = () => {
                 <span className="font-medium">{commission.saleDetails?.buyerName}</span>
               </div>
               <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Buyer Phone</span>
+                <span className="text-gray-600">Contact Number</span>
                 <span className="font-medium">{commission.saleDetails?.buyerPhone}</span>
               </div>
               {commission.saleDetails?.buyerEmail && (
                 <div className="flex justify-between py-3 border-b border-gray-100">
-                  <span className="text-gray-600">Buyer Email</span>
+                  <span className="text-gray-600">Buyer Email ID</span>
                   <span className="font-medium">{commission.saleDetails.buyerEmail}</span>
                 </div>
               )}

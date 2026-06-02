@@ -2,19 +2,19 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 import { Plus, Edit2, Trash2, Save, X, Check, Star, Eye, EyeOff } from 'lucide-react';
 
 const Plans = () => {
   const { user } = useAuth();
   const config = sidebarConfig.platform_admin;
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState([]);
   const [editingPlan, setEditingPlan] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const defaultPlan = {
     name: '',
@@ -55,7 +55,7 @@ const Plans = () => {
         setPlans(response.data.data.plans);
       }
     } catch (err) {
-      setError('Failed to load plans');
+      toast.error('Failed to load plans.');
     } finally {
       setLoading(false);
     }
@@ -105,21 +105,19 @@ const Plans = () => {
     e.preventDefault();
     try {
       setFormLoading(true);
-      setError('');
-      setSuccess('');
 
       if (editingPlan) {
         // Update existing plan
         const response = await api.put(`/plans/${editingPlan._id}`, formData);
         if (response.data.success) {
-          setSuccess('Plan updated successfully');
+          toast.success('Plan updated successfully.');
           fetchPlans();
         }
       } else {
         // Create new plan
         const response = await api.post('/plans', formData);
         if (response.data.success) {
-          setSuccess('Plan created successfully');
+          toast.success('Plan created successfully.');
           fetchPlans();
         }
       }
@@ -128,7 +126,7 @@ const Plans = () => {
       setEditingPlan(null);
       setFormData(defaultPlan);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save plan');
+      toast.error(err.response?.data?.message || 'Failed to save plan');
     } finally {
       setFormLoading(false);
     }
@@ -171,11 +169,11 @@ const Plans = () => {
     try {
       const response = await api.delete(`/plans/${planId}`);
       if (response.data.success) {
-        setSuccess('Plan deactivated successfully');
+        toast.success('Plan deactivated successfully.');
         fetchPlans();
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to deactivate plan');
+      toast.error(err.response?.data?.message || 'Failed to deactivate plan');
     }
   };
 
@@ -186,7 +184,7 @@ const Plans = () => {
   };
 
   const formatPrice = (price, currency) => {
-    const symbols = { INR: '₹', AED: 'د.إ', USD: '$' };
+    const symbols = { INR: '₹', AED: 'AED ', USD: '$' };
     const symbol = symbols[currency] || '$';
     if (price === 0) return 'Custom';
     return `${symbol}${price.toLocaleString()}`;
@@ -204,20 +202,6 @@ const Plans = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Plans Management" subtitle="Manage subscription plans" color={config.color}>
-      {/* Messages */}
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError('')}><X className="w-4 h-4" /></button>
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex items-center justify-between">
-          <span>{success}</span>
-          <button onClick={() => setSuccess('')}><X className="w-4 h-4" /></button>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Subscription Plans</h2>
@@ -380,7 +364,7 @@ const Plans = () => {
                 >
                   <option value="INR">INR (₹)</option>
                   <option value="USD">USD ($)</option>
-                  <option value="AED">AED (د.إ)</option>
+                  <option value="AED">AED</option>
                 </select>
               </div>
               <div>

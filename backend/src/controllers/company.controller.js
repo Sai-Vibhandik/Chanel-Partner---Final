@@ -2,6 +2,7 @@ import Company from '../models/Company.js';
 import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { getLimitsAndUsage, isSubscriptionActive } from '../services/planLimits.service.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
 /**
  * Generate slug from company name
@@ -179,6 +180,21 @@ export const updateCompany = async (req, res, next) => {
 
     await company.save();
 
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: company._id,
+      action: ActionTypes.COMPANY_PROFILE_UPDATED,
+      resourceType: ResourceTypes.COMPANY,
+      resourceId: company._id,
+      resourceTitle: company.name,
+      details: {
+        companyName: company.name,
+        updatedFields: Object.keys(req.body).filter(key => req.body[key] !== undefined)
+      },
+      ...getRequestMetadata(req)
+    });
+
     res.status(200).json({
       success: true,
       message: 'Company updated successfully',
@@ -196,7 +212,7 @@ export const updateCompany = async (req, res, next) => {
  */
 export const updateCompanySettings = async (req, res, next) => {
   try {
-    const { tierPercentages, features, notifications, emailBranding } = req.body;
+    const { tierPercentages, notifications, emailBranding } = req.body;
 
     const company = await Company.findById(req.params.id);
 
@@ -213,9 +229,6 @@ export const updateCompanySettings = async (req, res, next) => {
     if (tierPercentages) {
       company.settings.tierPercentages = { ...company.settings.tierPercentages, ...tierPercentages };
     }
-    if (features) {
-      company.settings.features = { ...company.settings.features, ...features };
-    }
     if (notifications) {
       company.settings.notifications = { ...company.settings.notifications, ...notifications };
     }
@@ -226,6 +239,20 @@ export const updateCompanySettings = async (req, res, next) => {
     }
 
     await company.save();
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: company._id,
+      action: ActionTypes.SETTINGS_UPDATED,
+      resourceType: ResourceTypes.SETTINGS,
+      resourceId: company._id,
+      resourceTitle: company.name,
+      details: {
+        updatedSettings: Object.keys(req.body).filter(key => req.body[key] !== undefined)
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,

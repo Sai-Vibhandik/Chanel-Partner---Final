@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 
 const LegalPages = () => {
   const config = sidebarConfig.platform_admin;
+  const toast = useToast();
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [editingPage, setEditingPage] = useState(null);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ const LegalPages = () => {
       const response = await api.get('/legal');
       setPages(response.data.data);
     } catch (err) {
-      setError('Failed to load legal pages');
+      toast.error('Failed to load legal pages.');
     } finally {
       setLoading(false);
     }
@@ -30,25 +30,23 @@ const LegalPages = () => {
 
   const handleSave = async () => {
     if (!editingPage.title || !editingPage.content) {
-      setError('Title and content are required');
+      toast.error('Title and content are required.');
       return;
     }
 
     try {
       setSaving(true);
-      setError('');
-      setSuccess('');
 
       await api.put(`/legal/${editingPage.slug}`, {
         title: editingPage.title,
         content: editingPage.content,
       });
 
-      setSuccess('Page updated successfully');
+      toast.success('Page updated successfully.');
       fetchPages();
       setEditingPage(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save page');
+      toast.error(err.response?.data?.message || 'Failed to save page');
     } finally {
       setSaving(false);
     }
@@ -76,14 +74,6 @@ const LegalPages = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Legal Pages" subtitle="Manage privacy policy and terms of service" color={config.color}>
-      {/* Messages */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
-      )}
-      {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>
-      )}
-
       {editingPage ? (
         /* Edit Page */
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">

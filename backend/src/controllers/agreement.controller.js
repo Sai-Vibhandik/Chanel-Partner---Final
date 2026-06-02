@@ -1,26 +1,31 @@
 import AgreementTemplate from '../models/AgreementTemplate.js';
+import AgreementTemplateHistory from '../models/AgreementTemplateHistory.js';
 import AgreementSignature from '../models/AgreementSignature.js';
 import PartnerCompany from '../models/PartnerCompany.js';
 import Company from '../models/Company.js';
 import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
 // ==================== ADMIN ROUTES ====================
 
 /**
- * @desc    Get all agreement templates for company
+ * @desc    Get all agreement templates for company (active only)
  * @route   GET /api/agreements
  * @access  Private (Company SuperAdmin, Partner Manager)
  */
 export const getAgreementTemplates = async (req, res, next) => {
   try {
-    const { type, isActive } = req.query;
+    const { type } = req.query;
 
-    const query = { companyId: req.user.companyId };
+    // Only fetch active templates - old versions are in history
+    const query = {
+      companyId: req.user.companyId,
+      isActive: true
+    };
 
     if (type) query.type = type;
-    if (isActive !== undefined) query.isActive = isActive === 'true';
 
     const templates = await AgreementTemplate.find(query)
       .populate('createdBy', 'firstName lastName')
@@ -123,6 +128,22 @@ export const createAgreementTemplate = async (req, res, next) => {
 
     await template.populate('createdBy', 'firstName lastName');
 
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: req.user.companyId,
+      action: ActionTypes.AGREEMENT_CREATED,
+      resourceType: ResourceTypes.AGREEMENT,
+      resourceId: template._id,
+      resourceTitle: template.name,
+      details: {
+        agreementName: template.name,
+        agreementType: template.type,
+        isRequired: template.isRequired
+      },
+      ...getRequestMetadata(req)
+    });
+
     res.status(201).json({
       success: true,
       message: 'Agreement template created successfully',
@@ -202,17 +223,22 @@ export const createNewVersion = async (req, res, next) => {
     // Increment version
     const newVersion = oldTemplate.version + 1;
 
-    // Create new version
-    const newTemplate = await AgreementTemplate.create({
+    // Move old template to history
+    await AgreementTemplateHistory.create({
+      originalTemplateId: oldTemplate._id,
       companyId: oldTemplate.companyId,
       name: oldTemplate.name,
       type: oldTemplate.type,
-      content: content || oldTemplate.content,
-      version: newVersion,
+      content: oldTemplate.content,
+      version: oldTemplate.version,
       isRequired: oldTemplate.isRequired,
       displayOrder: oldTemplate.displayOrder,
       description: oldTemplate.description,
-      createdBy: req.user._id
+      archiveReason: 'version_update',
+      archivedBy: req.user._id,
+      createdBy: oldTemplate.createdBy,
+      originalCreatedAt: oldTemplate.createdAt,
+      originalUpdatedAt: oldTemplate.updatedAt
     });
 
     // Find all signatures that need to be updated
@@ -231,9 +257,11 @@ export const createNewVersion = async (req, res, next) => {
       }
     );
 
-    // Deactivate old template
-    oldTemplate.isActive = false;
+    // Update the old template in place with new version and content
+    oldTemplate.version = newVersion;
+    oldTemplate.content = content || oldTemplate.content;
     oldTemplate.updatedBy = req.user._id;
+    oldTemplate.updatedAt = new Date();
     await oldTemplate.save();
 
     // Get unique partner IDs from affected signatures
@@ -258,7 +286,7 @@ export const createNewVersion = async (req, res, next) => {
           title: 'Agreement Updated',
           message: `The agreement "${oldTemplate.name}" has been updated. Please review and sign the new version.`,
           data: {
-            agreementId: newTemplate._id,
+            agreementId: oldTemplate._id,
             companyId: oldTemplate.companyId
           },
           link: '/partner/agreements'
@@ -266,14 +294,14 @@ export const createNewVersion = async (req, res, next) => {
       }
     }
 
-    await newTemplate.populate('createdBy', 'firstName lastName');
+    await oldTemplate.populate('createdBy', 'firstName lastName');
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
       message: 'New version created. All partners who signed the previous version have been notified to sign the updated agreement.',
       data: {
-        template: newTemplate,
-        previousVersion: oldTemplate.version,
+        template: oldTemplate,
+        previousVersion: newVersion - 1,
         affectedPartners: affectedSignatures.length
       }
     });
@@ -301,20 +329,37 @@ export const deleteAgreementTemplate = async (req, res, next) => {
       throw new ApiError(403, 'Access denied');
     }
 
+    // Move to history before deleting
+    await AgreementTemplateHistory.create({
+      originalTemplateId: template._id,
+      companyId: template.companyId,
+      name: template.name,
+      type: template.type,
+      content: template.content,
+      version: template.version,
+      isRequired: template.isRequired,
+      displayOrder: template.displayOrder,
+      description: template.description,
+      archiveReason: 'deletion',
+      archivedBy: req.user._id,
+      createdBy: template.createdBy,
+      originalCreatedAt: template.createdAt,
+      originalUpdatedAt: template.updatedAt
+    });
+
     // Check if any signatures exist
     const signatureCount = await AgreementSignature.countDocuments({
       agreementTemplateId: template._id
     });
 
     if (signatureCount > 0) {
-      // Soft delete - just deactivate
-      template.isActive = false;
-      template.updatedBy = req.user._id;
-      await template.save();
+      // Keep signatures but mark template as removed from active list
+      // The history record preserves the template info
+      await template.deleteOne();
 
       res.status(200).json({
         success: true,
-        message: 'Agreement template deactivated. Existing signatures are preserved.'
+        message: 'Agreement template archived. Existing signatures are preserved in history.'
       });
     } else {
       // Hard delete if no signatures
@@ -476,25 +521,10 @@ export const getPartnerAgreements = async (req, res, next) => {
             s.version === template.version
       );
 
-      // Check if there's an expired signature for this agreement type (previous version)
-      const expiredSignature = signatures.find(
-        s => s.agreementTemplateId.toString() === template._id.toString() &&
-            s.status === 'expired'
-      );
-
-      // Check if partner signed a previous version (by matching the type in a different way)
-      const previousVersionSignature = signatures.find(s => {
-        // Signature is for an older template of the same type
-        // We need to check if this template was created as a new version of another
-        return s.status === 'expired' && s.version < template.version;
-      });
-
       return {
         ...template.toObject(),
         isSigned: !!validSignature,
-        signature: validSignature || null,
-        needsResign: !!expiredSignature || !!previousVersionSignature,
-        previousVersion: expiredSignature?.version || previousVersionSignature?.version || null
+        signature: validSignature || null
       };
     });
 
@@ -508,16 +538,23 @@ export const getPartnerAgreements = async (req, res, next) => {
       .populate('agreementTemplateId', 'name type version')
       .sort({ signedAt: -1 });
 
-    // Format signatures for history display
-    const signatureHistory = allSignatures.map(sig => ({
-      _id: sig._id,
-      agreementTemplateId: sig.agreementTemplateId,
-      version: sig.version,
-      typedName: sig.typedName,
-      signedAt: sig.signedAt,
-      ipAddress: sig.ipAddress,
-      status: sig.status
-    }));
+    // Format signatures for history display - only show expired/old versions, not current
+    const signatureHistory = allSignatures
+      .filter(sig => {
+        // Only include expired signatures or signatures with old versions
+        const template = templates.find(t => t._id.toString() === sig.agreementTemplateId?._id?.toString());
+        // Include if status is 'expired' OR version is older than current template version
+        return sig.status === 'expired' || (template && sig.version < template.version);
+      })
+      .map(sig => ({
+        _id: sig._id,
+        agreementTemplateId: sig.agreementTemplateId,
+        version: sig.version,
+        typedName: sig.typedName,
+        signedAt: sig.signedAt,
+        ipAddress: sig.ipAddress,
+        status: sig.status
+      }));
 
     res.status(200).json({
       success: true,
@@ -526,12 +563,52 @@ export const getPartnerAgreements = async (req, res, next) => {
         allSigned,
         totalAgreements: templates.length,
         signedCount: agreementsWithStatus.filter(a => a.isSigned).length,
-        signatureHistory // Add all signatures history
+        signatureHistory // Only expired/old signatures
       }
     });
   } catch (error) {
     next(error);
   }
+};
+
+/**
+ * Validate typed signature name
+ */
+const validateTypedName = (name) => {
+  const trimmedName = name?.trim();
+
+  // Check empty
+  if (!trimmedName) {
+    return 'Please type your name to sign.';
+  }
+
+  // Check minimum length
+  if (trimmedName.length < 2) {
+    return 'Name must be at least 2 characters long.';
+  }
+
+  // Check maximum length
+  if (trimmedName.length > 100) {
+    return 'Name must not exceed 100 characters.';
+  }
+
+  // Check for valid characters (letters, spaces, hyphens, apostrophes, and dots)
+  const validNameRegex = /^[a-zA-Z\s\-'.]+$/;
+  if (!validNameRegex.test(trimmedName)) {
+    return 'Name can only contain letters, spaces, hyphens, apostrophes, and periods.';
+  }
+
+  // Check for at least one letter
+  if (!/[a-zA-Z]/.test(trimmedName)) {
+    return 'Name must contain at least one letter.';
+  }
+
+  // Check for consecutive special characters
+  if (/[\-'.]{2,}/.test(trimmedName)) {
+    return 'Name contains invalid consecutive special characters.';
+  }
+
+  return null; // No error
 };
 
 /**
@@ -543,8 +620,14 @@ export const signAgreement = async (req, res, next) => {
   try {
     const { partnershipId, typedName } = req.body;
 
-    if (!partnershipId || !typedName) {
-      throw new ApiError(400, 'Partnership ID and typed name are required');
+    if (!partnershipId) {
+      throw new ApiError(400, 'Partnership ID is required');
+    }
+
+    // Validate typed name
+    const nameError = validateTypedName(typedName);
+    if (nameError) {
+      throw new ApiError(400, nameError);
     }
 
     // Verify partnership
@@ -586,6 +669,7 @@ export const signAgreement = async (req, res, next) => {
       partnershipId,
       agreementTemplateId: template._id,
       version: template.version,
+      contentSnapshot: template.content, // Save content at time of signing
       typedName,
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.get('User-Agent'),
@@ -612,35 +696,49 @@ export const signAgreement = async (req, res, next) => {
 
     const allSigned = signedCount >= requiredTemplates;
 
-    // Notify company admins about the signed agreement
-    try {
-      const companyAdmins = await User.find({
-        companyId: partnership.companyId,
-        role: { $in: ['company_superadmin', 'partner_manager'] },
-        isActive: true
-      });
+    // Notify company admins about the signed agreement (non-blocking)
+    const companyAdmins = await User.find({
+      companyId: partnership.companyId,
+      role: { $in: ['company_superadmin', 'partner_manager'] },
+      isActive: true
+    }).select('_id');
 
-      const partner = await User.findById(req.user._id).select('firstName lastName');
-      const partnerName = `${partner.firstName} ${partner.lastName}`;
+    const partner = await User.findById(req.user._id).select('firstName lastName');
+    const partnerName = `${partner.firstName} ${partner.lastName}`;
 
-      for (const admin of companyAdmins) {
-        createNotification({
-          recipientId: admin._id,
-          type: 'agreement_signed',
-          title: 'Agreement Signed',
-          message: `${partnerName} has signed the "${template.name}" agreement.`,
-          data: {
-            agreementId: template._id,
-            partnershipId: partnership._id,
-            companyId: partnership.companyId,
-            signatureId: signature._id
-          },
-          link: '/company/signed-agreements'
-        }).catch(err => console.error('Failed to create agreement signed notification:', err.message));
-      }
-    } catch (notifyError) {
-      console.error('Error sending agreement signed notifications:', notifyError.message);
+    // Create notifications in parallel (non-blocking)
+    const adminIds = companyAdmins.map(admin => admin._id);
+    if (adminIds.length > 0) {
+      createNotificationsForRecipients(adminIds, {
+        type: 'agreement_signed',
+        title: 'Agreement Signed',
+        message: `${partnerName} has signed the "${template.name}" agreement.`,
+        data: {
+          agreementId: template._id,
+          partnershipId: partnership._id,
+          companyId: partnership.companyId,
+          signatureId: signature._id
+        },
+        link: '/company/signed-agreements'
+      }).catch(err => console.error('Failed to create agreement signed notifications:', err.message));
     }
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: partnership.companyId,
+      action: ActionTypes.AGREEMENT_SIGNED,
+      resourceType: ResourceTypes.AGREEMENT,
+      resourceId: template._id,
+      resourceTitle: template.name,
+      details: {
+        agreementName: template.name,
+        agreementType: template.type,
+        version: template.version,
+        partnerName: partnerName
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
@@ -683,6 +781,7 @@ export const getSignedAgreementsForPartner = async (req, res, next) => {
       status: 'signed'
     })
     .populate('agreementTemplateId', 'name type version')
+    .select('agreementTemplateId version typedName signedAt ipAddress status contentSnapshot')
     .sort({ signedAt: -1 });
 
     res.status(200).json({
@@ -749,14 +848,11 @@ export const getPartnersWithSignatures = async (req, res, next) => {
 
       // Check which templates are signed (latest version)
       const signedTemplateIds = new Set();
-      const outdatedSignatures = [];
 
       partnerSignatures.forEach(sig => {
         const template = templates.find(t => t._id.toString() === sig.agreementTemplateId?._id?.toString());
         if (template && sig.version === template.version && sig.status === 'signed') {
           signedTemplateIds.add(template._id.toString());
-        } else if (template && sig.version < template.version) {
-          outdatedSignatures.push(sig);
         }
       });
 
@@ -785,7 +881,6 @@ export const getPartnersWithSignatures = async (req, res, next) => {
         signedRequired: signedRequired.length,
         completionPercentage,
         allSigned: signedRequired.length === requiredTemplates.length,
-        hasOutdated: outdatedSignatures.length > 0,
         signatures: partnerSignatures,
         recentSignature: partnerSignatures[0]?.signedAt || null
       };
@@ -843,12 +938,30 @@ export const getPartnershipAgreementDetails = async (req, res, next) => {
     }).sort({ displayOrder: 1 });
 
     // Get all signatures for this partnership
-    const signatures = await AgreementSignature.find({
+    const allSignatures = await AgreementSignature.find({
       partnershipId: partnershipId
     })
       .populate('agreementTemplateId', 'name type version')
       .populate('partnerId', 'firstName lastName email')
+      .select('agreementTemplateId version typedName signedAt ipAddress status contentSnapshot partnerId')
       .sort({ signedAt: -1 });
+
+    // Separate current signatures from history
+    // Current: signed and version matches current template version
+    // History: expired or version older than current
+    const currentSignatures = [];
+    const signatureHistory = [];
+
+    allSignatures.forEach(sig => {
+      const template = templates.find(t => t._id.toString() === sig.agreementTemplateId?._id?.toString());
+      const isCurrent = template && sig.version === template.version && sig.status === 'signed';
+
+      if (isCurrent) {
+        currentSignatures.push(sig);
+      } else {
+        signatureHistory.push(sig);
+      }
+    });
 
     res.status(200).json({
       success: true,
@@ -861,7 +974,8 @@ export const getPartnershipAgreementDetails = async (req, res, next) => {
           company: partnership.companyId
         },
         templates,
-        signatures
+        currentSignatures,
+        signatures: signatureHistory // Only expired/old signatures in history
       }
     });
   } catch (error) {
@@ -886,6 +1000,34 @@ const getDefaultName = (type) => {
   return names[type] || 'Agreement';
 };
 
+/**
+ * @desc    Get archived agreement templates history
+ * @route   GET /api/agreements/history
+ * @access  Private (Company SuperAdmin)
+ */
+export const getAgreementTemplateHistory = async (req, res, next) => {
+  try {
+    const { type, archiveReason } = req.query;
+
+    const query = { companyId: req.user.companyId };
+
+    if (type) query.type = type;
+    if (archiveReason) query.archiveReason = archiveReason;
+
+    const history = await AgreementTemplateHistory.find(query)
+      .populate('archivedBy', 'firstName lastName')
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: { history }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   // Admin routes
   getAgreementTemplates,
@@ -897,6 +1039,7 @@ export default {
   getSignedAgreements,
   getPendingSignatures,
   getPartnersWithSignatures,
+  getAgreementTemplateHistory,
 
   // Partner routes
   getPartnerAgreements,

@@ -123,11 +123,6 @@ const companySchema = new mongoose.Schema(
         gold: { type: Number, default: 50 },      // 50% of base
         platinum: { type: Number, default: 75 }    // 75% of base
       },
-      features: {
-        chatEnabled: { type: Boolean, default: true },
-        suggestionsEnabled: { type: Boolean, default: true },
-        analyticsEnabled: { type: Boolean, default: true }
-      },
       notifications: {
         email: { type: Boolean, default: true },
         sms: { type: Boolean, default: false }
@@ -140,8 +135,7 @@ const companySchema = new mongoose.Schema(
       secondaryColor: { type: String, default: '#764BA2' },   // Secondary/gradient color
       headerBackgroundColor: { type: String, default: '#4F46E5' }, // Email header background
       buttonColor: { type: String, default: '#4F46E5' },      // CTA button color
-      footerText: { type: String, default: '' },              // Custom footer text
-      showLogoInEmails: { type: Boolean, default: true }      // Whether to show logo in emails
+      footerText: { type: String, default: '' }                // Custom footer text
     },
 
     // Status

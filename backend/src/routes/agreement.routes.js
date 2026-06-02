@@ -11,6 +11,7 @@ import {
   getPendingSignatures,
   getPartnersWithSignatures,
   getPartnershipAgreementDetails,
+  getAgreementTemplateHistory,
 
   // Partner routes
   getPartnerAgreements,
@@ -55,6 +56,14 @@ router.get(
   protect,
   restrictTo('company_superadmin', 'partner_manager', 'platform_admin'),
   getAgreementTemplates
+);
+
+// Get agreement template history (archived versions)
+router.get(
+  '/history',
+  protect,
+  restrictTo('company_superadmin', 'platform_admin'),
+  getAgreementTemplateHistory
 );
 
 // Get partners with their signed agreements (grouped by partner) - READ ONLY

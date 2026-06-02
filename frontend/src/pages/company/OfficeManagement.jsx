@@ -1,23 +1,37 @@
 import { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
-import { validatePhone, validateEmail, validateRequired, handlePhoneInput } from '../../utils/validation';
+import { validatePhoneWithCountry, validateEmail, validateRequired, validateEntityName } from '../../utils/validation';
+import PhoneInput from '../../components/common/PhoneInput';
+
+// Add custom styles for time input cursor
+const timeInputStyles = `
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+  }
+  input[type="time"]::-webkit-calendar-picker-indicator:hover {
+    cursor: pointer;
+  }
+`;
 
 const OfficeManagement = ({ role = 'company_superadmin' }) => {
   const config = role === 'partner_manager' ? sidebarConfig.partner_manager : sidebarConfig.company_superadmin;
+  const toast = useToast();
 
   const [offices, setOffices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
 
   // Modal states
   const [showOfficeModal, setShowOfficeModal] = useState(false);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [officeToDelete, setOfficeToDelete] = useState(null);
   const [editingOffice, setEditingOffice] = useState(null);
   const [selectedOffice, setSelectedOffice] = useState(null);
+  const [error, setError] = useState('');
 
   // Availability form
   const [availabilityForm, setAvailabilityForm] = useState({
@@ -40,6 +54,7 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
     name: '',
     address: { street: '', city: '', state: '', country: '', zipCode: '' },
     phone: '',
+    phoneCountryCode: 'IN',
     email: '',
     googleMapsUrl: '',
     operatingHours: { start: '09:00', end: '18:00' }
@@ -55,12 +70,11 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
   const fetchOffices = async () => {
     try {
       setLoading(true);
-      setError('');
       const res = await api.get('/offices');
       setOffices(res?.data?.data?.offices || []);
     } catch (err) {
       if (err.response?.status !== 404) {
-        setError(err.response?.data?.message || 'Failed to load offices');
+        toast.error(err.response?.data?.message || 'Failed to load offices.');
       }
     } finally {
       setLoading(false);
@@ -69,6 +83,7 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
 
   const fetchAvailability = async (officeId) => {
     try {
+      setError('');
       const res = await api.get(`/offices/${officeId}/availability`);
       if (res.data?.data?.availability) {
         const avail = res.data.data.availability;
@@ -123,14 +138,18 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
       }
     } catch (err) {
       console.error('Failed to load availability');
+      setError('Failed to load availability settings.');
     }
   };
 
   const validateOfficeForm = () => {
     const errors = {};
 
-    const nameError = validateRequired(officeForm.name, 'Office name');
+    const nameError = validateEntityName(officeForm.name, 'Office Name');
     if (nameError) errors.name = nameError;
+
+    const streetError = validateRequired(officeForm.address.street, 'Street Address');
+    if (streetError) errors.street = streetError;
 
     const cityError = validateRequired(officeForm.address.city, 'City');
     if (cityError) errors.city = cityError;
@@ -139,7 +158,7 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
     if (countryError) errors.country = countryError;
 
     if (officeForm.phone) {
-      const phoneError = validatePhone(officeForm.phone);
+      const phoneError = validatePhoneWithCountry(officeForm.phone, officeForm.phoneCountryCode);
       if (phoneError) errors.phone = phoneError;
     }
 
@@ -152,12 +171,28 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
     return Object.keys(errors).length === 0;
   };
 
+  const handlePhoneChange = (value) => {
+    setOfficeForm(prev => ({ ...prev, phone: value }));
+    if (fieldErrors.phone) {
+      setFieldErrors(prev => ({ ...prev, phone: '' }));
+    }
+  };
+
+  const handlePhoneCountryChange = (countryCode) => {
+    setOfficeForm(prev => ({ ...prev, phoneCountryCode: countryCode }));
+  };
+
+  const handlePhoneError = (error) => {
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, phone: error }));
+    } else if (fieldErrors.phone) {
+      setFieldErrors(prev => ({ ...prev, phone: '' }));
+    }
+  };
+
   const handleOfficeInputChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'phone') {
-      const phoneValue = handlePhoneInput(e, null, null);
-      setOfficeForm(prev => ({ ...prev, phone: phoneValue }));
-    } else if (name.startsWith('address.')) {
+    if (name.startsWith('address.')) {
       const field = name.split('.')[1];
       setOfficeForm(prev => ({
         ...prev,
@@ -170,6 +205,13 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
     if (fieldErrors[name]) {
       setFieldErrors(prev => ({ ...prev, [name]: '' }));
     }
+    // Real-time validation for office name
+    if (name === 'name' && value) {
+      const nameError = validateEntityName(value, 'Office Name');
+      if (nameError) {
+        setFieldErrors(prev => ({ ...prev, name: nameError }));
+      }
+    }
   };
 
   const handleCreateOffice = async () => {
@@ -178,15 +220,14 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
     }
 
     try {
-      setError('');
       setFieldErrors({});
       const res = await api.post('/offices', officeForm);
       setOffices([...offices, res.data.data.office]);
       setShowOfficeModal(false);
       resetOfficeForm();
-      setSuccess('Office location created successfully');
+      toast.success('Office location created successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create office');
+      toast.error(err.response?.data?.message || 'Failed to create office.');
     }
   };
 
@@ -196,28 +237,33 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
     }
 
     try {
-      setError('');
       setFieldErrors({});
       const res = await api.put(`/offices/${editingOffice._id}`, officeForm);
       setOffices(offices.map(o => o._id === editingOffice._id ? res.data.data.office : o));
       setShowOfficeModal(false);
       setEditingOffice(null);
       resetOfficeForm();
-      setSuccess('Office location updated successfully');
+      toast.success('Office location updated successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update office');
+      toast.error(err.response?.data?.message || 'Failed to update office.');
     }
   };
 
   const handleDeleteOffice = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this office location?')) return;
     try {
       await api.delete(`/offices/${id}`);
       setOffices(offices.filter(o => o._id !== id));
-      setSuccess('Office location deleted successfully');
+      setShowDeleteModal(false);
+      setOfficeToDelete(null);
+      toast.success('Office location deleted successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to delete office');
+      toast.error(err.response?.data?.message || 'Failed to delete office.');
     }
+  };
+
+  const openDeleteModal = (office) => {
+    setOfficeToDelete(office);
+    setShowDeleteModal(true);
   };
 
   const handleSaveAvailability = async () => {
@@ -233,9 +279,10 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
       };
       await api.put(`/offices/${selectedOffice._id}/availability`, formattedData);
       setShowAvailabilityModal(false);
-      setSuccess('Availability settings saved successfully');
+      setSelectedOffice(null);
+      toast.success('Availability settings saved successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save availability');
+      setError(err.response?.data?.message || 'Failed to save availability.');
     }
   };
 
@@ -244,6 +291,7 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
       name: '',
       address: { street: '', city: '', state: '', country: '', zipCode: '' },
       phone: '',
+      phoneCountryCode: 'IN',
       email: '',
       googleMapsUrl: '',
       operatingHours: { start: '09:00', end: '18:00' }
@@ -266,6 +314,7 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
 
   const openAvailabilityModal = (office) => {
     setSelectedOffice(office);
+    setError('');
     fetchAvailability(office._id);
     setShowAvailabilityModal(true);
   };
@@ -276,9 +325,9 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
         isActive: !office.isActive
       });
       setOffices(offices.map(o => o._id === office._id ? res.data.data.office : o));
-      setSuccess(`Office ${!office.isActive ? 'activated' : 'deactivated'} successfully`);
+      toast.success(`Office ${!office.isActive ? 'activated' : 'deactivated'} successfully.`);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update office status');
+      toast.error(err.response?.data?.message || 'Failed to update office status.');
     }
   };
 
@@ -297,20 +346,21 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
 
   if (loading) {
     return (
-      <DashboardLayout sidebarLinks={config.links} title="Office Management" subtitle="Loading..." color={config.color}>
-        <div className="flex items-center justify-center min-h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-        </div>
-      </DashboardLayout>
+      <>
+        <style>{timeInputStyles}</style>
+        <DashboardLayout sidebarLinks={config.links} title="Office Management" subtitle="Loading..." color={config.color}>
+          <div className="flex items-center justify-center min-h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          </div>
+        </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout sidebarLinks={config.links} title="Office Management" subtitle="Manage office locations and scheduling" color={config.color}>
-      {/* Messages */}
-      {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>}
-      {success && <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>}
-
+    <>
+      <style>{timeInputStyles}</style>
+      <DashboardLayout sidebarLinks={config.links} title="Office Management" subtitle="Manage office locations and scheduling" color={config.color}>
       {/* Office Locations */}
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Office Locations</h2>
@@ -421,6 +471,12 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                 >
                   {office.isActive ? 'Deactivate' : 'Activate'}
                 </button>
+                <button
+                  onClick={() => openDeleteModal(office)}
+                  className="text-red-600 hover:text-red-800 text-sm font-medium"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}
@@ -431,15 +487,29 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
       {showOfficeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-xl font-semibold text-gray-900">
                 {editingOffice ? 'Edit Office Location' : 'Add Office Location'}
               </h3>
+              <button
+                onClick={() => {
+                  setShowOfficeModal(false);
+                  setEditingOffice(null);
+                  resetOfficeForm();
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Office Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Office Name<span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   name="name"
@@ -449,32 +519,39 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   placeholder="e.g., Main Office, Branch Office"
                 />
-                {fieldErrors.name && <p className="text-sm text-red-600 mt-1">{fieldErrors.name}</p>}
+                {fieldErrors.name &&<p className="text-sm text-red-600 mt-1">{fieldErrors.name}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Street Address<span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     name="address.street"
                     value={officeForm.address.street}
                     onChange={handleOfficeInputChange}
                     maxLength={200}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.street ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                    placeholder="Enter street address"
                   />
+                  {fieldErrors.street &&<p className="text-sm text-red-600 mt-1">{fieldErrors.street}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    City<span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     name="address.city"
                     value={officeForm.address.city}
                     onChange={handleOfficeInputChange}
                     maxLength={100}
+                    placeholder="e.g., Mumbai, Delhi"
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.city ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
-                  {fieldErrors.city && <p className="text-sm text-red-600 mt-1">{fieldErrors.city}</p>}
+                  {fieldErrors.city &&<p className="text-sm text-red-600 mt-1">{fieldErrors.city}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
@@ -484,60 +561,62 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                     value={officeForm.address.state}
                     onChange={handleOfficeInputChange}
                     maxLength={100}
+                    placeholder="e.g., Maharashtra, Karnataka"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Country<span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     name="address.country"
                     value={officeForm.address.country}
                     onChange={handleOfficeInputChange}
                     maxLength={100}
+                    placeholder="e.g., India, UAE"
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.country ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
                   />
-                  {fieldErrors.country && <p className="text-sm text-red-600 mt-1">{fieldErrors.country}</p>}
+                  {fieldErrors.country &&<p className="text-sm text-red-600 mt-1">{fieldErrors.country}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Zip Code</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
                   <input
                     type="text"
                     name="address.zipCode"
                     value={officeForm.address.zipCode}
                     onChange={handleOfficeInputChange}
                     maxLength={20}
+                    placeholder="e.g., 400001"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={officeForm.phone}
-                    onChange={handleOfficeInputChange}
-                    maxLength={16}
-                    placeholder="10-digit mobile number"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.phone ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                  />
-                  {fieldErrors.phone && <p className="text-sm text-red-600 mt-1">{fieldErrors.phone}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={officeForm.email}
-                    onChange={handleOfficeInputChange}
-                    maxLength={100}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-                  />
-                  {fieldErrors.email && <p className="text-sm text-red-600 mt-1">{fieldErrors.email}</p>}
-                </div>
+              <PhoneInput
+                value={officeForm.phone}
+                onChange={handlePhoneChange}
+                countryCode={officeForm.phoneCountryCode}
+                onCountryChange={handlePhoneCountryChange}
+                error={fieldErrors.phone}
+                onError={handlePhoneError}
+                required={false}
+                label="Contact Number"
+              />
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email ID</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={officeForm.email}
+                  onChange={handleOfficeInputChange}
+                  maxLength={100}
+                  placeholder="e.g., office@company.com"
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                />
+                {fieldErrors.email && <p className="text-sm text-red-600 mt-1">{fieldErrors.email}</p>}
               </div>
 
               <div>
@@ -554,27 +633,33 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Opening Time</label>
-                  <input
-                    type="time"
-                    value={officeForm.operatingHours.start}
-                    onChange={(e) => setOfficeForm({
-                      ...officeForm,
-                      operatingHours: { ...officeForm.operatingHours, start: e.target.value }
-                    })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type="time"
+                      value={officeForm.operatingHours.start}
+                      onChange={(e) => setOfficeForm({
+                        ...officeForm,
+                        operatingHours: { ...officeForm.operatingHours, start: e.target.value }
+                      })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Closing Time</label>
-                  <input
-                    type="time"
-                    value={officeForm.operatingHours.end}
-                    onChange={(e) => setOfficeForm({
-                      ...officeForm,
-                      operatingHours: { ...officeForm.operatingHours, end: e.target.value }
-                    })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type="time"
+                      value={officeForm.operatingHours.end}
+                      onChange={(e) => setOfficeForm({
+                        ...officeForm,
+                        operatingHours: { ...officeForm.operatingHours, end: e.target.value }
+                      })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -605,16 +690,36 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
       {showAvailabilityModal && selectedOffice && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Availability Settings - {selectedOffice.name}
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Configure when partners can book visits at this office
-              </p>
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Availability Settings - {selectedOffice.name}
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Configure when partners can book visits at this office
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAvailabilityModal(false);
+                  setSelectedOffice(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
             <div className="p-6 space-y-6">
+              {/* Error Message */}
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {error}
+                </div>
+              )}
+
               {/* Working Hours */}
               <div>
                 <h4 className="font-medium text-gray-900 mb-3">Working Hours</h4>
@@ -727,14 +832,14 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                       const selectedDate = input.value;
 
                       if (!selectedDate) {
-                        setError('Please select a date');
+                        toast.error('Please select a date.');
                         return;
                       }
 
                       // Check if date is already added
                       const isDuplicate = availabilityForm.blockedDates.some(bd => bd.date === selectedDate);
                       if (isDuplicate) {
-                        setError('This date is already blocked');
+                        toast.error('This date is already blocked.');
                         return;
                       }
 
@@ -747,7 +852,6 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
                         ]
                       }));
                       input.value = '';
-                      setError('');
                     }}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
                   >
@@ -826,7 +930,56 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && officeToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Delete Office Location</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Are you sure you want to delete <span className="font-medium text-gray-700">{officeToDelete.name}</span>? This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-red-700">
+                  <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  All associated data including availability settings and scheduled visits will be removed.
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 rounded-b-xl flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setOfficeToDelete(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteOffice(officeToDelete._id)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                Delete Office
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
+    </>
   );
 };
 

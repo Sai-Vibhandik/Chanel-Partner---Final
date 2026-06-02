@@ -1,23 +1,28 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
 import ExportButton from '../../components/common/ExportButton';
+import { formatCurrency } from '../../utils/currency';
+import { formatTimeStringExport, formatDateExport } from '../../utils/export';
+import Modal, { ModalContent, ModalFooter, ModalButton } from '../../components/common/Modal';
 
 const PartnerManagerVisits = () => {
   const { user } = useAuth();
   const config = sidebarConfig[user?.role] || sidebarConfig.partner_manager;
   const basePath = user?.role === 'company_superadmin' ? '/company/visits' : '/partner-manager/visits';
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [visits, setVisits] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
 
   // Week navigation state
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -37,6 +42,7 @@ const PartnerManagerVisits = () => {
   const [partners, setPartners] = useState([]);
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [officeAvailability, setOfficeAvailability] = useState({}); // Store full availability per office
+  const [availabilityLoading, setAvailabilityLoading] = useState(true);
 
   // Default working hours if no availability set
   const getDefaultWorkingHours = () => ({
@@ -51,16 +57,11 @@ const PartnerManagerVisits = () => {
 
   // Get availability for selected office (or default)
   const getCurrentAvailability = () => {
-    console.log('getCurrentAvailability called - filters.officeId:', filters.officeId);
-    console.log('officeAvailability keys:', Object.keys(officeAvailability));
-
     if (filters.officeId && officeAvailability[filters.officeId]) {
-      console.log('Returning availability for office:', filters.officeId);
       return officeAvailability[filters.officeId];
     }
 
     // Return default if no office selected or no availability set
-    console.log('Returning default availability (no office selected or no availability found)');
     return {
       workingHours: getDefaultWorkingHours(),
       slotDuration: 30,
@@ -160,15 +161,15 @@ const PartnerManagerVisits = () => {
   const exportColumns = [
     { key: 'partner.firstName', header: 'Partner First Name' },
     { key: 'partner.lastName', header: 'Partner Last Name' },
-    { key: 'partner.email', header: 'Partner Email' },
+    { key: 'partner.email', header: 'Partner Email ID' },
     { key: 'property.name', header: 'Property Name' },
     { key: 'visitType', header: 'Visit Type' },
-    { key: 'scheduledDate', header: 'Scheduled Date' },
-    { key: 'scheduledTime', header: 'Scheduled Time' },
+    { key: 'scheduledDate', header: 'Scheduled Date', format: (v) => formatDateExport(v.scheduledDate) },
+    { key: 'scheduledTime', header: 'Scheduled Time', format: (v) => formatTimeStringExport(v.scheduledTime) },
     { key: 'status', header: 'Status' },
-    { key: 'clientInfo.name', header: 'Client Name' },
-    { key: 'clientInfo.email', header: 'Client Email' },
-    { key: 'clientInfo.phone', header: 'Client Phone' }
+    { key: 'clientDetails.name', header: 'Client Name' },
+    { key: 'clientDetails.email', header: 'Client Email ID' },
+    { key: 'clientDetails.phone', header: 'Client Phone' }
   ];
 
   useEffect(() => {
@@ -206,14 +207,11 @@ const PartnerManagerVisits = () => {
       if (filters.visitType) params.append('visitType', filters.visitType);
       if (filters.officeId) params.append('officeId', filters.officeId);
 
-      console.log('Fetching visits with filters:', { officeId: filters.officeId, visitType: filters.visitType, startDate: params.get('startDate'), endDate: params.get('endDate') });
-
       const response = await api.get(`/visits/company?${params.toString()}`);
-      console.log('Visits fetched:', response.data.data.visits?.length || 0, 'visits');
       setVisits(response.data.data.visits || []);
     } catch (err) {
       console.error('Failed to load visits:', err.response?.data || err.message);
-      setError(err.response?.data?.message || 'Failed to load visits');
+      toast.error(err.response?.data?.message || 'Failed to load visits');
     } finally {
       setLoading(false);
     }
@@ -249,6 +247,7 @@ const PartnerManagerVisits = () => {
   // Fetch office availability settings for all offices
   const fetchOfficeAvailability = async () => {
     try {
+      setAvailabilityLoading(true);
       const response = await api.get('/offices/availabilities');
       const availabilities = response.data.data || [];
 
@@ -257,8 +256,14 @@ const PartnerManagerVisits = () => {
       availabilities.forEach(item => {
         const officeId = item.office?._id;
         if (officeId) {
+          // Check if there's custom availability or use default
+          const hasAvailability = item.availability && item.availability.workingHours;
+          const workingHours = hasAvailability
+            ? item.availability.workingHours
+            : getDefaultWorkingHours();
+
           availabilityMap[officeId] = {
-            workingHours: item.availability?.workingHours || getDefaultWorkingHours(),
+            workingHours: workingHours,
             slotDuration: item.availability?.slotDuration || 30,
             bufferTime: item.availability?.bufferTime || 0,
             maxVisitsPerSlot: item.availability?.maxVisitsPerSlot || 3,
@@ -279,10 +284,11 @@ const PartnerManagerVisits = () => {
           };
         }
       });
-      console.log('Office availability loaded:', availabilityMap);
       setOfficeAvailability(availabilityMap);
     } catch (err) {
       console.error('Failed to load office availability:', err);
+    } finally {
+      setAvailabilityLoading(false);
     }
   };
 
@@ -290,12 +296,12 @@ const PartnerManagerVisits = () => {
     try {
       setProcessing(true);
       await api.put(`/visits/${visitId}/approve`);
-      setSuccess('Visit approved successfully');
+      toast.success('Visit approved successfully.');
       fetchVisits();
       fetchStats();
       setSelectedVisit(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to approve visit');
+      toast.error(err.response?.data?.message || 'Failed to approve visit');
     } finally {
       setProcessing(false);
     }
@@ -305,12 +311,12 @@ const PartnerManagerVisits = () => {
     try {
       setProcessing(true);
       await api.put(`/visits/${visitId}/reject`, { reason });
-      setSuccess('Visit rejected');
+      toast.success('Visit rejected successfully.');
       fetchVisits();
       fetchStats();
       setSelectedVisit(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reject visit');
+      toast.error(err.response?.data?.message || 'Failed to reject visit');
     } finally {
       setProcessing(false);
     }
@@ -320,12 +326,12 @@ const PartnerManagerVisits = () => {
     try {
       setProcessing(true);
       await api.put(`/visits/${visitId}/complete`);
-      setSuccess('Visit marked as completed');
+      toast.success('Visit marked as completed successfully.');
       fetchVisits();
       fetchStats();
       setSelectedVisit(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to complete visit');
+      toast.error(err.response?.data?.message || 'Failed to complete visit');
     } finally {
       setProcessing(false);
     }
@@ -427,16 +433,6 @@ const PartnerManagerVisits = () => {
     return texts[status] || status;
   };
 
-  const formatCurrency = (amount, currency = 'INR') => {
-    const symbol = currency === 'INR' ? '₹' : 'AED ';
-    if (amount >= 10000000) {
-      return `${symbol}${(amount / 10000000).toFixed(2)} Cr`;
-    } else if (amount >= 100000) {
-      return `${symbol}${(amount / 100000).toFixed(2)} Lac`;
-    }
-    return `${symbol}${amount?.toLocaleString() || '0'}`;
-  };
-
   const formatTimeDisplay = (time) => {
     if (!time) return '';
     const [hours, minutes] = time.split(':');
@@ -457,31 +453,9 @@ const PartnerManagerVisits = () => {
 
   return (
     <DashboardLayout sidebarLinks={config.links} title="Visit Management" subtitle="Manage partner visits" color={config.color}>
-      {/* Messages */}
-      {error && (
-        <div className="mb-4 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex justify-between items-center text-sm">
-          <span>{error}</span>
-          <button onClick={() => setError('')} className="text-red-700 hover:text-red-900">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex justify-between items-center text-sm">
-          <span>{success}</span>
-          <button onClick={() => setSuccess('')} className="text-green-700 hover:text-green-900">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
             <p className="text-xs sm:text-sm text-gray-500">Pending</p>
             <p className="text-lg sm:text-2xl font-bold text-yellow-600 mt-1">{stats.statusCounts?.pending || 0}</p>
@@ -497,6 +471,14 @@ const PartnerManagerVisits = () => {
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
             <p className="text-xs sm:text-sm text-gray-500">Completed</p>
             <p className="text-lg sm:text-2xl font-bold text-purple-600 mt-1">{stats.statusCounts?.completed || 0}</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
+            <p className="text-xs sm:text-sm text-gray-500">Rejected</p>
+            <p className="text-lg sm:text-2xl font-bold text-red-600 mt-1">{stats.statusCounts?.rejected || 0}</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sm:p-4">
+            <p className="text-xs sm:text-sm text-gray-500">Cancelled</p>
+            <p className="text-lg sm:text-2xl font-bold text-gray-500 mt-1">{stats.statusCounts?.cancelled || 0}</p>
           </div>
         </div>
       )}
@@ -520,9 +502,19 @@ const PartnerManagerVisits = () => {
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             >
               {offices.map(office => (
-                <option key={office._id} value={office._id}>{office.name}</option>
+                <option key={office._id} value={office._id}>
+                  {office.name} {!office.isActive && '(Inactive)'}
+                </option>
               ))}
             </select>
+            {(filters.visitType || filters.officeId) && (
+              <button
+                onClick={() => setFilters({ ...filters, visitType: '', officeId: '' })}
+                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Clear Filters
+              </button>
+            )}
             <ExportButton
               data={visits}
               columns={exportColumns}
@@ -562,6 +554,13 @@ const PartnerManagerVisits = () => {
 
       {/* Slot-based Week View - Scrollable on mobile */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* Availability loading state */}
+        {availabilityLoading && (
+          <div className="p-4 bg-yellow-50 border-b border-yellow-200 text-yellow-800 text-sm flex items-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
+            Loading office availability...
+          </div>
+        )}
         <div className="overflow-x-auto -mx-4 sm:mx-0">
           <div className="min-w-[800px] sm:min-w-full">
             {/* Header Row with Days - Dynamic columns based on number of days */}
@@ -643,7 +642,7 @@ const PartnerManagerVisits = () => {
                           slotVisits.map((visit) => (
                             <div
                               key={visit._id}
-                              onClick={() => setSelectedVisit(visit)}
+                              onClick={() => { setSelectedVisit(visit); }}
                               className={`p-2 rounded-lg cursor-pointer hover:shadow-md transition-shadow mb-1 last:mb-0 border-l-2 ${
                                 visit.visitType === 'virtual'
                                   ? 'border-l-purple-400 bg-purple-50'
@@ -692,6 +691,14 @@ const PartnerManagerVisits = () => {
                 <div className="w-3 h-3 rounded-full bg-green-400"></div>
                 <span className="text-xs text-gray-600">Completed</span>
               </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                <span className="text-xs text-gray-600">Rejected</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-gray-400"></div>
+                <span className="text-xs text-gray-600">Cancelled</span>
+              </div>
               <div className="flex items-center gap-1 ml-2 sm:ml-4">
                 <div className="w-8 border-t border-dashed border-gray-300"></div>
                 <span className="text-xs text-gray-600">Available</span>
@@ -723,11 +730,11 @@ const PartnerManagerVisits = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Visit Details</h3>
                   <p className="text-sm text-gray-500">
-                    {new Date(selectedVisit.scheduledDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} at {selectedVisit.scheduledTime}
+                    {new Date(selectedVisit.scheduledDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} at {formatTimeDisplay(selectedVisit.scheduledTime)}
                   </p>
                 </div>
                 <button
-                  onClick={() => setSelectedVisit(null)}
+                  onClick={() => { setSelectedVisit(null); }}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -804,10 +811,8 @@ const PartnerManagerVisits = () => {
                       {processing ? 'Processing...' : 'Approve'}
                     </button>
                     <button
-                      onClick={() => {
-                        const reason = prompt('Enter rejection reason:');
-                        if (reason) handleRejectVisit(selectedVisit._id, reason);
-                      }}
+                      onClick={() => setShowRejectModal(true)}
+                      disabled={processing}
                       className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                     >
                       Reject
@@ -834,6 +839,57 @@ const PartnerManagerVisits = () => {
           </div>
         </div>
       )}
+
+      {/* Reject Modal */}
+      <Modal
+        isOpen={showRejectModal}
+        onClose={() => {
+          setShowRejectModal(false);
+          setRejectReason('');
+        }}
+        title="Reject Visit"
+        size="sm"
+      >
+        <ModalContent>
+          <p className="text-gray-600 mb-4">
+            Please provide a reason for rejecting this visit.
+          </p>
+          <textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Enter rejection reason..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+            rows={4}
+            autoFocus
+          />
+        </ModalContent>
+        <ModalFooter>
+          <ModalButton
+            onClick={() => {
+              setShowRejectModal(false);
+              setRejectReason('');
+            }}
+            variant="secondary"
+          >
+            Cancel
+          </ModalButton>
+          <ModalButton
+            onClick={() => {
+              if (!rejectReason.trim()) {
+                toast.error('Please enter a rejection reason');
+                return;
+              }
+              handleRejectVisit(selectedVisit._id, rejectReason.trim());
+              setShowRejectModal(false);
+              setRejectReason('');
+            }}
+            variant="danger"
+            disabled={processing || !rejectReason.trim()}
+          >
+            {processing ? 'Rejecting...' : 'Reject Visit'}
+          </ModalButton>
+        </ModalFooter>
+      </Modal>
 
       {/* Loading Overlay */}
       {loading && (

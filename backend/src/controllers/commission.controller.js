@@ -4,8 +4,12 @@ import Property from '../models/Property.js';
 import PartnerCompany from '../models/PartnerCompany.js';
 import Company from '../models/Company.js';
 import User from '../models/User.js';
+import Visit from '../models/Visit.js';
 import { ApiError } from '../middlewares/error.middleware.js';
 import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
+import { sendVisitCancelledEmail, sendCommissionCreatedEmail, sendCommissionApprovedEmail, sendCommissionPaidEmail, sendCommissionCancelledEmail } from '../services/email.service.js';
+import { checkAllRequiredAgreementsSigned, getPendingAgreementNames } from '../utils/agreementValidation.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
 // Default tier percentages (what % of property's base commission each tier gets)
 // Example: If property has 5% base commission, Gold tier (50%) gets 2.5%
@@ -106,6 +110,21 @@ export const createCommission = async (req, res, next) => {
       throw new ApiError(400, 'Partnership is not active');
     }
 
+    // Check if all required agreements are signed
+    const agreementCheck = await checkAllRequiredAgreementsSigned(
+      partnership._id,
+      partnership.companyId
+    );
+
+    if (!agreementCheck.allSigned) {
+      const pendingNames = getPendingAgreementNames(agreementCheck.pendingAgreements);
+      throw new ApiError(
+        400,
+        `Partner has not signed all required agreements. Pending: ${pendingNames}. ` +
+        `Please ensure the partner signs all agreements before creating a commission.`
+      );
+    }
+
     // Verify property exists and belongs to company
     const property = await Property.findById(propertyId);
     if (!property) {
@@ -198,6 +217,51 @@ export const createCommission = async (req, res, next) => {
     property.commissionId = commission._id;
     await property.save();
 
+    // Cancel any pending/approved visits for this property and notify partners
+    const affectedVisits = await Visit.find({
+      property: propertyId,
+      status: { $in: ['pending', 'approved'] }
+    }).populate('partner', 'firstName lastName email');
+
+    if (affectedVisits.length > 0) {
+      console.log(`📧 Commission created: Cancelling ${affectedVisits.length} visits for sold property`);
+      const cancellationReason = 'This property has been sold and is no longer available for visits.';
+
+      // Get company info for email
+      const company = await Company.findById(property.companyId);
+
+      for (const visit of affectedVisits) {
+        // Update visit status
+        visit.status = 'cancelled';
+        visit.cancellationReason = cancellationReason;
+        await visit.save();
+
+        // Skip if no partner
+        if (!visit.partner) continue;
+
+        // Create in-app notification
+        createNotification({
+          recipientId: visit.partner._id,
+          type: 'visit_cancelled',
+          title: 'Visit Cancelled',
+          message: `Your visit to "${property.name}" on ${new Date(visit.scheduledDate).toLocaleDateString()} has been cancelled. ${cancellationReason}`,
+          data: {
+            visitId: visit._id,
+            propertyId: propertyId,
+            companyId: req.user.companyId
+          },
+          link: '/partner/visits'
+        }).catch(err => console.error('Failed to create visit cancellation notification:', err));
+
+        // Send email notification
+        if (visit.partner.email) {
+          sendVisitCancelledEmail(visit, visit.partner, property, company, cancellationReason).catch(err => {
+            console.error('Failed to send visit cancellation email:', err);
+          });
+        }
+      }
+    }
+
     // Notify partner about new commission
     const formattedAmount = finalCommissionData.isFixed
       ? `${currency === 'INR' ? '₹' : 'AED '}${finalCommissionData.fixedAmount.toLocaleString()} (Fixed)`
@@ -218,12 +282,40 @@ export const createCommission = async (req, res, next) => {
       console.error('Failed to create commission notification:', err.message);
     });
 
+    // Send email notification to partner about new commission
+    try {
+      const partnerUser = await User.findById(partnerId);
+      if (partnerUser && partnerUser.email) {
+        await sendCommissionCreatedEmail(partnerUser, commission, property, company);
+        console.log('📧 Commission created email sent to partner:', partnerUser.email);
+      }
+    } catch (emailErr) {
+      console.error('Failed to send commission created email:', emailErr.message);
+    }
+
     // Populate for response
     await commission.populate([
       { path: 'partner', select: 'firstName lastName email phone' },
       { path: 'property', select: 'name type location pricing' },
       { path: 'partnershipId', select: 'tier status' }
     ]);
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: req.user.companyId,
+      action: ActionTypes.COMMISSION_CREATED,
+      resourceType: ResourceTypes.COMMISSION,
+      resourceId: commission._id,
+      resourceTitle: `Commission for ${property.name}`,
+      details: {
+        propertyName: property.name,
+        partnerName: `${commission.partner?.firstName || ''} ${commission.partner?.lastName || ''}`,
+        amount: finalCommissionData.calculatedAmount,
+        currency: currency
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(201).json({
       success: true,
@@ -324,7 +416,7 @@ export const getCommissionStats = async (req, res, next) => {
       { $match: { companyId: companyId } },
       {
         $group: {
-          _id: { status: '$status', currency: '$commission.currency' },
+          _id: { status: '$status', currency: { $ifNull: ['$commission.currency', 'INR'] } },
           count: { $sum: 1 },
           totalAmount: { $sum: '$commission.calculatedAmount' }
         }
@@ -345,7 +437,7 @@ export const getCommissionStats = async (req, res, next) => {
       },
       {
         $group: {
-          _id: '$commission.currency',
+          _id: { $ifNull: ['$commission.currency', 'INR'] },
           monthlyPaidAmount: { $sum: '$commission.calculatedAmount' },
           monthlyPaidCount: { $sum: 1 }
         }
@@ -387,8 +479,8 @@ export const getCommissionStats = async (req, res, next) => {
       }
     ]);
 
-    // Get unique currencies
-    const activeCurrencies = await Commission.distinct('commission.currency', { companyId: companyId });
+    // Get unique currencies (filter out null/undefined values)
+    const activeCurrencies = (await Commission.distinct('commission.currency', { companyId: companyId })).filter(c => c);
     const currencies = activeCurrencies.length > 0 ? activeCurrencies : ['INR'];
 
     // Format stats by currency
@@ -589,6 +681,19 @@ export const approveCommission = async (req, res, next) => {
       console.error('Failed to create commission approval notification:', err.message);
     });
 
+    // Send email notification to partner about commission approval
+    try {
+      const partnerUser = await User.findById(commission.partner);
+      const property = await Property.findById(commission.property);
+      const company = await Company.findById(commission.companyId);
+      if (partnerUser && partnerUser.email && property) {
+        await sendCommissionApprovedEmail(partnerUser, commission, property, company);
+        console.log('📧 Commission approved email sent to partner:', partnerUser.email);
+      }
+    } catch (emailErr) {
+      console.error('Failed to send commission approved email:', emailErr.message);
+    }
+
     await commission.populate([
       { path: 'partner', select: 'firstName lastName email phone' },
       { path: 'property', select: 'name type location pricing' },
@@ -596,6 +701,24 @@ export const approveCommission = async (req, res, next) => {
       { path: 'approval.approvedBy', select: 'firstName lastName' },
       { path: 'approval.override.overriddenBy', select: 'firstName lastName' }
     ]);
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: req.user.companyId,
+      action: ActionTypes.COMMISSION_APPROVED,
+      resourceType: ResourceTypes.COMMISSION,
+      resourceId: commission._id,
+      resourceTitle: `Commission for ${commission.property?.name || 'Property'}`,
+      details: {
+        propertyName: commission.property?.name,
+        partnerName: `${commission.partner?.firstName || ''} ${commission.partner?.lastName || ''}`,
+        amount: commission.commission.calculatedAmount,
+        currency: commission.commission.currency,
+        overridden: !!overrideData
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
@@ -681,7 +804,38 @@ export const markAsPaid = async (req, res, next) => {
       }).catch(err => {
         console.error('Failed to create commission paid notification:', err.message);
       });
+
+      // Send email notification to partner about commission payment
+      try {
+        const partnerUser = await User.findById(commission.partner._id);
+        const property = await Property.findById(commission.property?._id);
+        const company = await Company.findById(commission.companyId);
+        if (partnerUser && partnerUser.email && property) {
+          await sendCommissionPaidEmail(partnerUser, commission, property, company);
+          console.log('📧 Commission paid email sent to partner:', partnerUser.email);
+        }
+      } catch (emailErr) {
+        console.error('Failed to send commission paid email:', emailErr.message);
+      }
     }
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: req.user.companyId,
+      action: ActionTypes.COMMISSION_PAID,
+      resourceType: ResourceTypes.COMMISSION,
+      resourceId: commission._id,
+      resourceTitle: `Commission for ${commission.property?.name || 'Property'}`,
+      details: {
+        propertyName: commission.property?.name,
+        partnerName: `${commission.partner?.firstName || ''} ${commission.partner?.lastName || ''}`,
+        amount: commission.commission.calculatedAmount,
+        currency: commission.commission.currency,
+        paymentMethod: paymentMethod || 'bank_transfer'
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
@@ -700,10 +854,25 @@ export const markAsPaid = async (req, res, next) => {
  */
 export const cancelCommission = async (req, res, next) => {
   try {
-    const { reason } = req.body || {};
+    // Ensure req.body exists
+    const body = req.body || {};
+    const reason = typeof body.reason === 'string' ? body.reason : '';
 
-    if (!reason) {
-      throw new ApiError(400, 'Cancellation reason is required');
+    // Check for valid reason
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cancellation reason is required'
+      });
+    }
+
+    // Check max length
+    if (trimmedReason.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reason cannot exceed 500 characters'
+      });
     }
 
     const commission = await Commission.findById(req.params.id);
@@ -722,9 +891,28 @@ export const cancelCommission = async (req, res, next) => {
     }
 
     commission.status = 'cancelled';
-    commission.notes = `${commission.notes || ''}\n[Cancellation] ${reason}`.trim();
+    commission.notes = `${commission.notes || ''}\n[Cancellation] ${trimmedReason}`.trim();
     commission.updatedBy = req.user._id;
     await commission.save();
+
+    // Revert property status back to active if commission was for a sold property
+    if (commission.property) {
+      const property = await Property.findById(commission.property);
+      if (property && property.status === 'sold_out' && property.commissionId?.toString() === commission._id.toString()) {
+        property.status = 'active';
+        property.soldAt = null;
+        property.soldBy = null;
+        property.salePrice = null;
+        property.commissionId = null;
+        await property.save();
+        console.log(`📧 Commission cancelled: Property ${property.name} status reverted to active`);
+      }
+    }
+
+    // Notify partner about commission cancellation
+    const formattedAmount = commission.commission?.calculatedAmount
+      ? `${commission.commission.currency === 'INR' ? '₹' : 'AED '}${commission.commission.calculatedAmount.toLocaleString()}`
+      : 'Commission';
 
     await commission.populate([
       { path: 'partner', select: 'firstName lastName email phone' },
@@ -732,9 +920,57 @@ export const cancelCommission = async (req, res, next) => {
       { path: 'partnershipId', select: 'tier status' }
     ]);
 
+    const property = commission.property;
+
+    createNotification({
+      recipientId: commission.partner._id || commission.partner,
+      type: 'commission_cancelled',
+      title: 'Commission Cancelled',
+      message: `Your commission of ${formattedAmount} for "${property?.name || 'Property'}" has been cancelled. Reason: ${trimmedReason}`,
+      data: {
+        commissionId: commission._id,
+        propertyId: commission.property,
+        companyId: commission.companyId
+      },
+      link: '/partner/commissions'
+    }).catch(err => {
+      console.error('Failed to create commission cancellation notification:', err.message);
+    });
+
+    // Send email notification to partner about commission cancellation
+    try {
+      const partnerUser = await User.findById(commission.partner._id || commission.partner);
+      const company = await Company.findById(commission.companyId);
+      if (partnerUser && partnerUser.email && property) {
+        await sendCommissionCancelledEmail(partnerUser, commission, property, company, trimmedReason).catch(err => {
+          console.error('Failed to send commission cancellation email:', err.message);
+        });
+      }
+    } catch (emailErr) {
+      console.error('Failed to send commission cancellation email:', emailErr.message);
+    }
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: commission.companyId,
+      action: ActionTypes.COMMISSION_CANCELLED,
+      resourceType: ResourceTypes.COMMISSION,
+      resourceId: commission._id,
+      resourceTitle: `Commission for ${property?.name || 'Property'}`,
+      details: {
+        propertyName: property?.name,
+        partnerName: `${commission.partner?.firstName || ''} ${commission.partner?.lastName || ''}`,
+        amount: commission.commission?.calculatedAmount,
+        currency: commission.commission?.currency,
+        reason: trimmedReason
+      },
+      ...getRequestMetadata(req)
+    });
+
     res.status(200).json({
       success: true,
-      message: 'Commission cancelled',
+      message: 'Commission cancelled and property status reverted',
       data: { commission }
     });
   } catch (error) {
@@ -863,7 +1099,7 @@ export const getCommissionReports = async (req, res, next) => {
       { $match: { companyId } },
       {
         $group: {
-          _id: { status: '$status', currency: '$commission.currency' },
+          _id: { status: '$status', currency: { $ifNull: ['$commission.currency', 'INR'] } },
           count: { $sum: 1 },
           amount: { $sum: '$commission.calculatedAmount' }
         }
@@ -891,7 +1127,7 @@ export const getCommissionReports = async (req, res, next) => {
       { $match: { companyId } },
       {
         $group: {
-          _id: { tier: '$commission.partnerTier', currency: '$commission.currency' },
+          _id: { tier: '$commission.partnerTier', currency: { $ifNull: ['$commission.currency', 'INR'] } },
           count: { $sum: 1 },
           totalAmount: { $sum: '$commission.calculatedAmount' },
           paidAmount: {
@@ -925,7 +1161,7 @@ export const getCommissionReports = async (req, res, next) => {
       { $match: { companyId } },
       {
         $group: {
-          _id: '$commission.currency',
+          _id: { $ifNull: ['$commission.currency', 'INR'] },
           count: { $sum: 1 },
           amount: { $sum: '$commission.calculatedAmount' }
         }
@@ -945,7 +1181,7 @@ export const getCommissionReports = async (req, res, next) => {
           _id: {
             year: { $year: '$createdAt' },
             month: { $month: '$createdAt' },
-            currency: '$commission.currency'
+            currency: { $ifNull: ['$commission.currency', 'INR'] }
           },
           count: { $sum: 1 },
           totalAmount: { $sum: '$commission.calculatedAmount' }
@@ -975,7 +1211,7 @@ export const getCommissionReports = async (req, res, next) => {
       { $match: { companyId } },
       {
         $group: {
-          _id: { partner: '$partner', currency: '$commission.currency' },
+          _id: { partner: '$partner', currency: { $ifNull: ['$commission.currency', 'INR'] } },
           totalCommission: { $sum: '$commission.calculatedAmount' },
           paidCommission: {
             $sum: {
@@ -1055,9 +1291,29 @@ export const getCommissionReports = async (req, res, next) => {
       }
     });
 
-    // Get active currencies
-    const activeCurrencies = byCurrency.map(c => c._id).filter(Boolean);
-    if (activeCurrencies.length === 0) activeCurrencies.push('INR');
+    // Get active currencies from both byCurrency and byStatusRaw to ensure we don't miss any
+    const currenciesFromStatus = byStatusRaw.map(s => s._id?.currency).filter(Boolean);
+    const activeCurrencies = [...new Set([...byCurrency.map(c => c._id).filter(Boolean), ...currenciesFromStatus])];
+    if (activeCurrencies.length === 0) {
+      activeCurrencies.push('INR');
+    }
+
+    // Ensure currencyData has entries for all active currencies
+    // If byCurrency didn't return data for a currency, calculate from byStatusRaw
+    activeCurrencies.forEach(currency => {
+      if (!currencyData[currency]) {
+        // Calculate total for this currency from byStatusRaw (sum of all statuses)
+        let totalAmount = 0;
+        let totalCount = 0;
+        byStatusRaw.forEach(s => {
+          if ((s._id?.currency || 'INR') === currency) {
+            totalAmount += s.amount || 0;
+            totalCount += s.count || 0;
+          }
+        });
+        currencyData[currency] = { count: totalCount, amount: totalAmount };
+      }
+    });
 
     // Calculate per-currency status totals
     const statusTotalsByCurrency = {};

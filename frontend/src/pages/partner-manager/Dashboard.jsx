@@ -17,6 +17,7 @@ const PartnerManagerDashboard = () => {
     suspendedPartners: 0,
     tiers: { bronze: 0, silver: 0, gold: 0, platinum: 0 }
   });
+  const [companySettings, setCompanySettings] = useState(null);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
@@ -24,7 +25,17 @@ const PartnerManagerDashboard = () => {
   useEffect(() => {
     fetchStats();
     fetchActivities();
+    fetchCompanySettings();
   }, []);
+
+  const fetchCompanySettings = async () => {
+    try {
+      const response = await api.get(`/companies/${user.companyId}/settings`);
+      setCompanySettings(response.data.data);
+    } catch (error) {
+      console.error('Failed to fetch company settings:', error);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -229,7 +240,7 @@ const PartnerManagerDashboard = () => {
                 <span className="font-semibold text-amber-800">Bronze</span>
               </div>
               <p className="text-2xl font-bold text-amber-900">{stats.tiers.bronze}</p>
-              <p className="text-sm text-amber-600">New partners</p>
+              <p className="text-sm text-amber-600">{companySettings?.settings?.tierPercentages?.bronze || 25}% commission</p>
             </div>
             <div className="p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border border-gray-200">
               <div className="flex items-center gap-2 mb-2">
@@ -237,7 +248,7 @@ const PartnerManagerDashboard = () => {
                 <span className="font-semibold text-gray-800">Silver</span>
               </div>
               <p className="text-2xl font-bold text-gray-900">{stats.tiers.silver}</p>
-              <p className="text-sm text-gray-600">Growing partners</p>
+              <p className="text-sm text-gray-600">{companySettings?.settings?.tierPercentages?.silver || 35}% commission</p>
             </div>
             <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg border border-yellow-200">
               <div className="flex items-center gap-2 mb-2">
@@ -245,7 +256,7 @@ const PartnerManagerDashboard = () => {
                 <span className="font-semibold text-yellow-800">Gold</span>
               </div>
               <p className="text-2xl font-bold text-yellow-900">{stats.tiers.gold}</p>
-              <p className="text-sm text-yellow-600">Experienced</p>
+              <p className="text-sm text-yellow-600">{companySettings?.settings?.tierPercentages?.gold || 50}% commission</p>
             </div>
             <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
               <div className="flex items-center gap-2 mb-2">
@@ -253,7 +264,7 @@ const PartnerManagerDashboard = () => {
                 <span className="font-semibold text-purple-800">Platinum</span>
               </div>
               <p className="text-2xl font-bold text-purple-900">{stats.tiers.platinum}</p>
-              <p className="text-sm text-purple-600">Top performers</p>
+              <p className="text-sm text-purple-600">{companySettings?.settings?.tierPercentages?.platinum || 75}% commission</p>
             </div>
           </div>
         )}

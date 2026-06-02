@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import Company from '../models/Company.js';
 import { ApiError } from '../middlewares/error.middleware.js';
+import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
 /**
  * @desc    Get all partners (Company staff)
@@ -9,7 +10,7 @@ import { ApiError } from '../middlewares/error.middleware.js';
  */
 export const getPartners = async (req, res, next) => {
   try {
-    const { status, tier, search, page = 1, limit = 10 } = req.query;
+    const { status, tier, kycStatus, search, page = 1, limit = 10 } = req.query;
 
     // Build query - filter by company
     const query = { role: 'partner' };
@@ -25,6 +26,9 @@ export const getPartners = async (req, res, next) => {
     }
     if (tier) {
       query['partnerProfile.tier'] = tier;
+    }
+    if (kycStatus) {
+      query['partnerProfile.kycStatus'] = kycStatus;
     }
     if (search) {
       query.$or = [
@@ -136,6 +140,39 @@ export const updatePartnerStatus = async (req, res, next) => {
 
     await partner.save();
 
+    // Determine activity action based on status
+    let action;
+    switch (status) {
+      case 'approved':
+      case 'active':
+        action = ActionTypes.PARTNER_STATUS_ACTIVATED;
+        break;
+      case 'rejected':
+        action = ActionTypes.PARTNER_STATUS_REJECTED;
+        break;
+      case 'suspended':
+        action = ActionTypes.PARTNER_STATUS_SUSPENDED;
+        break;
+      default:
+        action = ActionTypes.PARTNER_STATUS_ACTIVATED;
+    }
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: partner.companyId,
+      action: action,
+      resourceType: ResourceTypes.PARTNER,
+      resourceId: partner._id,
+      resourceTitle: `${partner.firstName} ${partner.lastName}`,
+      details: {
+        partnerEmail: partner.email,
+        newStatus: status,
+        reason: reason || undefined
+      },
+      ...getRequestMetadata(req)
+    });
+
     res.status(200).json({
       success: true,
       message: `Partner status updated to ${status}`,
@@ -179,6 +216,23 @@ export const updatePartnerTier = async (req, res, next) => {
     }
 
     await partner.save();
+
+    // Log activity
+    await logActivity({
+      userId: req.user._id,
+      companyId: partner.companyId,
+      action: ActionTypes.PARTNER_TIER_CHANGED,
+      resourceType: ResourceTypes.PARTNER,
+      resourceId: partner._id,
+      resourceTitle: `${partner.firstName} ${partner.lastName}`,
+      details: {
+        partnerEmail: partner.email,
+        previousTier: previousTier,
+        newTier: tier,
+        reason: reason || undefined
+      },
+      ...getRequestMetadata(req)
+    });
 
     res.status(200).json({
       success: true,
