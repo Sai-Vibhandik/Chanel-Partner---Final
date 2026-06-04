@@ -87,6 +87,8 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
   const buttonColor = companyBranding.buttonColor || primaryColor;
   const headerBg = companyBranding.headerBackgroundColor || primaryColor;
   const footerText = companyBranding.footerText || '';
+  const showLogo = companyBranding.showLogo || false;
+  const logoUrl = companyBranding.logoUrl || '';
 
   // Footer HTML: use custom footer if provided, otherwise use default copyright
   const footerHtml = footerText
@@ -270,10 +272,10 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0;">📅 New Visit Scheduled</h1>
+            <h1 style="color: white; margin: 0;">New Visit Scheduled</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
-            <p>Hello ${data.recipientName},</p>
+            <p>Hello ${data.adminName},</p>
             <p>A new visit has been scheduled. Here are the details:</p>
 
             <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0;">
@@ -286,7 +288,7 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${baseUrl}${data.viewLink}"
+              <a href="${data.loginUrl}"
                  style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
                 View Details
               </a>
@@ -827,6 +829,71 @@ const getEmailTemplate = (type, data, companyBranding = {}) => {
         </body>
         </html>
       `
+    },
+
+    // Subscription expiry reminder
+    subscriptionExpiryReminder: {
+      subject: `${data.daysRemaining === 1 ? '⚠️ Your Subscription Expires Tomorrow!' : '🔔 Your Subscription Expires in 7 Days'} - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Subscription Expiry Reminder</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, ${data.daysRemaining === 1 ? '#ef4444' : '#f59e0b'} 0%, ${data.daysRemaining === 1 ? '#dc2626' : '#d97706'} 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            ${showLogo ? `<img src="${logoUrl}" alt="${companyName}" style="max-width: 150px; height: auto; margin-bottom: 10px;" />` : ''}
+            <h1 style="color: white; margin: 0;">${data.daysRemaining === 1 ? '⏰ Final Reminder!' : '📅 Subscription Reminder'}</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
+            <p>Hello ${data.adminName},</p>
+            <p>This is a friendly reminder that your <strong>${data.planName}</strong> subscription will expire ${data.daysRemaining === 1 ? '<strong style="color: #ef4444;">tomorrow</strong>' : 'in <strong style="color: #f59e0b;">7 days</strong>'}.</p>
+
+            <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; border: 2px solid ${data.daysRemaining === 1 ? '#ef4444' : '#f59e0b'};">
+              <h3 style="margin-top: 0; color: ${data.daysRemaining === 1 ? '#ef4444' : '#f59e0b'};">Subscription Details</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold; color: #6b7280;">Plan:</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${data.planName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #6b7280;">Expiry Date:</td>
+                  <td style="padding: 10px;">${data.expiryDate}</td>
+                </tr>
+              </table>
+            </div>
+
+            ${data.daysRemaining === 1 ? `
+            <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0; font-weight: bold; color: #991b1b;">⚠️ Action Required Today!</p>
+              <p style="margin: 5px 0 0 0;">Your subscription will expire tomorrow. Renew now to ensure uninterrupted access to all features.</p>
+            </div>
+            ` : `
+            <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <p style="margin: 0; font-weight: bold; color: #92400e;">📅 Don't Wait Until the Last Minute</p>
+              <p style="margin: 5px 0 0 0;">Renew your subscription early to avoid any service interruptions.</p>
+            </div>
+            `}
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.loginUrl}"
+                 style="background: ${buttonColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                Manage Subscription
+              </a>
+            </div>
+
+            <p style="color: #6b7280; font-size: 14px;">
+              If you have any questions about your subscription, please contact our support team.
+            </p>
+          </div>
+          <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+            ${footerHtml}
+          </div>
+        </body>
+        </html>
+      `
     }
   };
 
@@ -943,7 +1010,7 @@ export const sendVerificationEmail = async (user, token) => {
     companyId: user.companyId?._id || user.companyId || null,
     userId: user._id,
     data: {
-      userName: user.firstName,
+      userName: user.firstName || user.name || 'User',
       token,
       companyName: user.companyId?.name || 'Channel Partner Portal'
     }
@@ -960,7 +1027,7 @@ export const sendPasswordResetEmail = async (user, token) => {
     companyId: user.companyId?._id || user.companyId || null,
     userId: user._id,
     data: {
-      userName: user.firstName,
+      userName: user.firstName || user.name || 'User',
       token
     }
   });
@@ -993,7 +1060,7 @@ export const sendNewPropertyEmail = async (partners, property, company) => {
       companyId: company?._id || null,
       userId: partner._id,
       data: {
-        partnerName: partner.firstName,
+        partnerName: partner.firstName || 'Partner',
         propertyName: property.name,
         propertyType: property.type,
         propertyLocation: property.location?.city,
@@ -1035,7 +1102,7 @@ export const sendPartnershipApprovedEmail = async (partner, company, tier, commi
     companyId: company?._id || null,
     userId: partner._id,
     data: {
-      partnerName: partner.firstName,
+      partnerName: partner.firstName || 'Partner',
       companyName: company?.name,
       tier: validTier,
       commissionRate: effectiveCommissionRate
@@ -1071,7 +1138,7 @@ export const sendVisitApprovedEmail = async (visit, partner, property, company, 
     companyId: company?._id || null,
     userId: partner._id,
     data: {
-      partnerName: partner.firstName,
+      partnerName: partner.firstName || 'Partner',
       propertyName: property.name,
       propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
       visitDate: formatDate(visit.scheduledDate),
@@ -1115,7 +1182,7 @@ export const sendVisitRejectedEmail = async (visit, partner, property, company, 
     companyId: company?._id || null,
     userId: partner._id,
     data: {
-      partnerName: partner.firstName,
+      partnerName: partner.firstName || 'Partner',
       propertyName: property.name,
       propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
       visitDate: formatDate(visit.scheduledDate),
@@ -1150,11 +1217,11 @@ export const sendTeamInviteEmail = async (user, temporaryPassword, company, invi
     companyId: company?._id || null,
     userId: user._id,
     data: {
-      userName: user.firstName,
+      userName: user.firstName || user.name || 'User',
       email: user.email,
       temporaryPassword,
       roleName: roleNames[user.role] || user.role,
-      inviterName: inviter ? `${inviter.firstName} ${inviter.lastName}` : 'The team',
+      inviterName: inviter ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim() || 'The team' : 'The team',
       companyName: company?.name || 'Channel Partner Portal'
     }
   });
@@ -1191,7 +1258,7 @@ export const sendVisitCancelledEmail = async (visit, partner, property, company,
     companyId: company?._id || null,
     userId: partner._id,
     data: {
-      partnerName: partner.firstName,
+      partnerName: partner.firstName || 'Partner',
       propertyName: property.name,
       propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
       visitDate: formatDate(visit.scheduledDate),
@@ -1225,7 +1292,7 @@ export const sendPartnerVisitCancelledEmail = async (adminUser, visit, partner, 
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  const partnerName = `${partner.firstName} ${partner.lastName}`;
+  const partnerName = `${partner.firstName || ''} ${partner.lastName || ''}`.trim() || 'Partner';
 
   return sendEmail({
     to: adminUser.email,
@@ -1233,7 +1300,7 @@ export const sendPartnerVisitCancelledEmail = async (adminUser, visit, partner, 
     companyId: company?._id || null,
     userId: adminUser._id,
     data: {
-      adminName: adminUser.firstName,
+      adminName: adminUser.firstName || adminUser.name || 'Admin',
       partnerName: partnerName,
       propertyName: property.name,
       propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
@@ -1268,7 +1335,7 @@ export const sendCommissionCreatedEmail = async (partner, commission, property, 
     companyId: company?._id || null,
     userId: partner._id,
     data: {
-      partnerName: partner.firstName,
+      partnerName: partner.firstName || 'Partner',
       propertyName: property.name,
       commissionAmount: formattedAmount,
       commissionDetails: commissionDetails,
@@ -1293,9 +1360,21 @@ export const sendCommissionApprovedEmail = async (partner, commission, property,
   const formattedAmount = `${currencySymbol}${amount.toLocaleString()}`;
 
   // Check if amount was overridden
-  const overrideInfo = commission.approval?.override?.isOverridden
-    ? `<p style="color: #f59e0b;"><strong>Note:</strong> The commission amount was adjusted from ${currencySymbol}${commission.approval.override.originalAmount?.toLocaleString() || 'N/A'} to ${formattedAmount}.</p>`
-    : '';
+  let overrideInfo = '';
+  if (commission.approval?.override?.isOverridden) {
+    const originalAmount = commission.approval.override.originalAmount?.toLocaleString() || 'N/A';
+    const reason = commission.approval.override.reason || '';
+    overrideInfo = `
+      <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 15px 0; border-radius: 5px;">
+        <p style="margin: 0; color: #92400e; font-weight: bold;">⚠️ Commission Adjusted</p>
+        <p style="margin: 5px 0 0 0; color: #78350f;">
+          Original Amount: <del>${currencySymbol}${originalAmount}</del><br>
+          Adjusted Amount: <strong>${formattedAmount}</strong>
+        </p>
+        ${reason ? `<p style="margin: 10px 0 0 0; color: #78350f;"><strong>Reason:</strong> ${reason}</p>` : ''}
+      </div>
+    `;
+  }
 
   return sendEmail({
     to: partner.email,
@@ -1303,7 +1382,7 @@ export const sendCommissionApprovedEmail = async (partner, commission, property,
     companyId: company?._id || null,
     userId: partner._id,
     data: {
-      partnerName: partner.firstName,
+      partnerName: partner.firstName || 'Partner',
       propertyName: property.name,
       commissionAmount: formattedAmount,
       overrideInfo: overrideInfo,
@@ -1343,7 +1422,7 @@ export const sendCommissionPaidEmail = async (partner, commission, property, com
     companyId: company?._id || null,
     userId: partner._id,
     data: {
-      partnerName: partner.firstName,
+      partnerName: partner.firstName || 'Partner',
       propertyName: property.name,
       commissionAmount: formattedAmount,
       paymentMethod: paymentMethod,
@@ -1375,12 +1454,62 @@ export const sendCommissionCancelledEmail = async (partner, commission, property
     companyId: company?._id || null,
     userId: partner._id,
     data: {
-      partnerName: partner.firstName,
+      partnerName: partner.firstName || 'Partner',
       propertyName: property.name,
       commissionAmount: formattedAmount,
       reason: reason || 'No reason provided',
       companyName: company?.name || 'Channel Partner Portal',
       loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/partner/commissions`
+    }
+  });
+};
+
+/**
+ * Send visit scheduled notification email to company admins/partner managers
+ * when a partner books a visit
+ */
+export const sendVisitScheduledEmail = async (adminUser, visit, partner, property, company, officeLocation = null) => {
+  const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  return sendEmail({
+    to: adminUser.email,
+    type: 'visitScheduled',
+    companyId: company?._id || null,
+    userId: adminUser._id,
+    data: {
+      adminName: adminUser.firstName || adminUser.name || 'Admin',
+      partnerName: `${partner.firstName || ''} ${partner.lastName || ''}`.trim() || 'Partner',
+      partnerEmail: partner.email,
+      partnerPhone: partner.phone || 'N/A',
+      propertyName: property.name,
+      propertyLocation: property.location?.city || property.location?.emirate || property.location?.address || 'N/A',
+      visitDate: formatDate(visit.scheduledDate),
+      visitTime: formatTime(visit.scheduledTime),
+      visitType: visit.visitType === 'site' ? 'Site Visit' : 'Office Visit',
+      officeName: officeLocation?.name || null,
+      officeAddress: officeLocation?.address || null,
+      clientName: visit.clientDetails?.name || 'N/A',
+      clientPhone: visit.clientDetails?.phone || 'N/A',
+      clientEmail: visit.clientDetails?.email || 'N/A',
+      partnerNotes: visit.partnerNotes || null,
+      companyName: company?.name || 'Channel Partner Portal',
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/partner-manager/visits`
     }
   });
 };
@@ -1399,5 +1528,6 @@ export default {
   sendCommissionCreatedEmail,
   sendCommissionApprovedEmail,
   sendCommissionPaidEmail,
-  sendCommissionCancelledEmail
+  sendCommissionCancelledEmail,
+  sendVisitScheduledEmail
 };

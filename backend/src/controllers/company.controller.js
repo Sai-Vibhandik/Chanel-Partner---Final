@@ -67,7 +67,8 @@ export const getCompanies = async (req, res, next) => {
  */
 export const getCompany = async (req, res, next) => {
   try {
-    const company = await Company.findById(req.params.id);
+    const company = await Company.findById(req.params.id)
+      .populate('subscription.planId', 'name displayName price currency billingPeriod');
 
     if (!company) {
       throw new ApiError(404, 'Company not found');
@@ -88,6 +89,20 @@ export const getCompany = async (req, res, next) => {
       role: { $ne: 'partner' }
     });
 
+    // Get subscription history
+    const Subscription = (await import('../models/Subscription.js')).default;
+    const subscriptionHistory = await Subscription.find({ companyId: company._id })
+      .populate('planId', 'name displayName price currency billingPeriod')
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    // Get current active subscription details
+    let currentSubscription = null;
+    if (company.subscription?.subscriptionId) {
+      currentSubscription = await Subscription.findById(company.subscription.subscriptionId)
+        .populate('planId', 'name displayName price currency billingPeriod');
+    }
+
     res.status(200).json({
       success: true,
       data: {
@@ -95,7 +110,9 @@ export const getCompany = async (req, res, next) => {
         stats: {
           totalPartners,
           totalStaff
-        }
+        },
+        subscriptionHistory,
+        currentSubscription
       }
     });
   } catch (error) {
@@ -380,14 +397,7 @@ export const getActiveCompaniesForRegistration = async (req, res, next) => {
     // Build query - only active companies with active subscriptions accepting partners
     const query = {
       status: 'active',
-      // Subscription must be active or trial (and not expired)
-      $or: [
-        { 'subscription.status': 'active' },
-        {
-          'subscription.status': 'trial',
-          'subscription.trialEndsAt': { $gt: now }
-        }
-      ]
+      'subscription.status': 'active'
     };
 
     if (search) {
@@ -428,9 +438,32 @@ export const getCompanyStats = async (req, res, next) => {
     const totalCompanies = await Company.countDocuments();
     const activeCompanies = await Company.countDocuments({ status: 'active' });
     const pendingCompanies = await Company.countDocuments({ status: 'pending' });
+    const pendingVerificationCompanies = await Company.countDocuments({ status: 'pending_verification' });
     const suspendedCompanies = await Company.countDocuments({ status: 'suspended' });
 
-    // Get companies by region
+    // Get companies by region - India only, Dubai only, and Both
+    // India only: has 'india' but NOT 'dubai'
+    const indiaOnly = await Company.countDocuments({
+      $and: [
+        { regions: 'india' },
+        { regions: { $ne: 'dubai' } }
+      ]
+    });
+
+    // Dubai only: has 'dubai' but NOT 'india'
+    const dubaiOnly = await Company.countDocuments({
+      $and: [
+        { regions: 'dubai' },
+        { regions: { $ne: 'india' } }
+      ]
+    });
+
+    // Companies operating in both regions
+    const bothRegions = await Company.countDocuments({
+      regions: { $all: ['india', 'dubai'] }
+    });
+
+    // Companies with India in their regions (for backward compatibility)
     const indiaCompanies = await Company.countDocuments({ regions: 'india' });
     const dubaiCompanies = await Company.countDocuments({ regions: 'dubai' });
 
@@ -443,7 +476,7 @@ export const getCompanyStats = async (req, res, next) => {
     const recentCompanies = await Company.find()
       .sort({ createdAt: -1 })
       .limit(5)
-      .select('name email status createdAt');
+      .select('name email status regions createdAt');
 
     res.status(200).json({
       success: true,
@@ -452,11 +485,15 @@ export const getCompanyStats = async (req, res, next) => {
           total: totalCompanies,
           active: activeCompanies,
           pending: pendingCompanies,
+          pendingVerification: pendingVerificationCompanies,
           suspended: suspendedCompanies
         },
         byRegion: {
           india: indiaCompanies,
-          dubai: dubaiCompanies
+          dubai: dubaiCompanies,
+          indiaOnly: indiaOnly,
+          dubaiOnly: dubaiOnly,
+          both: bothRegions
         },
         bySubscription: subscriptionStats.reduce((acc, item) => {
           acc[item._id] = item.count;
@@ -512,9 +549,8 @@ export const getSubscriptionStatus = async (req, res, next) => {
       success: true,
       data: {
         isActive,
-        status: company.subscription?.status || 'trial',
+        status: company.subscription?.status || 'inactive',
         plan: company.subscription?.planId || null,
-        trialEndsAt: company.subscription?.trialEndsAt,
         currentPeriodEnd: company.subscription?.currentPeriodEnd
       }
     });

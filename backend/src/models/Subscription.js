@@ -63,14 +63,6 @@ const subscriptionSchema = new mongoose.Schema(
       type: Date
     },
 
-    // Trial
-    trialStart: {
-      type: Date
-    },
-    trialEnd: {
-      type: Date
-    },
-
     // Payment Details
     amount: {
       type: Number,
@@ -158,13 +150,6 @@ subscriptionSchema.virtual('remainingDays').get(function() {
   const end = new Date(this.currentPeriodEnd);
   const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
   return diff > 0 ? diff : 0;
-});
-
-// Virtual for is in trial
-subscriptionSchema.virtual('isInTrial').get(function() {
-  if (!this.trialStart || !this.trialEnd) return false;
-  const now = new Date();
-  return now >= new Date(this.trialStart) && now <= new Date(this.trialEnd);
 });
 
 // Method to check if subscription is active

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
 
 const Login = () => {
@@ -15,6 +16,7 @@ const Login = () => {
   const [resendSuccess, setResendSuccess] = useState('');
 
   const { login } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
 
   // Helper to extract validation errors from API response
@@ -59,6 +61,9 @@ const Login = () => {
 
     try {
       const { user } = await login(email, password);
+
+      // Show success message
+      toast.success('Login successful! Welcome back.');
 
       // Redirect based on role
       const rolePaths = {
@@ -215,7 +220,7 @@ const Login = () => {
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email ID<span className="text-red-500">*</span>
+                Email ID<span className="text-red-500 align-super">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -226,7 +231,7 @@ const Login = () => {
                 <input
                   id="email"
                   name="email"
-                  type="email"
+                  type="text"
                   autoComplete="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.email; return n; }); }}
@@ -239,7 +244,7 @@ const Login = () => {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password<span className="text-red-500">*</span>
+                Password<span className="text-red-500 align-super">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -326,29 +331,6 @@ const Login = () => {
               >
                 Register as Partner
               </Link>
-            </div>
-          </div>
-
-          {/* Demo Accounts */}
-          <div className="mt-8 p-4 bg-gray-100 rounded-xl">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Demo Accounts</p>
-            <div className="space-y-2 text-xs text-gray-600">
-              {/* <div className="flex justify-between items-center">
-                <span className="font-medium text-gray-700">Platform Admin:</span>
-                <span>admin@platform.com</span>
-              </div> */}
-              <div className="flex justify-between items-center">
-                <span className="font-medium text-gray-700">Company Admin:</span>
-                <span>admin@abcdevelopers.com</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="font-medium text-gray-700">Partner:</span>
-                <span>partner@example.com</span>
-              </div>
-              <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                <span className="font-medium text-gray-700">Password:</span>
-                <span className="font-mono">Admin@123456</span>
-              </div>
             </div>
           </div>
         </div>

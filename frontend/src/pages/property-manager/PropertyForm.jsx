@@ -154,8 +154,33 @@ const PropertyForm = () => {
       const savedImages = localStorage.getItem(DRAFT_IMAGES_KEY);
       const savedBrochure = localStorage.getItem(DRAFT_BROCHURE_KEY);
       const savedFloorPlans = localStorage.getItem(DRAFT_FLOORPLANS_KEY);
+
+      if (savedForm) {
+        const parsedForm = JSON.parse(savedForm);
+
+        // Normalize approvedBy values to match backend enum
+        if (parsedForm.indiaDetails?.approvedBy) {
+          const approvedByMap = {
+            'Bank': 'bank',
+            'Rera': 'rera',
+            'Development Authority': 'developmentauthority',
+            'Township': 'township'
+          };
+          parsedForm.indiaDetails.approvedBy = parsedForm.indiaDetails.approvedBy.map(
+            val => approvedByMap[val] || val
+          );
+        }
+
+        return {
+          form: { ...getInitialFormData(), ...parsedForm },
+          images: savedImages ? JSON.parse(savedImages) : [],
+          brochure: savedBrochure ? JSON.parse(savedBrochure) : null,
+          floorPlans: savedFloorPlans ? JSON.parse(savedFloorPlans) : []
+        };
+      }
+
       return {
-        form: savedForm ? { ...getInitialFormData(), ...JSON.parse(savedForm) } : getInitialFormData(),
+        form: getInitialFormData(),
         images: savedImages ? JSON.parse(savedImages) : [],
         brochure: savedBrochure ? JSON.parse(savedBrochure) : null,
         floorPlans: savedFloorPlans ? JSON.parse(savedFloorPlans) : []
@@ -618,6 +643,7 @@ const PropertyForm = () => {
           brochure: response.data?.data?.property?.brochure,
           floorPlansCount: response.data?.data?.property?.floorPlans?.length || 0
         });
+        toast.success('Property updated successfully.');
         navigate(basePath);
       } else {
         await api.post('/properties', submitData);
@@ -625,6 +651,7 @@ const PropertyForm = () => {
         localStorage.removeItem(DRAFT_IMAGES_KEY);
         localStorage.removeItem(DRAFT_BROCHURE_KEY);
         localStorage.removeItem(DRAFT_FLOORPLANS_KEY);
+        toast.success('Property created successfully.');
         navigate(basePath);
       }
     } catch (err) {
@@ -790,7 +817,7 @@ const PropertyForm = () => {
                 value={formData.description}
                 onChange={handleChange}
                 rows={4}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 resize-y min-h-[100px] max-h-[300px] ${
                   fieldErrors.description ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
                 }`}
                 placeholder="Describe your property..."
@@ -984,7 +1011,7 @@ const PropertyForm = () => {
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   fieldErrors.basePrice ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
                 }`}
-                placeholder="Enter price"
+                placeholder="Enter base price"
               />
               {fieldErrors.basePrice && <p className="text-sm text-red-600 mt-1">{fieldErrors.basePrice}</p>}
             </div>
@@ -1002,7 +1029,7 @@ const PropertyForm = () => {
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   fieldErrors.pricePerSqFt ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
                 }`}
-                placeholder="Per sq ft/m price"
+                placeholder={`Enter price per ${formData.details.areaUnit === 'sqm' ? 'sq m' : 'sq ft'}`}
               />
               {fieldErrors.pricePerSqFt && <p className="text-sm text-red-600 mt-1">{fieldErrors.pricePerSqFt}</p>}
             </div>
@@ -1020,7 +1047,7 @@ const PropertyForm = () => {
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   fieldErrors.bookingAmount ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
                 }`}
-                placeholder="Booking amount"
+                placeholder="Enter booking amount"
               />
               {fieldErrors.bookingAmount && <p className="text-sm text-red-600 mt-1">{fieldErrors.bookingAmount}</p>}
             </div>
@@ -1038,7 +1065,7 @@ const PropertyForm = () => {
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   fieldErrors.maintenanceCharges ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
                 }`}
-                placeholder="Monthly maintenance"
+                placeholder="Enter maintenance charges"
               />
               {fieldErrors.maintenanceCharges && <p className="text-sm text-red-600 mt-1">{fieldErrors.maintenanceCharges}</p>}
             </div>
@@ -1056,7 +1083,7 @@ const PropertyForm = () => {
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   fieldErrors.otherCharges ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
                 }`}
-                placeholder="Other charges"
+                placeholder="Enter other charges"
               />
               {fieldErrors.otherCharges && <p className="text-sm text-red-600 mt-1">{fieldErrors.otherCharges}</p>}
             </div>
@@ -1159,7 +1186,7 @@ const PropertyForm = () => {
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   fieldErrors.builtUpArea ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
                 }`}
-                placeholder="Area"
+                placeholder="Enter built-up area"
               />
               {fieldErrors.builtUpArea && <p className="text-sm text-red-600 mt-1">{fieldErrors.builtUpArea}</p>}
             </div>
@@ -1175,7 +1202,7 @@ const PropertyForm = () => {
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                   fieldErrors.carpetArea ? 'border-red-300 bg-red-50 focus:ring-red-500' : 'border-gray-200 focus:ring-green-500'
                 }`}
-                placeholder="Area"
+                placeholder="Enter carpet area"
               />
               {fieldErrors.carpetArea && <p className="text-sm text-red-600 mt-1">{fieldErrors.carpetArea}</p>}
             </div>
@@ -1305,7 +1332,7 @@ const PropertyForm = () => {
                   value={formData.indiaDetails.reraNumber}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="RERA Registration Number"
+                  placeholder="Enter RERA number"
                 />
               </div>
 
@@ -1317,7 +1344,7 @@ const PropertyForm = () => {
                   value={formData.indiaDetails.reraProjectName}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="RERA Project Name"
+                  placeholder="Enter RERA project name"
                 />
               </div>
 
@@ -1329,7 +1356,7 @@ const PropertyForm = () => {
                   value={formData.indiaDetails.gstNumber}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="GST Number"
+                  placeholder="Enter GST number"
                 />
               </div>
 
@@ -1409,23 +1436,28 @@ const PropertyForm = () => {
                   value={formData.indiaDetails.builderName || ''}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Builder/Developer Name"
+                  placeholder="Enter builder name"
                 />
               </div>
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Approved By</label>
                 <div className="flex flex-wrap gap-4">
-                  {['Bank', 'Rera', 'Development Authority', 'Township'].map(approval => (
-                    <label key={approval} className="flex items-center gap-2 cursor-pointer">
+                  {[
+                    { value: 'bank', label: 'Bank' },
+                    { value: 'rera', label: 'RERA' },
+                    { value: 'developmentauthority', label: 'Development Authority' },
+                    { value: 'township', label: 'Township' }
+                  ].map(approval => (
+                    <label key={approval.value} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={(formData.indiaDetails.approvedBy || []).includes(approval)}
+                        checked={(formData.indiaDetails.approvedBy || []).includes(approval.value)}
                         onChange={(e) => {
                           const current = formData.indiaDetails.approvedBy || [];
                           const updated = e.target.checked
-                            ? [...current, approval]
-                            : current.filter(a => a !== approval);
+                            ? [...current, approval.value]
+                            : current.filter(a => a !== approval.value);
                           setFormData(prev => ({
                             ...prev,
                             indiaDetails: { ...prev.indiaDetails, approvedBy: updated }
@@ -1433,7 +1465,7 @@ const PropertyForm = () => {
                         }}
                         className="rounded border-gray-300 text-green-600 focus:ring-green-500"
                       />
-                      <span className="text-sm text-gray-700 capitalize">{approval.replace(/([A-Z])/g, ' $1').trim()}</span>
+                      <span className="text-sm text-gray-700">{approval.label}</span>
                     </label>
                   ))}
                 </div>
@@ -1453,7 +1485,7 @@ const PropertyForm = () => {
                   value={formData.dubaiDetails.dldPermitNumber}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="DLD Permit Number"
+                  placeholder="Enter DLD permit number"
                 />
               </div>
 
@@ -1465,7 +1497,7 @@ const PropertyForm = () => {
                   value={formData.dubaiDetails.dldPropertyId}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="DLD Property ID"
+                  placeholder="Enter DLD property ID"
                 />
               </div>
 
@@ -1477,7 +1509,7 @@ const PropertyForm = () => {
                   value={formData.dubaiDetails.developerName}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Developer Name"
+                  placeholder="Enter developer name"
                 />
               </div>
 
@@ -1489,7 +1521,7 @@ const PropertyForm = () => {
                   value={formData.dubaiDetails.projectName}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Project Name"
+                  placeholder="Enter project name"
                 />
               </div>
 
@@ -1515,7 +1547,7 @@ const PropertyForm = () => {
                   value={formData.dubaiDetails.titleDeedNumber}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Title Deed Number"
+                  placeholder="Enter title deed number"
                 />
               </div>
 
@@ -1527,7 +1559,7 @@ const PropertyForm = () => {
                   value={formData.dubaiDetails.serviceCharges || ''}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Service charges per sqft"
+                  placeholder="Enter service charges"
                 />
               </div>
 
@@ -1539,7 +1571,7 @@ const PropertyForm = () => {
                   value={formData.dubaiDetails.escrowAccountNumber || ''}
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Escrow Account Number"
+                  placeholder="Enter escrow account number"
                 />
               </div>
 
@@ -1932,8 +1964,7 @@ const PropertyForm = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div ref={el => fieldRefs.current.basePercentage = el}>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Base Commission (%)
-                {!formData.commission.isFixed && <span className="text-red-500 ml-1">*</span>}
+                Base Commission (%){!formData.commission.isFixed && <span className="text-red-500 align-super">*</span>}
               </label>
               <input
                 type="number"
@@ -1961,8 +1992,7 @@ const PropertyForm = () => {
 
             <div ref={el => fieldRefs.current.fixedAmount = el}>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Fixed Amount {formData.pricing.currency === 'INR' ? '(₹)' : '(AED)'}
-                {formData.commission.isFixed && <span className="text-red-500 ml-1">*</span>}
+                Fixed Amount {formData.pricing.currency === 'INR' ? '(₹)' : '(AED)'}{formData.commission.isFixed && <span className="text-red-500 align-super">*</span>}
               </label>
               <input
                 type="number"
@@ -1977,7 +2007,7 @@ const PropertyForm = () => {
                       : 'border-gray-200 focus:ring-green-500'
                     : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
                 }`}
-                placeholder="Fixed commission amount"
+                placeholder="Enter fixed amount"
                 disabled={!formData.commission.isFixed}
               />
               {fieldErrors.fixedAmount && <p className="text-sm text-red-600 mt-1">{fieldErrors.fixedAmount}</p>}
@@ -2016,7 +2046,7 @@ const PropertyForm = () => {
             <button
               type="button"
               onClick={handleCancel}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 hover:border-gray-400 transition-colors duration-200"
             >
               Cancel
             </button>
@@ -2026,7 +2056,7 @@ const PropertyForm = () => {
                   type="button"
                   onClick={(e) => handleSubmit(e, 'draft')}
                   disabled={saving}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 hover:border-gray-400 hover:text-gray-900 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving...' : 'Save as Draft'}
                 </button>

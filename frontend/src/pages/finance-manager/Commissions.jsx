@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +13,7 @@ import { formatCurrency } from '../../utils/currency';
 const Commissions = () => {
   const { user } = useAuth();
   const config = sidebarConfig[user?.role] || sidebarConfig.finance_manager;
+  const [searchParams] = useSearchParams();
 
   // Get basePath based on role for consistent URLs
   const getBasePath = () => {
@@ -36,13 +37,15 @@ const Commissions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || '');
   const [partnerFilter, setPartnerFilter] = useState('');
   const [propertyFilter, setPropertyFilter] = useState('');
+  const [commissionTypeFilter, setCommissionTypeFilter] = useState('');
   const [partners, setPartners] = useState([]);
   const [properties, setProperties] = useState([]);
   const [showPayModal, setShowPayModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showApproveModal, setShowApproveModal] = useState(false);
   const [selectedCommission, setSelectedCommission] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
 
@@ -67,7 +70,7 @@ const Commissions = () => {
   useEffect(() => {
     fetchCommissions();
     fetchStats();
-  }, [statusFilter, partnerFilter, propertyFilter, currentPage, itemsPerPage]);
+  }, [statusFilter, partnerFilter, propertyFilter, commissionTypeFilter, currentPage, itemsPerPage]);
 
   useEffect(() => {
     fetchPartners();
@@ -111,6 +114,7 @@ const Commissions = () => {
       if (statusFilter) params.append('status', statusFilter);
       if (partnerFilter) params.append('partnerId', partnerFilter);
       if (propertyFilter) params.append('propertyId', propertyFilter);
+      if (commissionTypeFilter) params.append('commissionType', commissionTypeFilter);
       params.append('page', currentPage);
       params.append('limit', itemsPerPage);
 
@@ -146,12 +150,12 @@ const Commissions = () => {
   };
 
   const handleApprove = async (commissionId) => {
-    if (!window.confirm('Are you sure you want to approve this commission?')) return;
-
     try {
       setSubmitting(true);
       await api.put(`/commissions/${commissionId}/approve`);
       toast.success('Commission approved successfully.');
+      setShowApproveModal(false);
+      setSelectedCommission(null);
       fetchCommissions();
       fetchStats();
     } catch (err) {
@@ -243,10 +247,12 @@ const Commissions = () => {
 
   // Export columns configuration
   const exportColumns = [
-    { key: 'partner.firstName', header: 'Partner First Name' },
-    { key: 'partner.lastName', header: 'Partner Last Name' },
-    { key: 'partner.email', header: 'Partner Email ID' },
-    { key: 'property.name', header: 'Property Name' },
+    {
+      key: 'partnerName',
+      header: 'Partner',
+      format: (item) => `${item.partner?.firstName || ''} ${item.partner?.lastName || ''}`.trim()
+    },
+    { key: 'property.name', header: 'Property' },
     {
       key: 'saleDetails.salePrice',
       header: 'Sale Price',
@@ -254,14 +260,13 @@ const Commissions = () => {
     },
     {
       key: 'commission.calculatedAmount',
-      header: 'Commission Amount',
+      header: 'Commission',
       format: (item) => formatCurrencyExport(item.commission?.calculatedAmount, item.commission?.currency)
     },
-    { key: 'commission.effectivePercentage', header: 'Commission Rate (%)' },
-    { key: 'status', header: 'Status' },
+    { key: 'status', header: 'Status', format: (item) => getStatusText(item.status) },
     {
       key: 'createdAt',
-      header: 'Created Date',
+      header: 'Date',
       format: (item) => formatDateExport(item.createdAt)
     }
   ];
@@ -319,7 +324,7 @@ const Commissions = () => {
             {getCurrencyLabel(currency)}
             <span className="text-sm font-normal text-gray-500">(Commissions in {currency === 'INR' ? 'Indian Rupees' : 'UAE Dirhams'})</span>
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <p className="text-sm text-gray-500">Total</p>
               <p className="text-xl font-bold text-gray-900 mt-1">
@@ -354,6 +359,15 @@ const Commissions = () => {
               </p>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <p className="text-sm text-gray-500">Cancelled</p>
+              <p className="text-xl font-bold text-red-600 mt-1">
+                {stats?.statusCountsByCurrency?.[currency]?.cancelled?.count || 0}
+              </p>
+              <p className="text-sm text-gray-500">
+                {formatCurrency(stats?.statusCountsByCurrency?.[currency]?.cancelled?.amount || 0, currency)}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <p className="text-sm text-gray-500">This Month</p>
               <p className="text-xl font-bold text-indigo-600 mt-1">
                 {formatCurrency(stats?.monthlyPaidByCurrency?.[currency]?.monthlyPaidAmount || 0, currency)}
@@ -381,6 +395,15 @@ const Commissions = () => {
             <option value="cancelled">Cancelled</option>
           </select>
           <select
+            value={commissionTypeFilter}
+            onChange={(e) => { setCommissionTypeFilter(e.target.value); setCurrentPage(1); }}
+            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">All Commission Types</option>
+            <option value="percentage">Percentage Based</option>
+            <option value="fixed">Fixed Amount</option>
+          </select>
+          <select
             value={partnerFilter}
             onChange={(e) => { setPartnerFilter(e.target.value); setCurrentPage(1); }}
             className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -404,9 +427,9 @@ const Commissions = () => {
               </option>
             ))}
           </select>
-          {(statusFilter || partnerFilter || propertyFilter) && (
+          {(statusFilter || partnerFilter || propertyFilter || commissionTypeFilter) && (
             <button
-              onClick={() => { setStatusFilter(''); setPartnerFilter(''); setPropertyFilter(''); setCurrentPage(1); }}
+              onClick={() => { setStatusFilter(''); setPartnerFilter(''); setPropertyFilter(''); setCommissionTypeFilter(''); setCurrentPage(1); }}
               className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
             >
               Clear Filters
@@ -435,12 +458,16 @@ const Commissions = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-gray-500 mb-4">No commissions found</p>
-            <button
-              onClick={() => navigate(`${basePath}/new`)}
-              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-            >
-              Create First Commission
-            </button>
+            {(statusFilter || partnerFilter || propertyFilter || commissionTypeFilter) ? (
+              <p className="text-sm text-gray-400">Try adjusting your filters</p>
+            ) : (
+              <button
+                onClick={() => navigate(`${basePath}/new`)}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              >
+                Create First Commission
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -520,7 +547,10 @@ const Commissions = () => {
                         {commission.status === 'pending' && user?.role !== 'partner_manager' && (
                           <>
                             <button
-                              onClick={() => handleApprove(commission._id)}
+                              onClick={() => {
+                                setSelectedCommission(commission);
+                                setShowApproveModal(true);
+                              }}
                               disabled={submitting}
                               className="text-green-600 hover:text-green-700 text-sm font-medium disabled:opacity-50"
                             >
@@ -610,7 +640,12 @@ const Commissions = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Payment Reference {payForm.paymentMethod === 'cash' ? '(Optional)' : '*'}
+                  Payment Reference
+                  {payForm.paymentMethod === 'cash' ? (
+                    <span className="text-gray-400 font-normal ml-1">(Optional)</span>
+                  ) : (
+                    <span className="text-red-500 align-super">*</span>
+                  )}
                 </label>
                 <input
                   type="text"
@@ -621,17 +656,13 @@ const Commissions = () => {
                       setFieldErrors(prev => ({ ...prev, paymentReference: '' }));
                     }
                   }}
-                  placeholder={payForm.paymentMethod === 'cash' ? 'Optional - e.g., Receipt Number' : 'Transaction ID / Cheque Number'}
+                  placeholder={payForm.paymentMethod === 'cash' ? 'Receipt Number' : 'Transaction ID / Cheque Number'}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
-                    fieldErrors.paymentReference ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    fieldErrors.paymentReference ? 'border-red-500 bg-red-50' : 'border-gray-300'
                   }`}
-                  required={payForm.paymentMethod !== 'cash'}
                 />
                 {fieldErrors.paymentReference && (
                   <p className="text-sm text-red-600 mt-1">{fieldErrors.paymentReference}</p>
-                )}
-                {payForm.paymentMethod === 'cash' && (
-                  <p className="text-xs text-gray-500 mt-1">Payment reference is optional for cash payments</p>
                 )}
               </div>
 
@@ -650,13 +681,18 @@ const Commissions = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes <span className="text-gray-400 font-normal">(Optional)</span>
+                </label>
                 <textarea
                   value={payForm.notes}
                   onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
                   rows={2}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  maxLength={500}
+                  placeholder="Add any additional notes about this payment..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
+                <p className="text-xs text-gray-400 mt-1">{payForm.notes?.length || 0}/500 characters</p>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
@@ -708,7 +744,9 @@ const Commissions = () => {
 
             <form onSubmit={handleCancel} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Cancellation Reason *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Cancellation Reason<span className="text-red-500">*</span>
+                </label>
                 <textarea
                   value={cancelReason}
                   onChange={(e) => {
@@ -718,12 +756,15 @@ const Commissions = () => {
                     }
                   }}
                   rows={3}
+                  maxLength={500}
                   placeholder="Please provide a reason for cancellation..."
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none ${
                     fieldErrors.cancelReason ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
+                  style={{ maxHeight: '150px' }}
                   required
                 />
+                <p className="text-xs text-gray-400 mt-1">{cancelReason?.length || 0}/500 characters</p>
                 {fieldErrors.cancelReason && (
                   <p className="text-sm text-red-600 mt-1">{fieldErrors.cancelReason}</p>
                 )}
@@ -751,6 +792,82 @@ const Commissions = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Modal */}
+      {showApproveModal && selectedCommission && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">Approve Commission</h3>
+              <button
+                onClick={() => {
+                  setShowApproveModal(false);
+                  setSelectedCommission(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-green-100 rounded-full">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+
+              <p className="text-center text-gray-600 mb-2">
+                Are you sure you want to approve this commission?
+              </p>
+
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-500">Partner:</span>
+                  <span className="font-medium text-gray-900">
+                    {selectedCommission.partner?.firstName} {selectedCommission.partner?.lastName}
+                  </span>
+                </div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-500">Property:</span>
+                  <span className="font-medium text-gray-900">{selectedCommission.property?.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Amount:</span>
+                  <span className="font-bold text-green-600">
+                    {formatCurrency(
+                      selectedCommission.commission?.calculatedAmount,
+                      selectedCommission.commission?.currency
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowApproveModal(false);
+                    setSelectedCommission(null);
+                  }}
+                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleApprove(selectedCommission._id)}
+                  disabled={submitting}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {submitting ? 'Approving...' : 'Approve'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

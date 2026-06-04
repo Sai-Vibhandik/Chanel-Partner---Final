@@ -524,7 +524,16 @@ export const getPartnerAgreements = async (req, res, next) => {
       return {
         ...template.toObject(),
         isSigned: !!validSignature,
-        signature: validSignature || null
+        signature: validSignature ? {
+          _id: validSignature._id,
+          typedName: validSignature.typedName,
+          signedAt: validSignature.signedAt,
+          ipAddress: validSignature.ipAddress,
+          status: validSignature.status,
+          contentSnapshot: validSignature.contentSnapshot,
+          templateName: validSignature.templateName,
+          templateType: validSignature.templateType
+        } : null
       };
     });
 
@@ -539,22 +548,48 @@ export const getPartnerAgreements = async (req, res, next) => {
       .sort({ signedAt: -1 });
 
     // Format signatures for history display - only show expired/old versions, not current
+    // Also include signatures for deleted templates
     const signatureHistory = allSignatures
       .filter(sig => {
-        // Only include expired signatures or signatures with old versions
-        const template = templates.find(t => t._id.toString() === sig.agreementTemplateId?._id?.toString());
-        // Include if status is 'expired' OR version is older than current template version
-        return sig.status === 'expired' || (template && sig.version < template.version);
+        // Include if template is deleted (agreementTemplateId is null)
+        if (!sig.agreementTemplateId) {
+          return true;
+        }
+        // Include if status is 'expired'
+        if (sig.status === 'expired') {
+          return true;
+        }
+        // Include if version is older than current template version
+        const template = templates.find(t => t._id.toString() === sig.agreementTemplateId._id?.toString());
+        if (template && sig.version < template.version) {
+          return true;
+        }
+        return false;
       })
-      .map(sig => ({
-        _id: sig._id,
-        agreementTemplateId: sig.agreementTemplateId,
-        version: sig.version,
-        typedName: sig.typedName,
-        signedAt: sig.signedAt,
-        ipAddress: sig.ipAddress,
-        status: sig.status
-      }));
+      .map(sig => {
+        // Check if template was deleted (agreementTemplateId is null after populate)
+        const isTemplateDeleted = !sig.agreementTemplateId;
+
+        // Use stored template info if template is deleted
+        const templateInfo = {
+          _id: sig.agreementTemplateId?._id || sig._id,
+          name: sig.agreementTemplateId?.name || sig.templateName || 'Unknown Agreement',
+          type: sig.agreementTemplateId?.type || sig.templateType || 'other',
+          version: sig.version
+        };
+
+        return {
+          _id: sig._id,
+          agreementTemplateId: templateInfo,
+          version: sig.version,
+          typedName: sig.typedName,
+          signedAt: sig.signedAt,
+          ipAddress: sig.ipAddress,
+          status: sig.status,
+          contentSnapshot: sig.contentSnapshot,
+          templateDeleted: isTemplateDeleted
+        };
+      });
 
     res.status(200).json({
       success: true,
@@ -670,6 +705,8 @@ export const signAgreement = async (req, res, next) => {
       agreementTemplateId: template._id,
       version: template.version,
       contentSnapshot: template.content, // Save content at time of signing
+      templateName: template.name, // Save name at time of signing
+      templateType: template.type, // Save type at time of signing
       typedName,
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.get('User-Agent'),
@@ -943,23 +980,43 @@ export const getPartnershipAgreementDetails = async (req, res, next) => {
     })
       .populate('agreementTemplateId', 'name type version')
       .populate('partnerId', 'firstName lastName email')
-      .select('agreementTemplateId version typedName signedAt ipAddress status contentSnapshot partnerId')
+      .select('agreementTemplateId version typedName signedAt ipAddress status contentSnapshot partnerId templateName templateType')
       .sort({ signedAt: -1 });
 
     // Separate current signatures from history
     // Current: signed and version matches current template version
-    // History: expired or version older than current
+    // History: expired or version older than current, or template deleted
     const currentSignatures = [];
     const signatureHistory = [];
 
     allSignatures.forEach(sig => {
       const template = templates.find(t => t._id.toString() === sig.agreementTemplateId?._id?.toString());
+
+      // Check if template was deleted (agreementTemplateId is null after populate)
+      const isTemplateDeleted = !sig.agreementTemplateId;
+
+      // If template is deleted (agreementTemplateId is null after populate),
+      // use stored template info from signature
+      const templateInfo = {
+        _id: sig.agreementTemplateId?._id || sig._id, // Use signature ID if template deleted
+        name: sig.agreementTemplateId?.name || sig.templateName || 'Unknown Agreement',
+        type: sig.agreementTemplateId?.type || sig.templateType || 'other',
+        version: sig.version
+      };
+
+      // Format signature with template info
+      const formattedSig = {
+        ...sig.toObject(),
+        agreementTemplateId: templateInfo,
+        templateDeleted: isTemplateDeleted
+      };
+
       const isCurrent = template && sig.version === template.version && sig.status === 'signed';
 
       if (isCurrent) {
-        currentSignatures.push(sig);
+        currentSignatures.push(formattedSig);
       } else {
-        signatureHistory.push(sig);
+        signatureHistory.push(formattedSig);
       }
     });
 

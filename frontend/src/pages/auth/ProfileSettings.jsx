@@ -95,13 +95,19 @@ const ProfileSettings = () => {
     const errors = {};
 
     if (!passwordData.currentPassword) {
-      errors.currentPassword = 'Current Password is required.';
+      errors.currentPassword = 'Current password is required.';
     }
 
-    const passwordError = validatePassword(passwordData.newPassword);
-    if (passwordError) errors.newPassword = passwordError;
+    if (!passwordData.newPassword) {
+      errors.newPassword = 'New password is required.';
+    } else {
+      const passwordError = validatePassword(passwordData.newPassword);
+      if (passwordError) errors.newPassword = passwordError;
+    }
 
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
+    if (!passwordData.confirmPassword) {
+      errors.confirmPassword = 'Confirm password is required.';
+    } else if (passwordData.newPassword !== passwordData.confirmPassword) {
       errors.confirmPassword = 'Passwords do not match.';
     }
 
@@ -142,13 +148,28 @@ const ProfileSettings = () => {
     try {
       await api.put('/auth/password', {
         currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword
+        newPassword: passwordData.newPassword,
+        confirmPassword: passwordData.confirmPassword
       });
       toast.success('Password changed successfully.');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setFieldErrors({});
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to change password');
+      // Handle validation errors from backend
+      if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
+        const backendErrors = {};
+        err.response.data.errors.forEach(error => {
+          if (error.field) {
+            backendErrors[error.field] = error.message;
+          }
+        });
+        setFieldErrors(prev => ({ ...prev, ...backendErrors }));
+        // Show first error as toast
+        const firstError = err.response.data.errors[0];
+        toast.error(firstError?.message || 'Validation failed');
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to change password');
+      }
     } finally {
       setLoading(false);
     }
@@ -261,17 +282,17 @@ const ProfileSettings = () => {
 
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address
+                  Email ID
                 </label>
                 <input
                   id="email"
                   name="email"
-                  type="email"
+                  type="text"
                   value={profileData.email}
                   disabled
                   className="block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm bg-gray-50 text-gray-500 cursor-not-allowed"
                 />
-                <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
+                <p className="mt-1 text-xs text-gray-500">Email ID cannot be changed</p>
               </div>
 
               <PhoneInput
@@ -305,7 +326,7 @@ const ProfileSettings = () => {
             <div className="space-y-6">
               <div>
                 <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                  Current Password
+                  Current Password<span className="text-red-500 align-super">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -340,7 +361,7 @@ const ProfileSettings = () => {
 
               <div>
                 <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                  New Password
+                  New Password<span className="text-red-500 align-super">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -376,7 +397,7 @@ const ProfileSettings = () => {
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirm New Password
+                  Confirm New Password<span className="text-red-500 align-super">*</span>
                 </label>
                 <div className="relative">
                   <input

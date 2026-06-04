@@ -37,20 +37,7 @@ export const applyToCompany = async (req, res, next) => {
 
     // Check if company has active subscription
     const subscriptionStatus = company.subscription?.status;
-    const now = new Date();
-    let hasActiveSubscription = false;
-
-    if (subscriptionStatus === 'active') {
-      hasActiveSubscription = true;
-    } else if (subscriptionStatus === 'trial') {
-      // Check if trial is still valid
-      const trialEnds = company.subscription?.trialEndsAt;
-      if (trialEnds && new Date(trialEnds) > now) {
-        hasActiveSubscription = true;
-      }
-    }
-
-    if (!hasActiveSubscription) {
+    if (subscriptionStatus !== 'active') {
       throw new ApiError(400, 'This company is not accepting applications at this time');
     }
 
@@ -180,16 +167,7 @@ export const getMyCompanies = async (req, res, next) => {
         // Check company subscription status
         const company = partnership.companyId;
         const subscriptionStatus = company.subscription?.status;
-        let hasActiveSubscription = false;
-
-        if (subscriptionStatus === 'active') {
-          hasActiveSubscription = true;
-        } else if (subscriptionStatus === 'trial') {
-          const trialEnds = company.subscription?.trialEndsAt;
-          if (trialEnds && new Date(trialEnds) > now) {
-            hasActiveSubscription = true;
-          }
-        }
+        const hasActiveSubscription = subscriptionStatus === 'active';
 
         return {
           ...partnership.toObject(),
@@ -1401,7 +1379,7 @@ export const getPerformanceReport = async (req, res, next) => {
               $match: {
                 $expr: {
                   $and: [
-                    { $eq: ['$partnerId', '$$partnerId'] },
+                    { $eq: ['$partner', '$$partnerId'] },
                     { $eq: ['$companyId', '$$companyId'] },
                     startDate ? { $gte: ['$createdAt', new Date(startDate)] } : { $ne: ['$createdAt', null] },
                     endDate ? { $lte: ['$createdAt', new Date(endDate)] } : { $ne: ['$createdAt', null] }

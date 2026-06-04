@@ -501,7 +501,17 @@ const PropertyDetails = () => {
             {property.indiaDetails.approvedBy && property.indiaDetails.approvedBy.length > 0 && (
               <div>
                 <p className="text-sm text-gray-500">Approved By</p>
-                <p className="font-medium">{property.indiaDetails.approvedBy.map(a => a.replace(/([A-Z])/g, ' $1').trim()).join(', ')}</p>
+                <p className="font-medium">
+                  {property.indiaDetails.approvedBy.map(a => {
+                    const labels = {
+                      bank: 'Bank',
+                      rera: 'RERA',
+                      developmentauthority: 'Development Authority',
+                      township: 'Township'
+                    };
+                    return labels[a] || a;
+                  }).join(', ')}
+                </p>
               </div>
             )}
           </div>

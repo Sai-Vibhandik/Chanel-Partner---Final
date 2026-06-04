@@ -15,9 +15,15 @@ const PropertyDetails = () => {
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [originalStatus, setOriginalStatus] = useState('');
+  const [savingStatus, setSavingStatus] = useState(false);
 
   const config = sidebarConfig[user?.role] || sidebarConfig.property_manager;
   const basePath = user?.role === 'company_superadmin' ? '/company/properties' : '/property-manager/properties';
+
+  // Check if status has been changed
+  const hasStatusChanged = selectedStatus !== originalStatus && selectedStatus !== '' && originalStatus !== '';
 
   useEffect(() => {
     fetchProperty();
@@ -33,7 +39,12 @@ const PropertyDetails = () => {
       console.log('Videos:', response.data?.data?.property?.videos);
       console.log('Brochure:', response.data?.data?.property?.brochure);
       console.log('Floor Plans:', response.data?.data?.property?.floorPlans);
-      setProperty(response.data?.data?.property || null);
+      const propertyData = response.data?.data?.property || null;
+      setProperty(propertyData);
+      if (propertyData) {
+        setSelectedStatus(propertyData.status);
+        setOriginalStatus(propertyData.status);
+      }
     } catch (err) {
       console.error('Error fetching property:', err);
       const errorMessage = err.response?.data?.message || 'Failed to load property';
@@ -44,14 +55,28 @@ const PropertyDetails = () => {
     }
   };
 
-  const handleStatusChange = async (newStatus) => {
+  const handleStatusSelect = (newStatus) => {
+    setSelectedStatus(newStatus);
+  };
+
+  const handleSaveStatus = async () => {
+    if (!hasStatusChanged) return;
+
     try {
-      await api.put(`/properties/${id}/status`, { status: newStatus });
-      setProperty(prev => prev ? { ...prev, status: newStatus } : prev);
+      setSavingStatus(true);
+      await api.put(`/properties/${id}/status`, { status: selectedStatus });
+      setProperty(prev => prev ? { ...prev, status: selectedStatus } : prev);
+      setOriginalStatus(selectedStatus);
       toast.success('Status updated successfully.');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update status');
+    } finally {
+      setSavingStatus(false);
     }
+  };
+
+  const handleCancelStatusChange = () => {
+    setSelectedStatus(originalStatus);
   };
 
   const formatPrice = (prop) => {
@@ -165,16 +190,43 @@ const PropertyDetails = () => {
 
         {/* Status Selector */}
         <div className="pt-4 border-t border-gray-200">
-          <label className="text-sm font-medium text-gray-700 mr-3">Change Status:</label>
-          <select
-            value={property.status}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            {statusOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-sm font-medium text-gray-700">Change Status:</label>
+            <select
+              value={selectedStatus}
+              onChange={(e) => handleStatusSelect(e.target.value)}
+              className={`px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                hasStatusChanged ? 'border-orange-400 bg-orange-50' : 'border-gray-200'
+              }`}
+            >
+              {statusOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            {hasStatusChanged && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSaveStatus}
+                  disabled={savingStatus}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  {savingStatus ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={handleCancelStatusChange}
+                  disabled={savingStatus}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+          {hasStatusChanged && (
+            <p className="text-sm text-orange-600 mt-2">
+              Status change pending. Click Save to confirm or Cancel to revert.
+            </p>
+          )}
         </div>
       </div>
 
@@ -348,7 +400,17 @@ const PropertyDetails = () => {
             {property.indiaDetails.approvedBy && property.indiaDetails.approvedBy.length > 0 && (
               <div>
                 <p className="text-sm text-gray-500">Approved By</p>
-                <p className="font-medium capitalize">{property.indiaDetails.approvedBy.join(', ')}</p>
+                <p className="font-medium">
+                  {property.indiaDetails.approvedBy.map(a => {
+                    const labels = {
+                      bank: 'Bank',
+                      rera: 'RERA',
+                      developmentauthority: 'Development Authority',
+                      township: 'Township'
+                    };
+                    return labels[a] || a;
+                  }).join(', ')}
+                </p>
               </div>
             )}
           </div>

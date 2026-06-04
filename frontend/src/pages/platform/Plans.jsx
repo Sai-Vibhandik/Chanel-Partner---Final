@@ -29,15 +29,6 @@ const Plans = () => {
       maxProperties: -1,
       maxDays: 30
     },
-    capabilities: {
-      analytics: true,
-      advancedAnalytics: false,
-      apiAccess: false,
-      whiteLabel: false,
-      customDomain: false,
-      prioritySupport: false,
-      dedicatedManager: false
-    },
     isActive: true
   };
 
@@ -146,15 +137,6 @@ const Plans = () => {
       limits: {
         maxProperties: plan.limits?.maxProperties ?? -1,
         maxDays: plan.limits?.maxDays ?? 30
-      },
-      capabilities: {
-        analytics: plan.capabilities?.analytics ?? true,
-        advancedAnalytics: plan.capabilities?.advancedAnalytics ?? false,
-        apiAccess: plan.capabilities?.apiAccess ?? false,
-        whiteLabel: plan.capabilities?.whiteLabel ?? false,
-        customDomain: plan.capabilities?.customDomain ?? false,
-        prioritySupport: plan.capabilities?.prioritySupport ?? false,
-        dedicatedManager: plan.capabilities?.dedicatedManager ?? false
       },
       isActive: plan.isActive ?? true
     });
@@ -277,18 +259,6 @@ const Plans = () => {
                     <span className="text-gray-500">Duration:</span>{' '}
                     <span className="font-medium">{plan.limits?.maxDays} days</span>
                   </div>
-                </div>
-              </div>
-
-              {/* Capabilities */}
-              <div className="mb-4">
-                <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Capabilities</h4>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(plan.capabilities || {}).filter(([_, v]) => v).map(([key]) => (
-                    <span key={key} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                      {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                    </span>
-                  ))}
                 </div>
               </div>
 
@@ -476,33 +446,6 @@ const Plans = () => {
                     min="1"
                   />
                 </div>
-              </div>
-            </div>
-
-            {/* Capabilities */}
-            <div className="border-t pt-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Capabilities</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { key: 'analytics', label: 'Analytics' },
-                  { key: 'advancedAnalytics', label: 'Advanced Analytics' },
-                  { key: 'apiAccess', label: 'API Access' },
-                  { key: 'whiteLabel', label: 'White Label' },
-                  { key: 'customDomain', label: 'Custom Domain' },
-                  { key: 'prioritySupport', label: 'Priority Support' },
-                  { key: 'dedicatedManager', label: 'Dedicated Manager' }
-                ].map(({ key, label }) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id={key}
-                      checked={formData.capabilities[key]}
-                      onChange={(e) => handleInputChange(`capabilities.${key}`, e.target.checked)}
-                      className="w-4 h-4 text-indigo-600 rounded"
-                    />
-                    <label htmlFor={key} className="text-sm text-gray-700">{label}</label>
-                  </div>
-                ))}
               </div>
             </div>
 

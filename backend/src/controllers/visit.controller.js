@@ -5,7 +5,7 @@ import Company from '../models/Company.js';
 import Commission from '../models/Commission.js';
 import User from '../models/User.js';
 import { ApiError } from '../middlewares/error.middleware.js';
-import { sendVisitApprovedEmail, sendVisitRejectedEmail, sendPartnerVisitCancelledEmail } from '../services/email.service.js';
+import { sendVisitApprovedEmail, sendVisitRejectedEmail, sendPartnerVisitCancelledEmail, sendVisitScheduledEmail } from '../services/email.service.js';
 import { createNotification, createNotificationsForRecipients } from './notification.controller.js';
 import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../services/activityLog.service.js';
 
@@ -134,19 +134,7 @@ export const bookVisit = async (req, res, next) => {
     }
 
     const subscriptionStatus = company.subscription?.status;
-    const now = new Date();
-    let hasActiveSubscription = false;
-
-    if (subscriptionStatus === 'active') {
-      hasActiveSubscription = true;
-    } else if (subscriptionStatus === 'trial') {
-      const trialEnds = company.subscription?.trialEndsAt;
-      if (trialEnds && new Date(trialEnds) > now) {
-        hasActiveSubscription = true;
-      }
-    }
-
-    if (!hasActiveSubscription) {
+    if (subscriptionStatus !== 'active') {
       throw new ApiError(403, 'Unable to book visit. The company subscription is not active.');
     }
 
@@ -254,6 +242,38 @@ export const bookVisit = async (req, res, next) => {
       }
     } catch (notifError) {
       console.error('Failed to send visit notification:', notifError.message);
+    }
+
+    // Send email notifications to company admins and partner managers
+    try {
+      const companyStaff = await User.find({
+        companyId: partnership.companyId,
+        role: { $in: ['company_superadmin', 'partner_manager'] },
+        isActive: true
+      });
+
+      // Populate office location for email
+      let populatedVisit = visit;
+      if (visitType === 'office' && officeLocation) {
+        const OfficeLocation = (await import('../models/OfficeLocation.js')).default;
+        const office = await OfficeLocation.findById(officeLocation);
+        populatedVisit = { ...visit.toObject(), officeLocation: office };
+      }
+
+      for (const staff of companyStaff) {
+        if (staff.email) {
+          sendVisitScheduledEmail(
+            staff,
+            populatedVisit,
+            req.user,
+            property,
+            company,
+            populatedVisit.officeLocation
+          ).catch(err => console.error(`Failed to send visit scheduled email to ${staff.email}:`, err));
+        }
+      }
+    } catch (emailError) {
+      console.error('Failed to send visit scheduled emails:', emailError.message);
     }
 
     // Log activity
@@ -871,6 +891,7 @@ export const getVisitStats = async (req, res, next) => {
         success: true,
         data: {
           statusCounts: { pending: 0, approved: 0, rejected: 0, completed: 0, cancelled: 0 },
+          byType: { office: 0, virtual_meet: 0 },
           todayVisits: 0,
           upcomingVisits: 0,
           pendingApprovals: 0,
@@ -879,11 +900,23 @@ export const getVisitStats = async (req, res, next) => {
       });
     }
 
-    const stats = await Visit.aggregate([
+    // Get status counts
+    const statusStats = await Visit.aggregate([
       { $match: { companyId: companyId } },
       {
         $group: {
           _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Get visit type counts
+    const typeStats = await Visit.aggregate([
+      { $match: { companyId: companyId } },
+      {
+        $group: {
+          _id: '$visitType',
           count: { $sum: 1 }
         }
       }
@@ -911,7 +944,7 @@ export const getVisitStats = async (req, res, next) => {
       status: 'pending'
     });
 
-    // Format stats
+    // Format status counts
     const statusCounts = {
       pending: 0,
       approved: 0,
@@ -920,14 +953,28 @@ export const getVisitStats = async (req, res, next) => {
       cancelled: 0
     };
 
-    stats.forEach(s => {
+    statusStats.forEach(s => {
       statusCounts[s._id] = s.count;
+    });
+
+    // Format type counts
+    const byType = {
+      office: 0,
+      virtual: 0,
+      virtual_meet: 0 // For backwards compatibility
+    };
+
+    typeStats.forEach(s => {
+      if (s._id && byType.hasOwnProperty(s._id)) {
+        byType[s._id] = s.count;
+      }
     });
 
     res.status(200).json({
       success: true,
       data: {
         statusCounts,
+        byType,
         todayVisits,
         upcomingVisits,
         pendingApprovals,

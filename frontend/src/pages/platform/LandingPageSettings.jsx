@@ -14,7 +14,9 @@ import {
   Globe,
   Link as LinkIcon,
   Plus,
-  X
+  X,
+  Upload,
+  Image as ImageIcon
 } from "lucide-react";
 
 const LandingPageSettings = () => {
@@ -61,6 +63,9 @@ const LandingPageSettings = () => {
     footer: {
       brandName: "",
       brandHighlight: "",
+      logo: "",
+      logoWidth: 40,
+      showLogo: false,
       tagline: "",
       supportEmail: "",
       copyright: "",
@@ -71,6 +76,9 @@ const LandingPageSettings = () => {
     navigation: {
       brandName: "",
       brandHighlight: "",
+      logo: "",
+      logoWidth: 40,
+      showLogo: false,
       loginText: "",
       ctaText: "",
       links: [],
@@ -219,6 +227,58 @@ const LandingPageSettings = () => {
     }));
   };
 
+  // Logo upload handler
+  const handleLogoUpload = async (e, section) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a valid image file (PNG, JPG, SVG, or WebP)');
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('File size must be less than 2MB');
+      return;
+    }
+
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', file);
+
+      const response = await api.post('/upload/image', formDataUpload, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      const logoUrl = response.data.data.url;
+
+      if (section === 'navigation') {
+        updateNavigation('logo', logoUrl);
+        updateNavigation('showLogo', true);
+      } else if (section === 'footer') {
+        updateFooter('logo', logoUrl);
+        updateFooter('showLogo', true);
+      }
+
+      toast.success('Logo uploaded successfully');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to upload logo');
+    }
+  };
+
+  const removeLogo = (section) => {
+    if (section === 'navigation') {
+      updateNavigation('logo', '');
+      updateNavigation('showLogo', false);
+    } else if (section === 'footer') {
+      updateFooter('logo', '');
+      updateFooter('showLogo', false);
+    }
+  };
+
   const updateNavigation = (field, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -278,7 +338,6 @@ const LandingPageSettings = () => {
             icon: "building",
             title: "",
             description: "",
-            gradient: "from-indigo-500 to-purple-500",
           },
         ],
       },
@@ -309,6 +368,10 @@ const LandingPageSettings = () => {
 
   // Step handlers
   const addStep = () => {
+    // Limit to 4 steps
+    if ((formData.howItWorks.steps?.length || 0) >= 4) {
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
       howItWorks: {
@@ -349,12 +412,16 @@ const LandingPageSettings = () => {
   };
 
   const iconOptions = [
-    { value: "building", label: "Building" },
-    { value: "users", label: "Users" },
-    { value: "money", label: "Money" },
-    { value: "calendar", label: "Calendar" },
-    { value: "document", label: "Document" },
-    { value: "chart", label: "Chart" },
+    { value: "building", label: "Building", icon: "🏢" },
+    { value: "users", label: "Users", icon: "👥" },
+    { value: "wallet", label: "Wallet", icon: "💰" },
+    { value: "calendar", label: "Calendar", icon: "📅" },
+    { value: "filecheck", label: "File Check", icon: "✅" },
+    { value: "barchart", label: "Bar Chart", icon: "📊" },
+    { value: "sparkles", label: "Sparkles", icon: "✨" },
+    { value: "zap", label: "Zap", icon: "⚡" },
+    { value: "shield", label: "Shield", icon: "🛡️" },
+    { value: "globe", label: "Globe", icon: "🌐" },
   ];
 
   // Navigation link handlers
@@ -468,15 +535,6 @@ const LandingPageSettings = () => {
       },
     }));
   };
-
-  const gradientOptions = [
-    { value: "from-indigo-500 to-purple-500", label: "Indigo to Purple" },
-    { value: "from-blue-500 to-cyan-500", label: "Blue to Cyan" },
-    { value: "from-emerald-500 to-teal-500", label: "Emerald to Teal" },
-    { value: "from-orange-500 to-red-500", label: "Orange to Red" },
-    { value: "from-purple-500 to-pink-500", label: "Purple to Pink" },
-    { value: "from-rose-500 to-pink-500", label: "Rose to Pink" },
-  ];
 
   const sectionLinkOptions = [
     { label: "Hero", value: "#hero" },
@@ -646,13 +704,13 @@ const LandingPageSettings = () => {
       <div className="mb-6 border-b border-gray-200">
         <nav className="flex gap-4 -mb-px flex-wrap">
           {[
+            "navigation",
             "hero",
             "features",
             "howItWorks",
             "testimonials",
             "faqs",
             "cta",
-            "navigation",
             "footer",
           ].map((tab) => (
             <button
@@ -742,14 +800,18 @@ const LandingPageSettings = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subtitle
-            </label>
+            <div className="flex justify-between">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Subtitle
+              </label>
+              <span className="text-xs text-gray-400">{formData.hero.subtitle?.length || 0}/500</span>
+            </div>
             <textarea
               value={formData.hero.subtitle}
               onChange={(e) => updateHero("subtitle", e.target.value)}
               rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              maxLength={500}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
             />
           </div>
 
@@ -960,30 +1022,26 @@ const LandingPageSettings = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subtitle
-            </label>
+            <div className="flex justify-between">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Subtitle
+              </label>
+              <span className="text-xs text-gray-400">{formData.features.subtitle?.length || 0}/500</span>
+            </div>
             <textarea
               value={formData.features.subtitle}
               onChange={(e) => updateFeatures("subtitle", e.target.value)}
               rows={2}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              maxLength={500}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
             />
           </div>
 
           {/* Features */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">
-                Features
-              </label>
-              <button
-                onClick={addFeature}
-                className="text-sm text-indigo-600 hover:text-indigo-700"
-              >
-                + Add Feature
-              </button>
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Features
+            </label>
             <div className="space-y-4">
               {formData.features.items?.map((feature, index) => (
                 <div
@@ -1017,39 +1075,51 @@ const LandingPageSettings = () => {
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">
-                        Gradient
+                        Icon
                       </label>
                       <select
-                        value={feature.gradient}
+                        value={feature.icon || "building"}
                         onChange={(e) =>
-                          updateFeature(index, "gradient", e.target.value)
+                          updateFeature(index, "icon", e.target.value)
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                       >
-                        {gradientOptions.map((opt) => (
+                        {iconOptions.map((opt) => (
                           <option key={opt.value} value={opt.value}>
-                            {opt.label}
+                            {opt.icon} {opt.label}
                           </option>
                         ))}
                       </select>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Description
-                    </label>
+                    <div className="flex justify-between">
+                      <label className="block text-xs text-gray-500 mb-1">
+                        Description
+                      </label>
+                      <span className="text-xs text-gray-400">
+                        {feature.description?.length || 0}/500
+                      </span>
+                    </div>
                     <textarea
                       value={feature.description}
                       onChange={(e) =>
                         updateFeature(index, "description", e.target.value)
                       }
                       rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      maxLength={500}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
                     />
                   </div>
                 </div>
               ))}
             </div>
+            <button
+              onClick={addFeature}
+              className="mt-4 px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-sm font-medium transition-colors"
+            >
+              + Add Feature
+            </button>
           </div>
         </div>
       )}
@@ -1087,30 +1157,26 @@ const LandingPageSettings = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subtitle
-            </label>
+            <div className="flex justify-between">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Subtitle
+              </label>
+              <span className="text-xs text-gray-400">{formData.howItWorks.subtitle?.length || 0}/500</span>
+            </div>
             <textarea
               value={formData.howItWorks.subtitle}
               onChange={(e) => updateHowItWorks("subtitle", e.target.value)}
               rows={2}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              maxLength={500}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
             />
           </div>
 
           {/* Steps */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">
-                Steps
-              </label>
-              <button
-                onClick={addStep}
-                className="text-sm text-indigo-600 hover:text-indigo-700"
-              >
-                + Add Step
-              </button>
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Steps
+            </label>
             <div className="space-y-4">
               {formData.howItWorks.steps?.map((step, index) => (
                 <div
@@ -1157,21 +1223,37 @@ const LandingPageSettings = () => {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Description
-                    </label>
+                    <div className="flex justify-between">
+                      <label className="block text-xs text-gray-500 mb-1">
+                        Description
+                      </label>
+                      <span className="text-xs text-gray-400">{step.description?.length || 0}/500</span>
+                    </div>
                     <textarea
                       value={step.description}
                       onChange={(e) =>
                         updateStep(index, "description", e.target.value)
                       }
                       rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      maxLength={500}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
                     />
                   </div>
                 </div>
               ))}
             </div>
+            {(formData.howItWorks.steps?.length || 0) < 4 ? (
+              <button
+                onClick={addStep}
+                className="mt-4 px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-sm font-medium transition-colors"
+              >
+                + Add Step
+              </button>
+            ) : (
+              <p className="mt-4 text-sm text-gray-500 italic">
+                Maximum 4 steps allowed
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -1208,14 +1290,18 @@ const LandingPageSettings = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subtitle
-            </label>
+            <div className="flex justify-between">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Subtitle
+              </label>
+              <span className="text-xs text-gray-400">{formData.cta.subtitle?.length || 0}/500</span>
+            </div>
             <textarea
               value={formData.cta.subtitle}
               onChange={(e) => updateCta("subtitle", e.target.value)}
               rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              maxLength={500}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
             />
           </div>
 
@@ -1343,6 +1429,74 @@ const LandingPageSettings = () => {
             Footer Section
           </h3>
 
+          {/* Logo Upload Section */}
+          <div className="pb-6 border-b border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Logo</h4>
+            <div className="flex items-start gap-6">
+              <div className="flex-shrink-0">
+                {formData.footer.logo ? (
+                  <div className="relative">
+                    <img
+                      src={formData.footer.logo}
+                      alt="Logo"
+                      className="h-16 w-auto object-contain rounded-lg border border-gray-200"
+                      style={{ maxWidth: '200px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeLogo('footer')}
+                      className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center w-48 h-16 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                    <Upload className="w-5 h-5 text-gray-400" />
+                    <span className="text-xs text-gray-500 mt-1">Upload Logo</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                      onChange={(e) => handleLogoUpload(e, 'footer')}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.footer.showLogo || false}
+                      onChange={(e) => updateFooter('showLogo', e.target.checked)}
+                      className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm text-gray-700">Show logo instead of brand name</span>
+                  </label>
+                </div>
+                {formData.footer.logo && (
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Logo Width (px)</label>
+                      <input
+                        type="number"
+                        value={formData.footer.logoWidth || 40}
+                        onChange={(e) => updateFooter('logoWidth', parseInt(e.target.value) || 40)}
+                        className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500"
+                        min="20"
+                        max="200"
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-gray-500">
+                  Recommended: PNG or SVG with transparent background. Max file size: 2MB
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Brand Section */}
           <div className="pb-6 border-b border-gray-200">
             <h4 className="text-sm font-medium text-gray-700 mb-4">Brand</h4>
@@ -1374,14 +1528,18 @@ const LandingPageSettings = () => {
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Tagline
-              </label>
+              <div className="flex justify-between">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tagline
+                </label>
+                <span className="text-xs text-gray-400">{formData.footer.tagline?.length || 0}/500</span>
+              </div>
               <textarea
                 value={formData.footer.tagline || ""}
                 onChange={(e) => updateFooter("tagline", e.target.value)}
                 rows={2}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                maxLength={500}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
                 placeholder="The complete real estate partner management platform for modern businesses."
               />
             </div>
@@ -1625,6 +1783,74 @@ const LandingPageSettings = () => {
             Navigation Section
           </h3>
 
+          {/* Logo Upload Section */}
+          <div className="pb-6 border-b border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Logo</h4>
+            <div className="flex items-start gap-6">
+              <div className="flex-shrink-0">
+                {formData.navigation.logo ? (
+                  <div className="relative">
+                    <img
+                      src={formData.navigation.logo}
+                      alt="Logo"
+                      className="h-16 w-auto object-contain rounded-lg border border-gray-200"
+                      style={{ maxWidth: '200px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeLogo('navigation')}
+                      className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center w-48 h-16 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                    <Upload className="w-5 h-5 text-gray-400" />
+                    <span className="text-xs text-gray-500 mt-1">Upload Logo</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                      onChange={(e) => handleLogoUpload(e, 'navigation')}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.navigation.showLogo || false}
+                      onChange={(e) => updateNavigation('showLogo', e.target.checked)}
+                      className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm text-gray-700">Show logo instead of brand name</span>
+                  </label>
+                </div>
+                {formData.navigation.logo && (
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Logo Width (px)</label>
+                      <input
+                        type="number"
+                        value={formData.navigation.logoWidth || 40}
+                        onChange={(e) => updateNavigation('logoWidth', parseInt(e.target.value) || 40)}
+                        className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500"
+                        min="20"
+                        max="200"
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-gray-500">
+                  Recommended: PNG or SVG with transparent background. Max file size: 2MB
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1775,31 +2001,27 @@ const LandingPageSettings = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subtitle
-            </label>
+            <div className="flex justify-between">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Subtitle
+              </label>
+              <span className="text-xs text-gray-400">{formData.testimonials.subtitle?.length || 0}/500</span>
+            </div>
             <textarea
               value={formData.testimonials.subtitle || ""}
               onChange={(e) => updateTestimonials("subtitle", e.target.value)}
               rows={2}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              maxLength={500}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
               placeholder="See what our partners say about their experience."
             />
           </div>
 
           {/* Testimonial Items */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">
-                Testimonials
-              </label>
-              <button
-                onClick={addTestimonial}
-                className="text-sm text-indigo-600 hover:text-indigo-700"
-              >
-                + Add Testimonial
-              </button>
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Testimonials
+            </label>
             <div className="space-y-4">
               {formData.testimonials.items?.map((item, index) => (
                 <div
@@ -1818,16 +2040,20 @@ const LandingPageSettings = () => {
                     </button>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Quote
-                    </label>
+                    <div className="flex justify-between">
+                      <label className="block text-xs text-gray-500 mb-1">
+                        Quote
+                      </label>
+                      <span className="text-xs text-gray-400">{item.quote?.length || 0}/500</span>
+                    </div>
                     <textarea
                       value={item.quote || ""}
                       onChange={(e) =>
                         updateTestimonial(index, "quote", e.target.value)
                       }
                       rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      maxLength={500}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
                       placeholder="What the customer said..."
                     />
                   </div>
@@ -1878,6 +2104,12 @@ const LandingPageSettings = () => {
                 </div>
               ))}
             </div>
+            <button
+              onClick={addTestimonial}
+              className="mt-4 px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-sm font-medium transition-colors"
+            >
+              + Add Testimonial
+            </button>
           </div>
         </div>
       )}
@@ -1915,31 +2147,27 @@ const LandingPageSettings = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subtitle
-            </label>
+            <div className="flex justify-between">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Subtitle
+              </label>
+              <span className="text-xs text-gray-400">{formData.faqs.subtitle?.length || 0}/500</span>
+            </div>
             <textarea
               value={formData.faqs.subtitle || ""}
               onChange={(e) => updateFaqs("subtitle", e.target.value)}
               rows={2}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              maxLength={500}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
               placeholder="Everything you need to know about ChannelPartner."
             />
           </div>
 
           {/* FAQ Items */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">
-                FAQs
-              </label>
-              <button
-                onClick={addFaq}
-                className="text-sm text-indigo-600 hover:text-indigo-700"
-              >
-                + Add FAQ
-              </button>
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              FAQs
+            </label>
             <div className="space-y-4">
               {formData.faqs.items?.map((item, index) => (
                 <div
@@ -1972,40 +2200,32 @@ const LandingPageSettings = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Answer
-                    </label>
+                    <div className="flex justify-between">
+                      <label className="block text-xs text-gray-500 mb-1">
+                        Answer
+                      </label>
+                      <span className="text-xs text-gray-400">{item.answer?.length || 0}/2000</span>
+                    </div>
                     <textarea
                       value={item.answer || ""}
                       onChange={(e) =>
                         updateFaq(index, "answer", e.target.value)
                       }
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      maxLength={2000}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
                       placeholder="ChannelPartner is a comprehensive platform..."
                     />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Category
-                    </label>
-                    <select
-                      value={item.category || "general"}
-                      onChange={(e) =>
-                        updateFaq(index, "category", e.target.value)
-                      }
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    >
-                      <option value="general">General</option>
-                      <option value="pricing">Pricing</option>
-                      <option value="features">Features</option>
-                      <option value="support">Support</option>
-                      <option value="security">Security</option>
-                    </select>
                   </div>
                 </div>
               ))}
             </div>
+            <button
+              onClick={addFaq}
+              className="mt-4 px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-sm font-medium transition-colors"
+            >
+              + Add FAQ
+            </button>
           </div>
         </div>
       )}

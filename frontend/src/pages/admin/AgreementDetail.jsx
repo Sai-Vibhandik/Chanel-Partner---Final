@@ -60,11 +60,20 @@ const AgreementDetail = () => {
       // For current signatures without contentSnapshot, fetch from template
       let content = signature.contentSnapshot;
 
-      if (!content) {
+      if (!content && signature.agreementTemplateId?._id) {
         // Fallback: fetch from template API (for signatures created before contentSnapshot was added)
-        const response = await api.get(`/agreements/${signature.agreementTemplateId._id}`);
-        const template = response.data.data.template;
-        content = template.content || '';
+        try {
+          const response = await api.get(`/agreements/${signature.agreementTemplateId._id}`);
+          const template = response.data.data.template;
+          content = template.content || '';
+        } catch (err) {
+          // Template may have been deleted, content unavailable
+          content = 'Agreement content is no longer available (template has been deleted).';
+        }
+      }
+
+      if (!content) {
+        content = 'Agreement content is no longer available.';
       }
 
       // Replace placeholders with actual values
@@ -264,8 +273,7 @@ const AgreementDetail = () => {
                   <tr key={template._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{template.name}</span>
-                        {template.isRequired && <span className="text-red-500 text-sm">*</span>}
+                        <span className="font-medium text-gray-900">{template.name}{template.isRequired && <span className="text-red-500 text-sm">*</span>}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -318,8 +326,7 @@ const AgreementDetail = () => {
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
                     <h4 className="font-medium text-gray-900">
-                      {template.name}
-                      {template.isRequired && <span className="text-red-500 ml-1">*</span>}
+                      {template.name}{template.isRequired && <span className="text-red-500">*</span>}
                     </h4>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
@@ -404,11 +411,13 @@ const AgreementDetail = () => {
                       <td className="px-6 py-4 text-gray-600">{sig.typedName || '-'}</td>
                       <td className="px-6 py-4">
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          sig.templateDeleted ? 'bg-red-100 text-red-800' :
                           sig.status === 'signed' && isLatest ? 'bg-green-100 text-green-800' :
                           sig.status === 'expired' ? 'bg-red-100 text-red-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
-                          {sig.status === 'signed' && isLatest ? 'Current' :
+                          {sig.templateDeleted ? 'Deleted' :
+                           sig.status === 'signed' && isLatest ? 'Current' :
                            sig.status === 'expired' ? 'Expired' : 'Previous Version'}
                         </span>
                       </td>
@@ -441,11 +450,13 @@ const AgreementDetail = () => {
                       <p className="text-sm text-gray-500">{getTypeLabel(sig.agreementTemplateId?.type)} • v{sig.version}</p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      sig.templateDeleted ? 'bg-red-100 text-red-800' :
                       sig.status === 'signed' && isLatest ? 'bg-green-100 text-green-800' :
                       sig.status === 'expired' ? 'bg-red-100 text-red-800' :
                       'bg-gray-100 text-gray-800'
                     }`}>
-                      {sig.status === 'signed' && isLatest ? 'Current' :
+                      {sig.templateDeleted ? 'Deleted' :
+                       sig.status === 'signed' && isLatest ? 'Current' :
                        sig.status === 'expired' ? 'Expired' : 'Previous Version'}
                     </span>
                   </div>

@@ -50,7 +50,6 @@ const PartnerManagerVisitDetails = () => {
   };
 
   const handleApprove = async () => {
-    if (!window.confirm('Are you sure you want to approve this visit?')) return;
     try {
       setProcessing(true);
       await api.put(`/visits/${id}/approve`);
@@ -83,7 +82,6 @@ const PartnerManagerVisitDetails = () => {
   };
 
   const handleComplete = async () => {
-    if (!window.confirm('Are you sure you want to mark this visit as completed?')) return;
     try {
       setProcessing(true);
       await api.put(`/visits/${id}/complete`);

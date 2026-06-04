@@ -201,6 +201,16 @@ const RegisterCompany = () => {
     const phoneError = validatePhoneWithCountry(formData.phone, formData.phoneCountryCode);
     if (phoneError) errors.phone = phoneError;
 
+    // Website validation - optional but must be valid format if provided
+    if (formData.website && formData.website.trim()) {
+      const urlPattern = /^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/;
+      if (!urlPattern.test(formData.website.trim())) {
+        errors.website = 'Please enter a valid website URL.';
+      } else if (formData.website.trim().length > 200) {
+        errors.website = 'Website cannot exceed 200 characters.';
+      }
+    }
+
     if (!formData.regions.length) {
       errors.regions = 'Please select at least one Region.';
     }
@@ -643,33 +653,6 @@ const RegisterCompany = () => {
             </div>
           </div>
 
-          {/* Restored Progress Banner */}
-          {restoredFromStorage && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div className="text-sm text-blue-700">
-                    <p className="font-medium">Your progress has been restored</p>
-                    <p className="text-blue-600 mt-1">Continue where you left off or start fresh.</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleStartFresh();
-                    setRestoredFromStorage(false);
-                  }}
-                  className="text-sm text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
-                >
-                  Start Fresh
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Error Message */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -809,13 +792,12 @@ const RegisterCompany = () => {
 
               <div>
                 <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-2">
-                  Company Name<span className="text-red-500">*</span>
+                  Company Name<span className="text-red-500 align-super">*</span>
                 </label>
                 <input
                   id="companyName"
                   name="companyName"
                   type="text"
-                  required
                   value={formData.companyName}
                   onChange={handleChange}
                   minLength={2}
@@ -828,13 +810,12 @@ const RegisterCompany = () => {
 
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                  Company Email ID<span className="text-red-500">*</span>
+                  Company Email ID<span className="text-red-500 align-super">*</span>
                 </label>
                 <input
                   id="email"
                   name="email"
-                  type="email"
-                  required
+                  type="text"
                   value={formData.email}
                   onChange={handleChange}
                   maxLength={100}
@@ -874,7 +855,7 @@ const RegisterCompany = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Operating Regions<span className="text-red-500">*</span>
+                  Operating Regions<span className="text-red-500 align-super">*</span>
                 </label>
                 <div className="space-y-3">
                   <label className="flex items-center p-3 border border-gray-200 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
@@ -955,7 +936,7 @@ const RegisterCompany = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
-                    First Name<span className="text-red-500">*</span>
+                    First Name<span className="text-red-500 align-super">*</span>
                   </label>
                   <input
                     id="firstName"
@@ -972,7 +953,7 @@ const RegisterCompany = () => {
                 </div>
                 <div>
                   <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
-                    Last Name<span className="text-red-500">*</span>
+                    Last Name<span className="text-red-500 align-super">*</span>
                   </label>
                   <input
                     id="lastName"
@@ -991,7 +972,7 @@ const RegisterCompany = () => {
 
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                  Password<span className="text-red-500">*</span>
+                  Password<span className="text-red-500 align-super">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -1027,7 +1008,7 @@ const RegisterCompany = () => {
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirm Password<span className="text-red-500">*</span>
+                  Confirm Password<span className="text-red-500 align-super">*</span>
                 </label>
                 <div className="relative">
                   <input

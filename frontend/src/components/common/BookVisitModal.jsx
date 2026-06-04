@@ -332,7 +332,7 @@ const BookVisitModal = ({
 
           {!preSelectedPartnership && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Company *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Company<span className="text-red-500">*</span></label>
               <select
                 value={selectedPartnership}
                 onChange={(e) => {
@@ -355,7 +355,7 @@ const BookVisitModal = ({
 
           {!preSelectedProperty && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Property *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Property<span className="text-red-500">*</span></label>
               <select
                 value={selectedProperty}
                 onChange={(e) => { setSelectedProperty(e.target.value); if (formErrors.property) setFormErrors(prev => ({ ...prev, property: '' })); }}
@@ -382,7 +382,7 @@ const BookVisitModal = ({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Visit Type *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Visit Type<span className="text-red-500">*</span></label>
             <div className="grid grid-cols-2 gap-3">
               {[{ value: 'office', label: 'Office Visit', icon: '🏢' }, { value: 'virtual', label: 'Virtual Meet', icon: '💻' }].map((type) => (
                 <label key={type.value} className={`flex flex-col items-center p-4 rounded-lg border-2 cursor-pointer transition-colors ${bookingForm.visitType === type.value ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}>
@@ -395,7 +395,7 @@ const BookVisitModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Purpose of Visit *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Purpose of Visit<span className="text-red-500">*</span></label>
             <input
               type="text"
               value={bookingForm.purpose}
@@ -414,7 +414,7 @@ const BookVisitModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Office *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Office<span className="text-red-500">*</span></label>
             <select
               value={bookingForm.officeLocation}
               onChange={(e) => { handleChange('officeLocation', e.target.value); setBookingForm(prev => ({ ...prev, officeLocation: e.target.value, scheduledDate: '', timeSlot: '' })); }}
@@ -454,12 +454,16 @@ const BookVisitModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Date *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Date<span className="text-red-500">*</span></label>
             <DatePicker
-              selected={bookingForm.scheduledDate ? new Date(bookingForm.scheduledDate) : null}
+              selected={bookingForm.scheduledDate ? new Date(bookingForm.scheduledDate + 'T12:00:00') : null}
               onChange={(date) => {
                 if (date) {
-                  const dateStr = date.toISOString().split('T')[0];
+                  // Use local date methods to avoid timezone issues
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  const dateStr = `${year}-${month}-${day}`;
                   handleChange('scheduledDate', dateStr);
                   setBookingForm(prev => ({ ...prev, scheduledDate: dateStr, timeSlot: '' }));
                   // Clear any previous error
@@ -470,14 +474,20 @@ const BookVisitModal = ({
               }}
               onBlur={() => handleBlur('scheduledDate')}
               minDate={new Date()}
-              excludeDates={blockedDates.map(b => new Date(b.date))}
+              excludeDates={blockedDates.map(b => new Date(b.date + 'T12:00:00'))}
               filterDate={(date) => {
-                // Filter out blocked dates
-                const dateStr = date.toISOString().split('T')[0];
+                // Filter out blocked dates using local date methods
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
                 return !blockedDates.some(b => b.date === dateStr);
               }}
               dayClassName={(date) => {
-                const dateStr = date.toISOString().split('T')[0];
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
                 if (blockedDates.some(b => b.date === dateStr)) {
                   return 'react-datepicker__day--blocked';
                 }
@@ -498,7 +508,7 @@ const BookVisitModal = ({
 
           {bookingForm.officeLocation && bookingForm.scheduledDate && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Available Time Slots *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Available Time Slots<span className="text-red-500">*</span></label>
               {loadingSlots ? (
                 <div className="flex items-center justify-center py-4"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div><span className="ml-2 text-sm text-gray-500">Loading slots...</span></div>
               ) : availableSlots.length === 0 ? (
@@ -559,7 +569,7 @@ const BookVisitModal = ({
             <div className="border-t pt-4 space-y-3">
               <h4 className="font-medium text-gray-900">Client Details</h4>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Client Name<span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={bookingForm.clientName}

@@ -715,11 +715,21 @@ const Reports = () => {
             onClick={() => setActiveTab('overview')}
             className={`flex-1 px-6 py-4 text-sm font-medium text-center transition-colors ${
               activeTab === 'overview'
-                ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
+                ? 'text-gray-900 border-b-2 border-indigo-600'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             Commission Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('payouts')}
+            className={`flex-1 px-6 py-4 text-sm font-medium text-center transition-colors ${
+              activeTab === 'payouts'
+                ? 'text-gray-900 border-b-2 border-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Partner Payouts
           </button>
         </div>
       </div>

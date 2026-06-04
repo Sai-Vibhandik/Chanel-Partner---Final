@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
 import api from '../../utils/api';
@@ -7,6 +8,7 @@ import Pagination from '../../components/common/Pagination';
 
 const Reports = () => {
   const config = sidebarConfig.viewer;
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [overviewData, setOverviewData] = useState(null);
@@ -17,6 +19,20 @@ const Reports = () => {
   // Pagination
   const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Set active tab from URL on mount
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['overview', 'partners', 'visits'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
 
   useEffect(() => {
     fetchAllData();
@@ -55,6 +71,18 @@ const Reports = () => {
     return num.toString();
   };
 
+  // Property type labels mapping
+  const propertyTypeLabels = {
+    apartment: 'Apartment',
+    villa: 'Villa',
+    plot: 'Plot/Land',
+    commercial: 'Commercial',
+    office: 'Office Space',
+    retail: 'Retail',
+    warehouse: 'Warehouse',
+    land: 'Land'
+  };
+
   // Format tier to title case
   const formatTier = (tier) => {
     if (!tier) return 'Bronze';
@@ -77,6 +105,23 @@ const Reports = () => {
     const propertyStats = overviewData || {};
     const visitStats = visitData || {};
     const commissionStats = commissionData || {};
+
+    // Get all active currencies
+    const activeCurrencies = commissionStats.activeCurrencies || ['INR'];
+    const statusCountsByCurrency = commissionStats.statusCountsByCurrency || {};
+
+    // Get currency stats for all currencies
+    const getCurrencyStats = (currency) => {
+      return statusCountsByCurrency[currency] || {
+        pending: { count: 0, amount: 0 },
+        approved: { count: 0, amount: 0 },
+        paid: { count: 0, amount: 0 },
+        cancelled: { count: 0, amount: 0 }
+      };
+    };
+
+    // Calculate total commission count
+    const totalCommissionCount = commissionStats.overview?.total || 0;
 
     return (
       <div className="space-y-6">
@@ -109,14 +154,22 @@ const Reports = () => {
                 </svg>
               </div>
             </div>
-            <p className="text-xs text-blue-600 mt-2">{visitStats.byStatus?.completed || 0} completed</p>
+            <p className="text-xs text-blue-600 mt-2">{visitStats.statusCounts?.completed || visitStats.completed || 0} completed</p>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Commission Volume</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(commissionStats.totalAmount || 0)}</p>
+                <div className="mt-1">
+                  {activeCurrencies.map(currency => {
+                    const stats = getCurrencyStats(currency);
+                    const total = (stats.pending?.amount || 0) + (stats.approved?.amount || 0) + (stats.paid?.amount || 0);
+                    return (
+                      <p key={currency} className="text-lg font-bold text-gray-900">{formatCurrency(total, currency)}</p>
+                    );
+                  })}
+                </div>
               </div>
               <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                 <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -124,14 +177,14 @@ const Reports = () => {
                 </svg>
               </div>
             </div>
-            <p className="text-xs text-gray-500 mt-2">{commissionStats.total || 0} transactions</p>
+            <p className="text-xs text-gray-500 mt-2">{totalCommissionCount} transactions</p>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Active Partners</p>
-                <p className="text-2xl font-bold text-gray-900">{partnerData.partners?.length || 0}</p>
+                <p className="text-2xl font-bold text-gray-900">{partnerData.summary?.totalPartners || partnerData.partners?.length || 0}</p>
               </div>
               <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
                 <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -170,51 +223,61 @@ const Reports = () => {
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Properties by Type</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-              <p className="text-sm text-gray-500">Residential</p>
-              <p className="text-2xl font-bold text-gray-900">{propertyStats.byType?.residential || 0}</p>
-            </div>
-            <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-              <p className="text-sm text-gray-500">Commercial</p>
-              <p className="text-2xl font-bold text-gray-900">{propertyStats.byType?.commercial || 0}</p>
-            </div>
-            <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
-              <p className="text-sm text-gray-500">Industrial</p>
-              <p className="text-2xl font-bold text-gray-900">{propertyStats.byType?.industrial || 0}</p>
-            </div>
-            <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-              <p className="text-sm text-gray-500">Land/Plots</p>
-              <p className="text-2xl font-bold text-gray-900">{propertyStats.byType?.land || 0}</p>
-            </div>
+            {Object.entries(propertyTypeLabels)
+              .filter(([type]) => (propertyStats.byType?.[type] || 0) > 0 || Object.keys(propertyStats.byType || {}).includes(type))
+              .map(([type, label]) => (
+                <div key={type} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  <p className="text-sm text-gray-500">{label}</p>
+                  <p className="text-2xl font-bold text-gray-900">{propertyStats.byType?.[type] || 0}</p>
+                </div>
+              ))}
+            {Object.keys(propertyStats.byType || {}).filter(type => !propertyTypeLabels[type]).length > 0 && (
+              Object.entries(propertyStats.byType || {})
+                .filter(([type]) => !propertyTypeLabels[type])
+                .map(([type, count]) => (
+                  <div key={type} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                    <p className="text-sm text-gray-500 capitalize">{type.replace(/_/g, ' ')}</p>
+                    <p className="text-2xl font-bold text-gray-900">{count}</p>
+                  </div>
+                ))
+            )}
           </div>
+          {Object.keys(propertyStats.byType || {}).length === 0 && (
+            <p className="text-center text-gray-500 py-4">No properties found</p>
+          )}
         </div>
 
-        {/* Commission Status */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Status</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
-              <p className="text-sm text-gray-500">Pending</p>
-              <p className="text-xl font-bold text-amber-600">{formatCurrency(commissionStats.statusCounts?.pending?.amount || 0)}</p>
-              <p className="text-xs text-gray-400">{commissionStats.statusCounts?.pending?.count || 0} records</p>
+        {/* Commission Status by Currency */}
+        {activeCurrencies.map(currency => {
+          const currencyStats = getCurrencyStats(currency);
+          return (
+            <div key={currency} className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Commission Status ({currency})</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
+                  <p className="text-sm text-gray-500">Pending</p>
+                  <p className="text-xl font-bold text-amber-600">{formatCurrency(currencyStats.pending?.amount || 0, currency)}</p>
+                  <p className="text-xs text-gray-400">{currencyStats.pending?.count || 0} records</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                  <p className="text-sm text-gray-500">Approved</p>
+                  <p className="text-xl font-bold text-blue-600">{formatCurrency(currencyStats.approved?.amount || 0, currency)}</p>
+                  <p className="text-xs text-gray-400">{currencyStats.approved?.count || 0} records</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+                  <p className="text-sm text-gray-500">Paid</p>
+                  <p className="text-xl font-bold text-green-600">{formatCurrency(currencyStats.paid?.amount || 0, currency)}</p>
+                  <p className="text-xs text-gray-400">{currencyStats.paid?.count || 0} records</p>
+                </div>
+                <div className="p-4 bg-red-50 rounded-lg border border-red-100">
+                  <p className="text-sm text-gray-500">Cancelled</p>
+                  <p className="text-xl font-bold text-red-600">{formatCurrency(currencyStats.cancelled?.amount || 0, currency)}</p>
+                  <p className="text-xs text-gray-400">{currencyStats.cancelled?.count || 0} records</p>
+                </div>
+              </div>
             </div>
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-              <p className="text-sm text-gray-500">Approved</p>
-              <p className="text-xl font-bold text-blue-600">{formatCurrency(commissionStats.statusCounts?.approved?.amount || 0)}</p>
-              <p className="text-xs text-gray-400">{commissionStats.statusCounts?.approved?.count || 0} records</p>
-            </div>
-            <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-              <p className="text-sm text-gray-500">Paid</p>
-              <p className="text-xl font-bold text-green-600">{formatCurrency(commissionStats.statusCounts?.paid?.amount || 0)}</p>
-              <p className="text-xs text-gray-400">{commissionStats.statusCounts?.paid?.count || 0} records</p>
-            </div>
-            <div className="p-4 bg-red-50 rounded-lg border border-red-100">
-              <p className="text-sm text-gray-500">Cancelled</p>
-              <p className="text-xl font-bold text-red-600">{formatCurrency(commissionStats.statusCounts?.cancelled?.amount || 0)}</p>
-              <p className="text-xs text-gray-400">{commissionStats.statusCounts?.cancelled?.count || 0} records</p>
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
     );
   };
@@ -224,25 +287,34 @@ const Reports = () => {
     const partners = partnerData?.partners || [];
     const pagination = partnerData?.pagination;
 
+    // Get all active currencies from partnerData
+    const activeCurrencies = partnerData?.activeCurrencies || ['INR'];
+    const summaryByCurrency = partnerData?.summaryByCurrency || {};
+
     return (
       <div className="space-y-6">
         {/* Partner Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <p className="text-sm text-gray-500">Total Partners</p>
             <p className="text-2xl font-bold text-gray-900">{partnerData?.summary?.totalPartners || partners.length}</p>
           </div>
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Total Visits</p>
-            <p className="text-2xl font-bold text-gray-900">{partnerData?.summary?.totalVisits || 0}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <p className="text-sm text-gray-500">Completed Visits</p>
-            <p className="text-2xl font-bold text-gray-900">{partnerData?.summary?.completedVisits || 0}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <p className="text-sm text-gray-500">Total Commissions</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(partnerData?.summary?.totalCommissions || 0)}</p>
+            <div className="mt-1">
+              {activeCurrencies.map(currency => {
+                const currencyData = summaryByCurrency[currency] || { totalAmount: 0 };
+                return (
+                  <p key={currency} className="text-lg font-bold text-gray-900">
+                    {formatCurrency(currencyData.totalAmount || 0, currency)}
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+            <p className="text-sm text-gray-500">Avg Conversion Rate</p>
+            <p className="text-2xl font-bold text-gray-900">{partnerData?.summary?.avgConversionRate?.toFixed(1) || 0}%</p>
           </div>
         </div>
 
@@ -287,27 +359,44 @@ const Reports = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {partners.map((partner, index) => (
-                    <tr key={partner.partnershipId || partner.partnerId} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {index + 1}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="font-medium text-gray-900">{partner.partnerName || partner.name}</p>
-                          <p className="text-sm text-gray-500">{partner.partnerEmail || partner.email}</p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTierStyles(partner.tier)}`}>
-                          {formatTier(partner.tier)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-900">{partner.totalVisits || 0}</td>
-                      <td className="px-4 py-3 text-right text-gray-900">{partner.completedVisits || 0}</td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(partner.totalCommissions || 0)}</td>
-                    </tr>
-                  ))}
+                  {partners.map((partner, index) => {
+                    // Get all currencies from partner's commissionsByCurrency or use default
+                    const partnerCurrencies = partner.commissionsByCurrency
+                      ? Object.keys(partner.commissionsByCurrency)
+                      : activeCurrencies;
+
+                    return (
+                      <tr key={partner.partnershipId || partner.partnerId} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {index + 1}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="font-medium text-gray-900">{partner.partnerName || partner.name}</p>
+                            <p className="text-sm text-gray-500">{partner.partnerEmail || partner.email}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTierStyles(partner.tier)}`}>
+                            {formatTier(partner.tier)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-900">{partner.totalVisits || 0}</td>
+                        <td className="px-4 py-3 text-right text-gray-900">{partner.completedVisits || 0}</td>
+                        <td className="px-4 py-3 text-right font-medium text-gray-900">
+                          {partnerCurrencies.map(currency => {
+                            const amount = partner.commissionsByCurrency?.[currency]?.total || 0;
+                            return (
+                              <div key={currency} className="text-sm">
+                                {formatCurrency(amount, currency)}
+                              </div>
+                            );
+                          })}
+                          {partnerCurrencies.length === 0 && formatCurrency(partner.totalCommissions || 0, activeCurrencies[0] || 'INR')}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -331,7 +420,7 @@ const Reports = () => {
 
   // Visits Tab Component
   const VisitsTab = () => {
-    const byStatus = visitData?.byStatus || {};
+    const statusCounts = visitData?.statusCounts || {};
     const byType = visitData?.byType || {};
 
     return (
@@ -344,15 +433,15 @@ const Reports = () => {
           </div>
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <p className="text-sm text-gray-500">Completed</p>
-            <p className="text-2xl font-bold text-green-600">{byStatus.completed || 0}</p>
+            <p className="text-2xl font-bold text-green-600">{statusCounts.completed || visitData?.completed || 0}</p>
           </div>
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <p className="text-sm text-gray-500">Pending</p>
-            <p className="text-2xl font-bold text-amber-600">{byStatus.pending || 0}</p>
+            <p className="text-2xl font-bold text-amber-600">{statusCounts.pending || visitData?.pendingApprovals || 0}</p>
           </div>
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
             <p className="text-sm text-gray-500">Approved</p>
-            <p className="text-2xl font-bold text-blue-600">{byStatus.approved || 0}</p>
+            <p className="text-2xl font-bold text-blue-600">{statusCounts.approved || visitData?.approved || 0}</p>
           </div>
         </div>
 
@@ -369,7 +458,7 @@ const Reports = () => {
             ].map((item) => (
               <div key={item.status} className={`p-4 rounded-lg bg-${item.color}-50 border border-${item.color}-100`}>
                 <p className="text-sm text-gray-500">{item.label}</p>
-                <p className={`text-2xl font-bold text-${item.color}-600`}>{byStatus[item.status] || 0}</p>
+                <p className={`text-2xl font-bold text-${item.color}-600`}>{statusCounts[item.status] || 0}</p>
               </div>
             ))}
           </div>
@@ -381,11 +470,11 @@ const Reports = () => {
           <div className="grid grid-cols-2 gap-4">
             <div className="p-4 rounded-lg bg-blue-50 border border-blue-100">
               <p className="text-sm text-gray-500">Office Visits</p>
-              <p className="text-2xl font-bold text-blue-600">{byType.office || 0}</p>
+              <p className="text-2xl font-bold text-blue-600">{byType?.office || 0}</p>
             </div>
             <div className="p-4 rounded-lg bg-purple-50 border border-purple-100">
               <p className="text-sm text-gray-500">Virtual Visits</p>
-              <p className="text-2xl font-bold text-purple-600">{byType.virtual_meet || 0}</p>
+              <p className="text-2xl font-bold text-purple-600">{(byType?.virtual || 0) + (byType?.virtual_meet || 0)}</p>
             </div>
           </div>
         </div>
@@ -399,7 +488,7 @@ const Reports = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
         <div className="flex border-b border-gray-100">
           <button
-            onClick={() => setActiveTab('overview')}
+            onClick={() => handleTabChange('overview')}
             className={`flex-1 px-6 py-4 text-sm font-medium text-center transition-colors ${
               activeTab === 'overview'
                 ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50'
@@ -409,7 +498,7 @@ const Reports = () => {
             Overview
           </button>
           <button
-            onClick={() => { setActiveTab('partners'); setPage(1); }}
+            onClick={() => { handleTabChange('partners'); setPage(1); }}
             className={`flex-1 px-6 py-4 text-sm font-medium text-center transition-colors ${
               activeTab === 'partners'
                 ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50'
@@ -419,7 +508,7 @@ const Reports = () => {
             Partners
           </button>
           <button
-            onClick={() => setActiveTab('visits')}
+            onClick={() => handleTabChange('visits')}
             className={`flex-1 px-6 py-4 text-sm font-medium text-center transition-colors ${
               activeTab === 'visits'
                 ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50'

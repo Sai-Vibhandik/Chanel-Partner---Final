@@ -36,6 +36,17 @@ const agreementSignatureSchema = new mongoose.Schema(
       required: true
     },
 
+    // Template info at the time of signing (preserves name/type even if template is deleted)
+    templateName: {
+      type: String,
+      required: true
+    },
+
+    templateType: {
+      type: String,
+      required: true
+    },
+
     // Signature details
     signedAt: {
       type: Date,

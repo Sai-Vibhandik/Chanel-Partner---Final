@@ -428,8 +428,7 @@ const PartnershipDetails = () => {
 
                       <div>
                         <h4 className="font-medium text-gray-900">
-                          {reqDoc.name}
-                          {reqDoc.required && <span className="text-red-500 ml-1">*</span>}
+                          {reqDoc.name}{reqDoc.required && <span className="text-red-500">*</span>}
                         </h4>
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -588,8 +587,7 @@ const PartnershipDetails = () => {
                     <div>
                       <h4 className="font-medium text-gray-900">{agreement.name}</h4>
                       <p className="text-sm text-gray-500">
-                        {agreement.type.toUpperCase().replace('_', ' ')}
-                        {agreement.isRequired && <span className="text-red-500 ml-1">*</span>}
+                        {agreement.type.toUpperCase().replace('_', ' ')}{agreement.isRequired && <span className="text-red-500">*</span>}
                       </p>
                     </div>
                   </div>

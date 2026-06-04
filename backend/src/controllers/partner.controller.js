@@ -331,51 +331,40 @@ export const getPartnerStats = async (req, res, next) => {
     // Import PartnerCompany model
     const PartnerCompany = (await import('../models/PartnerCompany.js')).default;
 
-    let partnerIds = [];
-
-    // Platform admin can see all
+    // Platform admin can see all partners across all companies
     if (req.user.role === 'platform_admin') {
-      const allPartnerships = await PartnerCompany.find({}).select('partnerId');
-      partnerIds = allPartnerships.map(p => p.partnerId);
-    } else {
-      // Get partners associated with this company through partnerships
-      const partnerships = await PartnerCompany.find({
-        companyId: req.user.companyId
-      }).select('partnerId status tier');
+      // For platform admin, count all users with role 'partner'
+      const query = { role: 'partner' };
 
-      partnerIds = partnerships.map(p => p.partnerId);
+      // Get total counts
+      const totalPartners = await User.countDocuments(query);
+      const activePartners = await User.countDocuments({
+        ...query,
+        isActive: true,
+        'partnerProfile.status': 'active'
+      });
+      const pendingPartners = await User.countDocuments({
+        ...query,
+        'partnerProfile.status': 'pending'
+      });
 
-      // Get stats from partnerships directly
-      const totalPartners = partnerships.length;
-      const activePartners = partnerships.filter(p => p.status === 'active').length;
-      const pendingPartners = partnerships.filter(p => p.status === 'pending').length;
+      // Get counts by status
+      const statusStats = await User.aggregate([
+        { $match: query },
+        { $group: { _id: '$partnerProfile.status', count: { $sum: 1 } } }
+      ]);
 
-      // Get tier stats from partnerships
-      const tierStats = partnerships.reduce((acc, p) => {
-        const tier = p.tier || 'bronze';
-        acc[tier] = (acc[tier] || 0) + 1;
-        return acc;
-      }, {});
+      // Get counts by tier
+      const tierStats = await User.aggregate([
+        { $match: query },
+        { $group: { _id: '$partnerProfile.tier', count: { $sum: 1 } } }
+      ]);
 
-      // Get recent partners
-      const recentPartnerships = await PartnerCompany.find({
-        companyId: req.user.companyId
-      })
+      // Recent registrations
+      const recentPartners = await User.find(query)
         .sort({ createdAt: -1 })
         .limit(5)
-        .populate('partnerId', 'firstName lastName email createdAt');
-
-      const recentPartners = recentPartnerships
-        .filter(p => p.partnerId)
-        .map(p => ({
-          _id: p.partnerId._id,
-          firstName: p.partnerId.firstName,
-          lastName: p.partnerId.lastName,
-          email: p.partnerId.email,
-          createdAt: p.partnerId.createdAt,
-          partnershipStatus: p.status,
-          tier: p.tier
-        }));
+        .select('firstName lastName email createdAt partnerProfile.status partnerProfile.tier');
 
       return res.status(200).json({
         success: true,
@@ -385,45 +374,55 @@ export const getPartnerStats = async (req, res, next) => {
             active: activePartners,
             pending: pendingPartners
           },
-          byStatus: {
-            active: activePartners,
-            pending: pendingPartners,
-            suspended: partnerships.filter(p => p.status === 'suspended').length
-          },
-          byTier: tierStats,
+          byStatus: statusStats.reduce((acc, item) => {
+            acc[item._id || 'unknown'] = item.count;
+            return acc;
+          }, {}),
+          byTier: tierStats.reduce((acc, item) => {
+            acc[item._id || 'unknown'] = item.count;
+            return acc;
+          }, {}),
           recent: recentPartners
         }
       });
     }
 
-    // For platform admin, use the original query
-    const query = { role: 'partner' };
-    if (partnerIds.length > 0) {
-      query._id = { $in: partnerIds };
-    }
+    // For company users, get partners associated with this company through partnerships
+    const partnerships = await PartnerCompany.find({
+      companyId: req.user.companyId
+    }).select('partnerId status tier');
 
-    // Get counts by status
-    const statusStats = await User.aggregate([
-      { $match: query },
-      { $group: { _id: '$partnerProfile.status', count: { $sum: 1 } } }
-    ]);
+    // Get stats from partnerships directly
+    const totalPartners = partnerships.length;
+    const activePartners = partnerships.filter(p => p.status === 'active').length;
+    const pendingPartners = partnerships.filter(p => p.status === 'pending').length;
 
-    // Get counts by tier
-    const tierStats = await User.aggregate([
-      { $match: query },
-      { $group: { _id: '$partnerProfile.tier', count: { $sum: 1 } } }
-    ]);
+    // Get tier stats from partnerships
+    const tierStats = partnerships.reduce((acc, p) => {
+      const tier = p.tier || 'bronze';
+      acc[tier] = (acc[tier] || 0) + 1;
+      return acc;
+    }, {});
 
-    // Get total counts
-    const totalPartners = await User.countDocuments(query);
-    const activePartners = await User.countDocuments({ ...query, isActive: true, 'partnerProfile.status': 'active' });
-    const pendingPartners = await User.countDocuments({ ...query, 'partnerProfile.status': 'pending' });
-
-    // Recent registrations
-    const recentPartners = await User.find(query)
+    // Get recent partners
+    const recentPartnerships = await PartnerCompany.find({
+      companyId: req.user.companyId
+    })
       .sort({ createdAt: -1 })
       .limit(5)
-      .select('firstName lastName email createdAt partnerProfile.status partnerProfile.tier');
+      .populate('partnerId', 'firstName lastName email createdAt');
+
+    const recentPartners = recentPartnerships
+      .filter(p => p.partnerId)
+      .map(p => ({
+        _id: p.partnerId._id,
+        firstName: p.partnerId.firstName,
+        lastName: p.partnerId.lastName,
+        email: p.partnerId.email,
+        createdAt: p.partnerId.createdAt,
+        partnershipStatus: p.status,
+        tier: p.tier
+      }));
 
     res.status(200).json({
       success: true,
@@ -433,14 +432,12 @@ export const getPartnerStats = async (req, res, next) => {
           active: activePartners,
           pending: pendingPartners
         },
-        byStatus: statusStats.reduce((acc, item) => {
-          acc[item._id || 'unknown'] = item.count;
-          return acc;
-        }, {}),
-        byTier: tierStats.reduce((acc, item) => {
-          acc[item._id || 'unknown'] = item.count;
-          return acc;
-        }, {}),
+        byStatus: {
+          active: activePartners,
+          pending: pendingPartners,
+          suspended: partnerships.filter(p => p.status === 'suspended').length
+        },
+        byTier: tierStats,
         recent: recentPartners
       }
     });

@@ -22,12 +22,12 @@ export const getCompanyPlan = async (companyId) => {
   // Get plan limits
   let plan = company.subscription?.planId;
 
-  // If no plan assigned, use default trial limits
+  // If no plan assigned, use default limits
   if (!plan) {
     plan = {
       limits: {
         maxProperties: 10,
-        maxDays: 14 // 14-day trial
+        maxDays: 30
       },
       capabilities: {
         analytics: true,
@@ -43,8 +43,7 @@ export const getCompanyPlan = async (companyId) => {
 
   return {
     plan,
-    status: company.subscription?.status || 'trial',
-    trialEndsAt: company.subscription?.trialEndsAt,
+    status: company.subscription?.status || 'inactive',
     currentPeriodEnd: company.subscription?.currentPeriodEnd
   };
 };
@@ -66,14 +65,6 @@ export const isSubscriptionActive = async (companyId) => {
     return true;
   }
 
-  // Trial subscription - check if still valid
-  if (status === 'trial') {
-    const trialEnds = company.subscription?.trialEndsAt;
-    if (trialEnds && new Date(trialEnds) > new Date()) {
-      return true;
-    }
-  }
-
   return false;
 };
 
@@ -87,7 +78,7 @@ export const getRemainingDays = async (companyId) => {
     throw new ApiError(404, 'Company not found');
   }
 
-  const periodEnd = company.subscription?.currentPeriodEnd || company.subscription?.trialEndsAt;
+  const periodEnd = company.subscription?.currentPeriodEnd;
 
   if (!periodEnd) {
     return 0;
@@ -174,7 +165,7 @@ export const hasCapability = async (companyId, capability) => {
  * Get full limits and usage summary for a company
  */
 export const getLimitsAndUsage = async (companyId) => {
-  const { plan, status, trialEndsAt, currentPeriodEnd } = await getCompanyPlan(companyId);
+  const { plan, status, currentPeriodEnd } = await getCompanyPlan(companyId);
   const propertyCount = await getPropertyCount(companyId);
   const isActive = await isSubscriptionActive(companyId);
   const remainingDays = await getRemainingDays(companyId);
@@ -183,10 +174,9 @@ export const getLimitsAndUsage = async (companyId) => {
     subscription: {
       status,
       isActive,
-      trialEndsAt,
       currentPeriodEnd,
       remainingDays,
-      plan: plan.name || 'Trial'
+      plan: plan.name || 'No Plan'
     },
     limits: {
       properties: {
@@ -223,7 +213,6 @@ export const getCompanySubscriptionStatus = async (companyId) => {
     status,
     isActive,
     isExpired: !isActive,
-    trialEndsAt: company.subscription?.trialEndsAt,
     currentPeriodEnd: company.subscription?.currentPeriodEnd,
     planId: company.subscription?.planId
   };
@@ -245,18 +234,10 @@ export const isCompanyAcceptingPartners = async (companyId) => {
     return false;
   }
 
-  // Subscription must be active or trial
+  // Subscription must be active
   const subscriptionStatus = company.subscription?.status;
-  if (!['active', 'trial'].includes(subscriptionStatus)) {
+  if (subscriptionStatus !== 'active') {
     return false;
-  }
-
-  // If trial, check if trial is still valid
-  if (subscriptionStatus === 'trial') {
-    const trialEnds = company.subscription?.trialEndsAt;
-    if (trialEnds && new Date(trialEnds) < new Date()) {
-      return false;
-    }
   }
 
   return true;
@@ -267,17 +248,9 @@ export const isCompanyAcceptingPartners = async (companyId) => {
  * Returns only company IDs with active subscriptions
  */
 export const getActiveCompanyIds = async () => {
-  const now = new Date();
-
   const companies = await Company.find({
     status: 'active',
-    $or: [
-      { 'subscription.status': 'active' },
-      {
-        'subscription.status': 'trial',
-        'subscription.trialEndsAt': { $gt: now }
-      }
-    ]
+    'subscription.status': 'active'
   }).select('_id');
 
   return companies.map(c => c._id);

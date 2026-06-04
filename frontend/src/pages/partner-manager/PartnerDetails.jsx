@@ -321,8 +321,7 @@ const PartnerDetails = () => {
                           {/* Document Info */}
                           <div>
                             <h4 className="font-medium text-gray-900">
-                              {reqDoc.name}
-                              {reqDoc.required && <span className="text-red-500 ml-1">*</span>}
+                              {reqDoc.name}{reqDoc.required && <span className="text-red-500">*</span>}
                             </h4>
                             <div className="flex items-center gap-2 mt-1">
                               <span className={`px-2 py-0.5 rounded text-xs font-medium ${

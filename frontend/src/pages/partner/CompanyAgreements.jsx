@@ -208,24 +208,45 @@ const CompanyAgreements = () => {
         setViewingSignature({
           ...signature,
           templateContent: signature.contentSnapshot,
-          templateName: signature.agreementTemplateId?.name,
-          templateType: signature.agreementTemplateId?.type
+          templateName: signature.agreementTemplateId?.name || signature.templateName,
+          templateType: signature.agreementTemplateId?.type || signature.templateType
         });
         return;
       }
 
       // Fallback: fetch the template content (for signatures created before contentSnapshot was added)
       const templateId = signature.agreementTemplateId?._id || signature.agreementTemplateId;
-      const response = await api.get(`/agreements/${templateId}`);
-      const template = response.data.data.template;
 
-      // Create a combined object with signature and template info
-      setViewingSignature({
-        ...signature,
-        templateContent: template.content,
-        templateName: template.name || signature.agreementTemplateId?.name,
-        templateType: template.type || signature.agreementTemplateId?.type
-      });
+      if (templateId) {
+        try {
+          const response = await api.get(`/agreements/${templateId}`);
+          const template = response.data.data.template;
+
+          // Create a combined object with signature and template info
+          setViewingSignature({
+            ...signature,
+            templateContent: template.content,
+            templateName: template.name || signature.agreementTemplateId?.name,
+            templateType: template.type || signature.agreementTemplateId?.type
+          });
+        } catch (err) {
+          // Template may have been deleted
+          setViewingSignature({
+            ...signature,
+            templateContent: 'Agreement content is no longer available (template has been deleted).',
+            templateName: signature.agreementTemplateId?.name || signature.templateName || 'Unknown Agreement',
+            templateType: signature.agreementTemplateId?.type || signature.templateType || 'other'
+          });
+        }
+      } else {
+        // No template ID available
+        setViewingSignature({
+          ...signature,
+          templateContent: 'Agreement content is no longer available.',
+          templateName: signature.templateName || 'Unknown Agreement',
+          templateType: signature.templateType || 'other'
+        });
+      }
     } catch (err) {
       console.error('Failed to load signature details:', err);
     }
@@ -461,7 +482,7 @@ const CompanyAgreements = () => {
                         signedAt: agreement.signature?.signedAt,
                         ipAddress: agreement.signature?.ipAddress,
                         status: 'signed',
-                        templateContent: agreement.content,
+                        templateContent: agreement.signature?.contentSnapshot || agreement.content,
                         templateName: agreement.name,
                         templateType: agreement.type
                       })}
@@ -538,13 +559,17 @@ const CompanyAgreements = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 py-1 text-xs rounded ${
-                            sig.status === 'signed' && isCurrent
+                            sig.templateDeleted
+                              ? 'bg-red-100 text-red-800'
+                              : sig.status === 'signed' && isCurrent
                               ? 'bg-green-100 text-green-800'
                               : sig.status === 'expired'
                               ? 'bg-red-100 text-red-800'
                               : 'bg-gray-100 text-gray-800'
                           }`}>
-                            {sig.status === 'signed' && isCurrent
+                            {sig.templateDeleted
+                              ? 'Deleted'
+                              : sig.status === 'signed' && isCurrent
                               ? 'Current'
                               : sig.status === 'expired'
                               ? 'Expired'

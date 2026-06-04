@@ -45,14 +45,8 @@ export const formatCurrency = (amount, currency = 'INR', options = {}) => {
         formatted = absAmount.toLocaleString('en-IN');
       }
     } else if (currency === 'AED') {
-      // For AED, use international notation with K and M
-      if (absAmount >= 1000000) {
-        formatted = `${(absAmount / 1000000).toFixed(2)}M`;
-      } else if (absAmount >= 1000) {
-        formatted = `${(absAmount / 1000).toFixed(1)}K`;
-      } else {
-        formatted = absAmount.toLocaleString('en-US');
-      }
+      // For AED, always show full amount (no compact notation)
+      formatted = absAmount.toLocaleString('en-US');
     } else {
       // Default international notation
       if (absAmount >= 1000000) {

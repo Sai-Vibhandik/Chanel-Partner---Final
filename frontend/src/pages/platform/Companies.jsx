@@ -130,6 +130,56 @@ const Companies = () => {
     return displays[status] || 'Unknown';
   };
 
+  const formatExpiryDate = (subscription) => {
+    if (!subscription) return '-';
+
+    const endDate = subscription.currentPeriodEnd || subscription.trialEndsAt;
+    if (!endDate) return '-';
+
+    const date = new Date(endDate);
+    const now = new Date();
+    const diffDays = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+
+    // Format the date
+    const formattedDate = date.toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+
+    return formattedDate;
+  };
+
+  const getExpiryStatus = (subscription) => {
+    if (!subscription) return 'none';
+
+    const endDate = subscription.currentPeriodEnd || subscription.trialEndsAt;
+    if (!endDate) return 'none';
+
+    const date = new Date(endDate);
+    const now = new Date();
+    const diffDays = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return 'expired';
+    if (diffDays <= 7) return 'critical';
+    if (diffDays <= 30) return 'warning';
+    return 'active';
+  };
+
+  const getExpiryBadge = (subscription) => {
+    const status = getExpiryStatus(subscription);
+
+    const styles = {
+      expired: 'bg-red-100 text-red-800',
+      critical: 'bg-red-100 text-red-800',
+      warning: 'bg-yellow-100 text-yellow-800',
+      active: 'bg-green-100 text-green-800',
+      none: 'bg-gray-100 text-gray-800'
+    };
+
+    return styles[status] || 'bg-gray-100 text-gray-800';
+  };
+
   return (
     <DashboardLayout sidebarLinks={config.links} title="Companies" subtitle="Manage all registered companies" color={config.color}>
       {/* Header */}
@@ -203,6 +253,7 @@ const Companies = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subscription</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Renewal Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -251,6 +302,11 @@ const Companies = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSubscriptionStatusBadge(company.subscription)}`}>
                         {getSubscriptionStatusDisplay(company.subscription)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getExpiryBadge(company.subscription)}`}>
+                        {formatExpiryDate(company.subscription)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

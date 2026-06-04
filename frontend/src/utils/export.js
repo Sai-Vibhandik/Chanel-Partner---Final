@@ -1,6 +1,7 @@
 /**
  * Export utilities for downloading data in various formats
  */
+import * as XLSX from 'xlsx';
 
 /**
  * Format currency for export
@@ -150,46 +151,47 @@ export const downloadCSV = (data, columns, filename = 'export') => {
 };
 
 /**
- * Convert data to Excel format (simple HTML table that Excel can open)
+ * Convert data to Excel workbook using xlsx library
  * @param {Array} data - Array of objects to convert
  * @param {Array} columns - Column definitions [{key, header, format}]
  * @param {string} title - Title for the spreadsheet
- * @returns {string} HTML table string
+ * @returns {Object} XLSX workbook
  */
 export const toExcel = (data, columns, title = 'Export') => {
-  if (!data || data.length === 0) return '';
+  if (!data || data.length === 0) return null;
 
-  const headerRow = columns.map(col => `<th style="background-color: #4F46E5; color: white; padding: 8px; font-weight: bold;">${col.header}</th>`).join('');
+  // Create headers row
+  const headers = columns.map(col => col.header);
 
-  const dataRows = data.map(item => {
-    return `<tr>${columns.map(col => {
+  // Create data rows
+  const rows = data.map(item =>
+    columns.map(col => {
       let value = getColumnValue(item, col);
 
       if (value === null || value === undefined) value = '';
       if (value instanceof Date) value = value.toLocaleDateString();
-      return `<td style="padding: 6px; border: 1px solid #ddd;">${value}</td>`;
-    }).join('')}</tr>`;
-  }).join('');
 
-  return `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-      <meta charset="utf-8">
-      <title>${title}</title>
-      <style>
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; }
-      </style>
-    </head>
-    <body>
-      <h2 style="text-align: center; margin-bottom: 20px;">${title}</h2>
-      <table>
-        <thead><tr>${headerRow}</tr></thead>
-        <tbody>${dataRows}</tbody>
-      </table>
-    </body>
-    </html>
-  `;
+      return value;
+    })
+  );
+
+  // Combine headers and data
+  const sheetData = [headers, ...rows];
+
+  // Create workbook and worksheet
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+  // Set column widths based on header length
+  const colWidths = columns.map(col => ({
+    wch: Math.max(col.header.length, 15)
+  }));
+  ws['!cols'] = colWidths;
+
+  // Add worksheet to workbook
+  XLSX.utils.book_append_sheet(wb, ws, title.substring(0, 31)); // Sheet name max 31 chars
+
+  return wb;
 };
 
 /**
@@ -200,17 +202,10 @@ export const toExcel = (data, columns, title = 'Export') => {
  * @param {string} title - Title for the spreadsheet
  */
 export const downloadExcel = (data, columns, filename = 'export', title = 'Export') => {
-  const excel = toExcel(data, columns, title);
-  const blob = new Blob([excel], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-
-  link.setAttribute('href', url);
-  link.setAttribute('download', `${filename}.xls`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const wb = toExcel(data, columns, title);
+  if (wb) {
+    XLSX.writeFile(wb, `${filename}.xlsx`);
+  }
 };
 
 export default {

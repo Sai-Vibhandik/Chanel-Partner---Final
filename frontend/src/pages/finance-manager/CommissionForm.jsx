@@ -241,6 +241,10 @@ const CommissionForm = () => {
 
   const handlePriceChange = (e) => {
     const value = handleDecimalInput(e, null, null, 2);
+    // Prevent negative values
+    if (value && value.startsWith('-')) {
+      return;
+    }
     setFormData(prev => ({
       ...prev,
       saleDetails: { ...prev.saleDetails, salePrice: value }
@@ -268,7 +272,7 @@ const CommissionForm = () => {
       errors['saleDetails.buyerName'] = 'Buyer Name is required.';
     }
 
-    const phoneError = validatePhoneWithCountry(formData.saleDetails.buyerPhone, formData.saleDetails.buyerPhoneCountryCode, 'Contact Number');
+    const phoneError = validatePhoneWithCountry(formData.saleDetails.buyerPhone, formData.saleDetails.buyerPhoneCountryCode, 'Buyer Contact Number');
     if (phoneError) errors['saleDetails.buyerPhone'] = phoneError;
 
     if (formData.saleDetails.buyerEmail) {
@@ -485,7 +489,7 @@ const CommissionForm = () => {
               onCountryChange={handlePhoneCountryChange}
               error={fieldErrors['saleDetails.buyerPhone']}
               onError={handlePhoneError}
-              label="Contact Number"
+              label="Buyer Contact Number"
             />
 
             <div className="md:col-span-2">
@@ -590,7 +594,7 @@ const CommissionForm = () => {
             onChange={handleInputChange}
             rows={3}
             placeholder="Any additional notes or remarks..."
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-y min-h-[100px] max-h-[300px]"
           />
         </div>
 

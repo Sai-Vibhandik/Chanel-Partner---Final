@@ -102,10 +102,9 @@ const companySchema = new mongoose.Schema(
       },
       status: {
         type: String,
-        enum: ['trial', 'active', 'inactive', 'suspended', 'expired', 'cancelled'],
-        default: 'trial'
+        enum: ['active', 'inactive', 'suspended', 'expired', 'cancelled'],
+        default: 'inactive'
       },
-      trialEndsAt: Date,
       currentPeriodStart: Date,
       currentPeriodEnd: Date,
       // Razorpay

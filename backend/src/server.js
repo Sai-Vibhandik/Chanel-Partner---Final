@@ -71,6 +71,7 @@ import planRoutes from './routes/plan.routes.js';
 import legalRoutes from './routes/legal.routes.js';
 import { verifyEmailConnection } from './services/email.service.js';
 import { initializeDefaultPages } from './controllers/legal.controller.js';
+import { initCronJobs } from './jobs/cron.js';
 
 // Import middleware
 import { errorHandler, notFound } from './middlewares/error.middleware.js';
@@ -190,6 +191,9 @@ const startServer = async () => {
 
     // Verify email service connection
     await verifyEmailConnection();
+
+    // Initialize cron jobs (subscription reminders, etc.)
+    initCronJobs();
 
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);

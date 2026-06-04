@@ -108,6 +108,14 @@ export const getPaymentHistory = async () => {
 };
 
 /**
+ * Get company plan limits and usage
+ */
+export const getMyLimits = async () => {
+  const response = await api.get('/companies/my-limits');
+  return response.data;
+};
+
+/**
  * Load Razorpay script
  */
 export const loadRazorpayScript = () => {

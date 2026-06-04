@@ -11,7 +11,7 @@ const landingPageSchema = new mongoose.Schema(
       title: { type: String, default: 'Transform your partner ecosystem' },
       highlightWord: { type: String, default: 'partner' },
       subtitle: { type: String, default: 'The complete real estate partner management platform. Onboard partners, manage properties, track commissions, and grow your business across India and Dubai markets.' },
-      primaryCta: { type: String, default: 'Start Free Trial' },
+      primaryCta: { type: String, default: 'Get Started' },
       primaryCtaLink: { type: String, default: '' },
       secondaryCta: { type: String, default: 'Access Dashboard' },
       secondaryCtaLink: { type: String, default: '' },
@@ -53,7 +53,7 @@ const landingPageSchema = new mongoose.Schema(
       badge: { type: String, default: 'Join the revolution' },
       title: { type: String, default: 'Ready to redefine your real estate journey' },
       subtitle: { type: String, default: 'Join hundreds of forward-thinking real estate companies already scaling with ChannelPartner.' },
-      primaryCta: { type: String, default: 'Start Free Trial' },
+      primaryCta: { type: String, default: 'Get Started' },
       primaryCtaLink: { type: String, default: '' },
       secondaryCta: { type: String, default: 'Talk to Sales' },
       secondaryCtaLink: { type: String, default: '' }
@@ -63,6 +63,9 @@ const landingPageSchema = new mongoose.Schema(
     footer: {
       brandName: { type: String, default: 'Channel' },
       brandHighlight: { type: String, default: 'Partner' },
+      logo: { type: String, default: '' }, // URL for footer logo image
+      logoWidth: { type: Number, default: 40 }, // Logo width in pixels
+      showLogo: { type: Boolean, default: false }, // Whether to show logo or text
       tagline: { type: String, default: 'The complete real estate partner management platform for modern businesses.' },
       supportEmail: { type: String, default: 'support@channelpartner.com' },
       copyright: { type: String, default: '© 2024 ChannelPartner. All rights reserved.' },
@@ -87,6 +90,9 @@ const landingPageSchema = new mongoose.Schema(
     navigation: {
       brandName: { type: String, default: 'Channel' },
       brandHighlight: { type: String, default: 'Partner' },
+      logo: { type: String, default: '' }, // URL for logo image
+      logoWidth: { type: Number, default: 40 }, // Logo width in pixels
+      showLogo: { type: Boolean, default: false }, // Whether to show logo or text
       loginText: { type: String, default: 'Sign in' },
       ctaText: { type: String, default: 'Get Started' },
       links: [{

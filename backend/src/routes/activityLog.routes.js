@@ -3,7 +3,8 @@ import {
   getActivityLogsList,
   getResourceLogs,
   getMyActivityLogs,
-  getActivityTypes
+  getActivityTypes,
+  getRecentActivities
 } from '../controllers/activityLog.controller.js';
 import { protect, restrictTo } from '../middlewares/auth.middleware.js';
 
@@ -14,6 +15,9 @@ router.use(protect);
 
 // Get action types and resource types for filters
 router.get('/types', getActivityTypes);
+
+// Get recent major activities for the company (for viewers)
+router.get('/recent', restrictTo('company_superadmin', 'partner_manager', 'finance_manager', 'property_manager', 'viewer'), getRecentActivities);
 
 // Get current user's activity logs
 router.get('/my-activity', getMyActivityLogs);

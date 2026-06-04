@@ -253,13 +253,7 @@ export const getProperties = async (req, res, next) => {
         const activeCompanies = await Company.find({
           _id: { $in: partneredCompanyIds },
           status: 'active',
-          $or: [
-            { 'subscription.status': 'active' },
-            {
-              'subscription.status': 'trial',
-              'subscription.trialEndsAt': { $gt: now }
-            }
-          ]
+          'subscription.status': 'active'
         }).select('_id');
 
         const activeCompanyIds = activeCompanies.map(c => c._id);
@@ -430,11 +424,6 @@ export const getProperty = async (req, res, next) => {
 
       if (subscriptionStatus === 'active') {
         hasActiveSubscription = true;
-      } else if (subscriptionStatus === 'trial') {
-        const trialEnds = company.subscription?.trialEndsAt;
-        if (trialEnds && new Date(trialEnds) > now) {
-          hasActiveSubscription = true;
-        }
       }
 
       if (!hasActiveSubscription) {
@@ -458,10 +447,17 @@ export const getProperty = async (req, res, next) => {
       }
     }
 
-    // Increment view count
-    property.stats = property.stats || { totalViews: 0, totalInquiries: 0, totalVisits: 0, totalBookings: 0 };
-    property.stats.totalViews = (property.stats.totalViews || 0) + 1;
-    await property.save();
+    // Increment view count only for partners (exclude internal users like property_manager, partner_manager, admin, etc.)
+    const internalRoles = ['platform_admin', 'company_superadmin', 'property_manager', 'partner_manager', 'operations_manager', 'finance_manager', 'admin', 'viewer'];
+    if (!internalRoles.includes(req.user.role)) {
+      if (!property.stats) {
+        property.stats = { totalViews: 0, totalInquiries: 0, totalVisits: 0, totalBookings: 0 };
+      }
+      property.stats.totalViews = (property.stats.totalViews || 0) + 1;
+      property.markModified('stats'); // Required for Mongoose to detect nested object changes
+      console.log(`Property ${property._id} view count updated to: ${property.stats.totalViews}`);
+      await property.save();
+    }
 
     res.status(200).json({
       success: true,
@@ -1039,16 +1035,9 @@ export const getPublicProperties = async (req, res, next) => {
     } = req.query;
 
     // Get list of companies with active subscriptions
-    const now = new Date();
     const activeCompanyIds = await Company.find({
       status: 'active',
-      $or: [
-        { 'subscription.status': 'active' },
-        {
-          'subscription.status': 'trial',
-          'subscription.trialEndsAt': { $gt: now }
-        }
-      ]
+      'subscription.status': 'active'
     }).select('_id');
 
     const activeCompanyIdsList = activeCompanyIds.map(c => c._id);
@@ -1148,17 +1137,7 @@ export const getPropertiesForPartnership = async (req, res, next) => {
     }
 
     const subscriptionStatus = company.subscription?.status;
-    const now = new Date();
-    let hasActiveSubscription = false;
-
-    if (subscriptionStatus === 'active') {
-      hasActiveSubscription = true;
-    } else if (subscriptionStatus === 'trial') {
-      const trialEnds = company.subscription?.trialEndsAt;
-      if (trialEnds && new Date(trialEnds) > now) {
-        hasActiveSubscription = true;
-      }
-    }
+    const hasActiveSubscription = subscriptionStatus === 'active';
 
     // If company subscription is expired, return empty properties
     if (!hasActiveSubscription) {
@@ -1297,13 +1276,11 @@ export const getPropertiesForAllPartnerships = async (req, res, next) => {
     }
 
     // Filter partnerships with active subscriptions
-    const now = new Date();
     const activeCompanyIds = partnerships
       .filter(p => {
         const company = p.companyId;
         if (!company) return false;
         if (company.subscription?.status === 'active') return true;
-        if (company.subscription?.status === 'trial' && company.subscription?.trialEndsAt && new Date(company.subscription.trialEndsAt) > now) return true;
         return false;
       })
       .map(p => p.companyId._id);
@@ -1400,27 +1377,43 @@ export const getPropertyPerformanceReport = async (req, res, next) => {
   try {
     const { period = 'month', sortBy = 'totalVisits', sortOrder = 'desc', page = 1, limit = 10 } = req.query;
 
-    // Calculate date range
+    // Calculate date range for the CURRENT period
     const now = new Date();
-    let startDate = new Date();
+    let startDate, endDate;
 
     switch (period) {
       case 'week':
-        startDate.setDate(now.getDate() - 7);
+        // This week (from start of week to end of week)
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - now.getDay()); // Start of this week (Sunday)
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6); // End of this week (Saturday)
+        endDate.setHours(23, 59, 59, 999);
         break;
-      case 'quarter':
-        startDate.setMonth(now.getMonth() - 3);
+      case 'quarter': {
+        // This quarter (from start of quarter to end of quarter)
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), currentQuarter * 3, 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999); // Last day of quarter
         break;
+      }
       case 'year':
-        startDate.setFullYear(now.getFullYear() - 1);
+        // This year (from Jan 1 to Dec 31)
+        startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
         break;
       default: // month
-        startDate.setMonth(now.getMonth() - 1);
+        // This month (from 1st to last day of month)
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); // Last day of month
     }
+
+    console.log('Performance Report - Period:', period, 'StartDate:', startDate, 'EndDate:', endDate);
 
     // Get all properties for the company
     const properties = await Property.find({ companyId: req.user.companyId })
-      .select('_id name type status location city')
+      .select('_id name type status location city stats')
       .lean();
 
     // Get visit counts for each property
@@ -1430,7 +1423,7 @@ export const getPropertyPerformanceReport = async (req, res, next) => {
       {
         $match: {
           companyId: req.user.companyId,
-          scheduledDate: { $gte: startDate }
+          scheduledDate: { $gte: startDate, $lte: endDate }
         }
       },
       {
@@ -1518,37 +1511,66 @@ export const getVisitAnalytics = async (req, res, next) => {
   try {
     const { period = 'month' } = req.query;
 
-    // Calculate date range
+    // Calculate date range for the CURRENT period
     const now = new Date();
-    let startDate = new Date();
+    let startDate, endDate;
 
     switch (period) {
       case 'week':
-        startDate.setDate(now.getDate() - 7);
+        // This week (from start of week to end of week)
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - now.getDay()); // Start of this week (Sunday)
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6); // End of this week (Saturday)
+        endDate.setHours(23, 59, 59, 999);
         break;
-      case 'quarter':
-        startDate.setMonth(now.getMonth() - 3);
+      case 'quarter': {
+        // This quarter (from start of quarter to end of quarter)
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), currentQuarter * 3, 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999); // Last day of quarter
         break;
+      }
       case 'year':
-        startDate.setFullYear(now.getFullYear() - 1);
+        // This year (from Jan 1 to Dec 31)
+        startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
         break;
       default: // month
-        startDate.setMonth(now.getMonth() - 1);
+        // This month (from 1st to last day of month)
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); // Last day of month
     }
 
+    console.log('Visit Analytics - Period:', period, 'StartDate:', startDate, 'EndDate:', endDate);
+
     const Visit = (await import('../models/Visit.js')).default;
+
+    // Determine date format based on period for better visualization
+    let dateFormat;
+    switch (period) {
+      case 'year':
+        dateFormat = '%Y-%m'; // Monthly for year view
+        break;
+      case 'quarter':
+        dateFormat = '%Y-%m'; // Monthly for quarter view
+        break;
+      default:
+        dateFormat = '%Y-%m-%d'; // Daily for week/month view
+    }
 
     // Visit trends over time
     const visitTrends = await Visit.aggregate([
       {
         $match: {
           companyId: req.user.companyId,
-          scheduledDate: { $gte: startDate }
+          scheduledDate: { $gte: startDate, $lt: endDate }
         }
       },
       {
         $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$scheduledDate' } },
+          _id: { $dateToString: { format: dateFormat, date: '$scheduledDate' } },
           total: { $sum: 1 }
         }
       },
@@ -1560,7 +1582,7 @@ export const getVisitAnalytics = async (req, res, next) => {
       {
         $match: {
           companyId: req.user.companyId,
-          scheduledDate: { $gte: startDate }
+          scheduledDate: { $gte: startDate, $lt: endDate }
         }
       },
       {
@@ -1576,7 +1598,7 @@ export const getVisitAnalytics = async (req, res, next) => {
       {
         $match: {
           companyId: req.user.companyId,
-          scheduledDate: { $gte: startDate }
+          scheduledDate: { $gte: startDate, $lt: endDate }
         }
       },
       {
@@ -1601,7 +1623,7 @@ export const getVisitAnalytics = async (req, res, next) => {
       {
         $match: {
           companyId: req.user.companyId,
-          scheduledDate: { $gte: startDate }
+          scheduledDate: { $gte: startDate, $lt: endDate }
         }
       },
       {
@@ -1665,27 +1687,41 @@ export const exportPropertyReport = async (req, res, next) => {
   try {
     const { period = 'month' } = req.query;
 
-    // Calculate date range
+    // Calculate date range for the CURRENT period
     const now = new Date();
-    let startDate = new Date();
+    let startDate, endDate;
 
     switch (period) {
       case 'week':
-        startDate.setDate(now.getDate() - 7);
+        // This week (from start of week to end of week)
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - now.getDay()); // Start of this week (Sunday)
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6); // End of this week (Saturday)
+        endDate.setHours(23, 59, 59, 999);
         break;
-      case 'quarter':
-        startDate.setMonth(now.getMonth() - 3);
+      case 'quarter': {
+        // This quarter (from start of quarter to end of quarter)
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), currentQuarter * 3, 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999); // Last day of quarter
         break;
+      }
       case 'year':
-        startDate.setFullYear(now.getFullYear() - 1);
+        // This year (from Jan 1 to Dec 31)
+        startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
         break;
       default: // month
-        startDate.setMonth(now.getMonth() - 1);
+        // This month (from 1st to last day of month)
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); // Last day of month
     }
 
     // Get all properties for the company
     const properties = await Property.find({ companyId: req.user.companyId })
-      .select('_id name type status location')
+      .select('_id name type status location stats')
       .lean();
 
     const Visit = (await import('../models/Visit.js')).default;
@@ -1695,7 +1731,7 @@ export const exportPropertyReport = async (req, res, next) => {
       {
         $match: {
           companyId: req.user.companyId,
-          scheduledDate: { $gte: startDate }
+          scheduledDate: { $gte: startDate, $lt: endDate }
         }
       },
       {

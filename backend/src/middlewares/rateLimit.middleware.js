@@ -28,6 +28,7 @@ export const apiLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  validate: { trustProxy: false }, // Disable trust proxy warning
   handler: (req, res) => {
     res.status(429).json({
       success: false,
@@ -63,6 +64,7 @@ export const authLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // Disable trust proxy warning
   handler: (req, res) => {
     res.status(429).json({
       success: false,
@@ -90,6 +92,7 @@ export const loginLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // Disable trust proxy warning
   handler: (req, res) => {
     res.status(429).json({
       success: false,
@@ -114,6 +117,7 @@ export const registrationLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // Disable trust proxy warning
   handler: (req, res) => {
     res.status(429).json({
       success: false,
@@ -138,6 +142,7 @@ export const passwordResetLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // Disable trust proxy warning
   handler: (req, res) => {
     res.status(429).json({
       success: false,
@@ -162,6 +167,7 @@ export const uploadLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // Disable trust proxy warning
   keyGenerator: (req) => {
     // If authenticated, rate limit by user ID; otherwise by IP
     const userId = req.user?.id;
@@ -185,6 +191,7 @@ export const chatLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // Disable trust proxy warning
   keyGenerator: (req) => {
     const userId = req.user?.id;
     return `chat:${userId}`;
@@ -213,7 +220,8 @@ export const createTierBasedLimiter = (tier = 'default') => {
       message: `Rate limit exceeded for your plan. Please upgrade or try again later.`,
     },
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    validate: { trustProxy: false } // Disable trust proxy warning
   });
 };
 

@@ -98,7 +98,10 @@ const FinanceManagerDashboard = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {/* Pending Approval */}
-        <div className="stat-card">
+        <div
+          onClick={() => navigate('/finance-manager/commissions?status=pending')}
+          className="stat-card cursor-pointer hover:shadow-md hover:border-yellow-200 transition-all"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Pending Approval</p>
@@ -125,7 +128,10 @@ const FinanceManagerDashboard = () => {
         </div>
 
         {/* Approved */}
-        <div className="stat-card">
+        <div
+          onClick={() => navigate('/finance-manager/commissions?status=approved')}
+          className="stat-card cursor-pointer hover:shadow-md hover:border-blue-200 transition-all"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Approved</p>
@@ -152,7 +158,10 @@ const FinanceManagerDashboard = () => {
         </div>
 
         {/* Total Paid */}
-        <div className="stat-card">
+        <div
+          onClick={() => navigate('/finance-manager/commissions?status=paid')}
+          className="stat-card cursor-pointer hover:shadow-md hover:border-green-200 transition-all"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Total Paid</p>
@@ -179,7 +188,10 @@ const FinanceManagerDashboard = () => {
         </div>
 
         {/* Paid This Month */}
-        <div className="stat-card">
+        <div
+          onClick={() => navigate('/finance-manager/commissions?status=paid')}
+          className="stat-card cursor-pointer hover:shadow-md hover:border-purple-200 transition-all"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 font-medium">Paid This Month</p>

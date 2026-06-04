@@ -343,7 +343,7 @@ const RegisterPartner = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
-                  First Name<span className="text-red-500">*</span>
+                  First Name<span className="text-red-500 align-super">*</span>
                 </label>
                 <input
                   id="firstName"
@@ -360,7 +360,7 @@ const RegisterPartner = () => {
               </div>
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
-                  Last Name<span className="text-red-500">*</span>
+                  Last Name<span className="text-red-500 align-super">*</span>
                 </label>
                 <input
                   id="lastName"
@@ -379,13 +379,12 @@ const RegisterPartner = () => {
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email ID<span className="text-red-500">*</span>
+                Email ID<span className="text-red-500 align-super">*</span>
               </label>
               <input
                 id="email"
                 name="email"
-                type="email"
-                required
+                type="text"
                 value={formData.email}
                 onChange={handleChange}
                 maxLength={100}
@@ -487,7 +486,7 @@ const RegisterPartner = () => {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password<span className="text-red-500">*</span>
+                Password<span className="text-red-500 align-super">*</span>
               </label>
               <div className="relative">
                 <input
@@ -523,7 +522,7 @@ const RegisterPartner = () => {
 
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm Password<span className="text-red-500">*</span>
+                Confirm Password<span className="text-red-500 align-super">*</span>
               </label>
               <div className="relative">
                 <input

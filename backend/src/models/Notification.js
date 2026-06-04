@@ -37,6 +37,7 @@ const notificationSchema = new mongoose.Schema({
       'visit_reminder',
       'new_property',
       'team_member_added',
+      'subscription_reminder',
       'system'
     ],
     required: true

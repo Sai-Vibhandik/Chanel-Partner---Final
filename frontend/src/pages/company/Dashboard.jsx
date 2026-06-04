@@ -291,10 +291,8 @@ const CompanyDashboard = () => {
             <div className="space-y-2">
               {commissionStats.activeCurrencies.map((currency) => {
                 const currencyStats = commissionStats.statusCountsByCurrency[currency] || {};
-                const totalAmount = (currencyStats.paid?.amount || 0) +
-                                   (currencyStats.approved?.amount || 0) +
-                                   (currencyStats.pending?.amount || 0);
-                const pendingCount = currencyStats.pending?.count || 0;
+                const totalAmount = currencyStats.paid?.amount || 0;
+                const paidCount = currencyStats.paid?.count || 0;
 
                 return (
                   <div key={currency} className="flex items-center justify-between">
@@ -310,8 +308,8 @@ const CompanyDashboard = () => {
               <p className="text-xs sm:text-sm text-gray-500">
                 {commissionStats.activeCurrencies.reduce((sum, currency) => {
                   const currencyStats = commissionStats.statusCountsByCurrency[currency] || {};
-                  return sum + (currencyStats.pending?.count || 0);
-                }, 0)} pending
+                  return sum + (currencyStats.paid?.count || 0);
+                }, 0)} paid
               </p>
             </div>
           </div>

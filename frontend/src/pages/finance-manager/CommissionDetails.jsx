@@ -5,7 +5,7 @@ import { sidebarConfig } from '../../config/sidebar';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import api from '../../utils/api';
-import { formatCurrency } from '../../utils/currency';
+import { formatCurrency, getCurrencySymbol } from '../../utils/currency';
 
 const CommissionDetails = () => {
   const { id } = useParams();
@@ -31,7 +31,7 @@ const CommissionDetails = () => {
   const [commission, setCommission] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPayModal, setShowPayModal] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -41,11 +41,10 @@ const CommissionDetails = () => {
     paymentMethod: 'bank_transfer',
     notes: ''
   });
-  const [rejectReason, setRejectReason] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
 
   // Approve form with override options
   const [approveForm, setApproveForm] = useState({
-    notes: '',
     enableOverride: false,
     overrideType: 'amount', // 'amount' or 'percentage'
     overrideValue: '',
@@ -89,9 +88,7 @@ const CommissionDetails = () => {
     }
 
     setFieldErrors({});
-    const payload = {
-      notes: approveForm.notes
-    };
+    const payload = {};
 
     // Add override data if enabled
     if (approveForm.enableOverride && approveForm.overrideValue) {
@@ -108,7 +105,6 @@ const CommissionDetails = () => {
       await api.put(`/commissions/${id}/approve`, payload);
       setShowApproveModal(false);
       setApproveForm({
-        notes: '',
         enableOverride: false,
         overrideType: 'amount',
         overrideValue: '',
@@ -152,13 +148,13 @@ const CommissionDetails = () => {
     }
   };
 
-  const handleReject = async (e) => {
+  const handleCancel = async (e) => {
     e.preventDefault();
 
-    // Validate rejection reason
+    // Validate cancellation reason
     const errors = {};
-    if (!rejectReason?.trim()) {
-      errors.rejectReason = 'Rejection Reason is required.';
+    if (!cancelReason?.trim()) {
+      errors.cancelReason = 'Cancellation Reason is required.';
     }
 
     if (Object.keys(errors).length > 0) {
@@ -168,14 +164,14 @@ const CommissionDetails = () => {
 
     setSubmitting(true);
     try {
-      await api.put(`/commissions/${id}/reject`, { reason: rejectReason });
-      setShowRejectModal(false);
-      setRejectReason('');
+      await api.put(`/commissions/${id}/cancel`, { reason: cancelReason });
+      setShowCancelModal(false);
+      setCancelReason('');
       setFieldErrors({});
       fetchCommission();
-      toast.success('Commission rejected successfully.');
+      toast.success('Commission cancelled successfully.');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to reject commission.');
+      toast.error(err.response?.data?.message || 'Failed to cancel commission.');
     } finally {
       setSubmitting(false);
     }
@@ -255,7 +251,7 @@ const CommissionDetails = () => {
           <div className="flex items-center gap-3">
             {commission.status === 'pending' && (
               <>
-                {/* Approve/Reject buttons only for finance_manager and company_superadmin */}
+                {/* Approve/Cancel buttons only for finance_manager and company_superadmin */}
                 {user?.role !== 'partner_manager' && (
                   <>
                     <button
@@ -265,10 +261,10 @@ const CommissionDetails = () => {
                       Approve
                     </button>
                     <button
-                      onClick={() => { setShowRejectModal(true); }}
+                      onClick={() => { setShowCancelModal(true); }}
                       className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                     >
-                      Reject
+                      Cancel
                     </button>
                   </>
                 )}
@@ -422,29 +418,35 @@ const CommissionDetails = () => {
       </div>
 
       {/* Payout Details (if paid) */}
-      {commission.status === 'paid' && commission.payoutDetails?.paidAt && (
+      {commission.status === 'paid' && commission.payout?.paidAt && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Payout Details</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex justify-between py-3 border-b border-gray-100">
               <span className="text-gray-600">Paid On</span>
-              <span className="font-medium">{formatDate(commission.payoutDetails.paidAt)}</span>
+              <span className="font-medium">{formatDate(commission.payout.paidAt)}</span>
             </div>
             <div className="flex justify-between py-3 border-b border-gray-100">
               <span className="text-gray-600">Payment Method</span>
-              <span className="font-medium capitalize">{commission.payoutDetails.paymentMethod?.replace('_', ' ')}</span>
+              <span className="font-medium capitalize">{commission.payout.paymentMethod?.replace('_', ' ')}</span>
             </div>
             <div className="flex justify-between py-3 border-b border-gray-100">
               <span className="text-gray-600">Reference</span>
-              <span className="font-medium">{commission.payoutDetails.paymentReference}</span>
+              <span className="font-medium">{commission.payout.paymentReference}</span>
             </div>
-            {commission.payoutDetails.paidBy && (
+            {commission.payout.paidBy && (
               <div className="flex justify-between py-3 border-b border-gray-100">
                 <span className="text-gray-600">Processed By</span>
                 <span className="font-medium">
-                  {commission.payoutDetails.paidBy?.firstName} {commission.payoutDetails.paidBy?.lastName}
+                  {commission.payout.paidBy?.firstName} {commission.payout.paidBy?.lastName}
                 </span>
+              </div>
+            )}
+            {commission.payout.notes && (
+              <div className="flex justify-between py-3 border-b border-gray-100 md:col-span-2">
+                <span className="text-gray-600">Notes</span>
+                <span className="font-medium">{commission.payout.notes}</span>
               </div>
             )}
           </div>
@@ -452,7 +454,7 @@ const CommissionDetails = () => {
       )}
 
       {/* Notes */}
-      {(commission.notes || commission.rejectionReason) && (
+      {(commission.notes || commission.cancellationReason) && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes</h3>
 
@@ -463,10 +465,10 @@ const CommissionDetails = () => {
             </div>
           )}
 
-          {commission.rejectionReason && (
+          {commission.cancellationReason && (
             <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-              <p className="text-sm text-red-600 mb-1">Rejection Reason:</p>
-              <p className="text-red-800">{commission.rejectionReason}</p>
+              <p className="text-sm text-red-600 mb-1">Cancellation Reason:</p>
+              <p className="text-red-800">{commission.cancellationReason}</p>
             </div>
           )}
         </div>
@@ -583,13 +585,19 @@ const CommissionDetails = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes <span className="text-gray-400 font-normal">(Optional)</span>
+                </label>
                 <textarea
                   value={payForm.notes}
                   onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
                   rows={2}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  maxLength={500}
+                  placeholder="Add any additional notes about this payment..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                  style={{ maxHeight: '150px' }}
                 />
+                <p className="text-xs text-gray-400 mt-1">{payForm.notes?.length || 0}/500 characters</p>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
@@ -613,14 +621,14 @@ const CommissionDetails = () => {
         </div>
       )}
 
-      {/* Reject Modal */}
-      {showRejectModal && (
+      {/* Cancel Modal */}
+      {showCancelModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-md w-full">
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-900">Reject Commission</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Cancel Commission</h3>
               <button
-                onClick={() => { setShowRejectModal(false); }}
+                onClick={() => { setShowCancelModal(false); }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -629,33 +637,38 @@ const CommissionDetails = () => {
               </button>
             </div>
 
-            <form onSubmit={handleReject} className="p-6 space-y-4" noValidate>
+            <form onSubmit={handleCancel} className="p-6 space-y-4" noValidate>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Rejection Reason<span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Cancellation Reason<span className="text-red-500">*</span>
+                </label>
                 <textarea
-                  value={rejectReason}
-                  onChange={(e) => { setRejectReason(e.target.value); setFieldErrors({}); }}
+                  value={cancelReason}
+                  onChange={(e) => { setCancelReason(e.target.value); setFieldErrors({}); }}
                   rows={3}
-                  placeholder="Please provide a reason for rejection."
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${fieldErrors.rejectReason ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                  maxLength={500}
+                  placeholder="Please provide a reason for cancellation."
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none ${fieldErrors.cancelReason ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  style={{ maxHeight: '150px' }}
                 />
-                {fieldErrors.rejectReason && <p className="text-sm text-red-600 mt-1">{fieldErrors.rejectReason}</p>}
+                <p className="text-xs text-gray-400 mt-1">{cancelReason?.length || 0}/500 characters</p>
+                {fieldErrors.cancelReason && <p className="text-sm text-red-600 mt-1">{fieldErrors.cancelReason}</p>}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
-                  onClick={() => { setShowRejectModal(false); }}
+                  onClick={() => { setShowCancelModal(false); }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
-                  Cancel
+                  Back
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
                   className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
                 >
-                  {submitting ? 'Rejecting...' : 'Reject Commission'}
+                  {submitting ? 'Cancelling...' : 'Cancel Commission'}
                 </button>
               </div>
             </form>
@@ -746,7 +759,7 @@ const CommissionDetails = () => {
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
                       )}
                       {approveForm.overrideType === 'amount' && (
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{getCurrencySymbol(commission.commission?.currency)}</span>
                       )}
                       <input
                         type="number"
@@ -760,7 +773,7 @@ const CommissionDetails = () => {
                         placeholder={approveForm.overrideType === 'amount' ? 'Enter amount' : 'Enter percentage (0-100)'}
                         className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
                           fieldErrors.overrideValue ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                        } ${approveForm.overrideType !== 'amount' ? 'pl-8' : 'pl-8'}`}
+                        } ${approveForm.overrideType === 'percentage' ? 'pl-8' : commission.commission?.currency === 'AED' ? 'pl-14' : 'pl-8'}`}
                         min="0"
                         max={approveForm.overrideType === 'percentage' ? 100 : undefined}
                         step={approveForm.overrideType === 'percentage' ? '0.1' : '1'}
@@ -780,7 +793,9 @@ const CommissionDetails = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Override Reason<span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Override Reason<span className="text-red-500">*</span>
+                    </label>
                     <textarea
                       value={approveForm.overrideReason}
                       onChange={(e) => {
@@ -791,29 +806,20 @@ const CommissionDetails = () => {
                       }}
                       placeholder="Please provide a reason for the override."
                       rows={2}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
-                        fieldErrors.overrideReason ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                      maxLength={500}
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none ${
+                        fieldErrors.overrideReason ? 'border-red-500 bg-red-50' : 'border-gray-300'
                       }`}
+                      style={{ maxHeight: '150px' }}
                       required
                     />
+                    <p className="text-xs text-gray-400 mt-1">{approveForm.overrideReason?.length || 0}/500 characters</p>
                     {fieldErrors.overrideReason && (
                       <p className="text-sm text-red-600 mt-1">{fieldErrors.overrideReason}</p>
                     )}
                   </div>
                 </div>
               )}
-
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
-                <textarea
-                  value={approveForm.notes}
-                  onChange={(e) => setApproveForm({ ...approveForm, notes: e.target.value })}
-                  placeholder="Add any notes..."
-                  rows={2}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button

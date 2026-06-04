@@ -974,7 +974,7 @@ export const deletePlan = async (req, res, next) => {
     // Check if any companies are using this plan
     const companiesUsingPlan = await Company.countDocuments({
       'subscription.planId': id,
-      'subscription.status': { $in: ['active', 'trial'] }
+      'subscription.status': 'active'
     });
 
     if (companiesUsingPlan > 0) {

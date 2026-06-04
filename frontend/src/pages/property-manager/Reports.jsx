@@ -75,16 +75,50 @@ const Reports = () => {
       const response = await api.get(`/properties/reports/export?${params.toString()}`);
       const { report } = response.data?.data;
 
-      // Convert to CSV
+      // Convert to CSV with proper formatting
       if (report && report.length > 0) {
-        const headers = Object.keys(report[0]);
-        const csvContent = [
-          headers.join(','),
-          ...report.map(row => headers.map(h => `"${row[h] || ''}"`).join(','))
-        ].join('\n');
+        // Define column order and readable header names
+        const columns = [
+          { key: 'name', label: 'Property Name' },
+          { key: 'type', label: 'Property Type' },
+          { key: 'status', label: 'Status' },
+          { key: 'city', label: 'City' },
+          { key: 'totalViews', label: 'Total Views' },
+          { key: 'totalVisits', label: 'Total Visits' },
+          { key: 'completed', label: 'Completed Visits' }
+        ];
 
-        // Download CSV
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        // Function to escape CSV value properly
+        const escapeCSVValue = (value) => {
+          if (value === null || value === undefined || value === '') {
+            return '';
+          }
+          // Convert to string and clean up
+          let stringValue = String(value).trim();
+          // Remove any line breaks
+          stringValue = stringValue.replace(/[\r\n]+/g, ' ');
+          // Escape double quotes by doubling them
+          stringValue = stringValue.replace(/"/g, '""');
+          // Wrap in quotes if contains comma, quote, or newline
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue}"`;
+          }
+          return `"${stringValue}"`;
+        };
+
+        // Build CSV content with CRLF line endings (Windows compatible)
+        const headerRow = columns.map(col => `"${col.label}"`).join(',');
+        const dataRows = report.map(row =>
+          columns.map(col => escapeCSVValue(row[col.key])).join(',')
+        );
+
+        // Use CRLF for Windows Excel compatibility
+        const csvContent = [headerRow, ...dataRows].join('\r\n');
+
+        // Add BOM (Byte Order Mark) for proper UTF-8 encoding in Excel
+        const BOM = '\uFEFF';
+        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8-sig;' });
+
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
@@ -93,6 +127,7 @@ const Reports = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
       }
     } catch (error) {
       console.error('Failed to export report:', error);
@@ -260,6 +295,32 @@ const Reports = () => {
     const maxTrendValue = Math.max(...visitTrends.map(t => t.total), 1);
     const maxTypeValue = Math.max(...Object.values(visitsByPropertyType), 1);
 
+    // Generate Y-axis labels based on max value
+    const generateYAxisLabels = (maxValue) => {
+      const labels = [];
+      const step = maxValue <= 5 ? 1 : Math.ceil(maxValue / 5);
+      const numSteps = Math.ceil(maxValue / step);
+      for (let i = numSteps; i >= 0; i--) {
+        labels.push(i * step);
+      }
+      return labels;
+    };
+
+    const yAxisLabels = generateYAxisLabels(maxTrendValue);
+    const chartMaxValue = yAxisLabels[0]; // The top value (max for scaling)
+
+    // Format date label based on format (daily vs monthly)
+    const formatDateLabel = (dateStr) => {
+      if (dateStr.includes('-') && dateStr.length === 7) {
+        // Monthly format (YYYY-MM)
+        const [year, month] = dateStr.split('-');
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${monthNames[parseInt(month) - 1]} ${year}`;
+      }
+      // Daily format (YYYY-MM-DD)
+      return dateStr;
+    };
+
     // Property type colors
     const typeColors = {
       apartment: '#3B82F6',
@@ -283,39 +344,47 @@ const Reports = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="min-w-[600px]">
-                <div className="h-64 relative">
+              <div className="min-w-[500px]">
+                <div className="h-64 flex">
                   {/* Y-axis labels */}
-                  <div className="absolute left-0 top-0 bottom-8 w-12 flex flex-col justify-between text-xs text-gray-500">
-                    <span>{maxTrendValue}</span>
-                    <span>{Math.round(maxTrendValue / 2)}</span>
-                    <span>0</span>
-                  </div>
-                  {/* Chart area */}
-                  <div className="ml-12 h-full flex items-end gap-1">
-                    {visitTrends.slice(-30).map((trend, index) => (
-                      <div key={index} className="flex-1 flex flex-col items-center">
-                        <div
-                          className="w-full bg-indigo-500 rounded-t hover:bg-indigo-600 transition-colors cursor-pointer relative group"
-                          style={{ height: `${(trend.total / maxTrendValue) * 200}px`, minHeight: '2px' }}
-                          title={`${trend._id}: ${trend.total} visits`}
-                        >
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {trend._id}: {trend.total} visits
-                          </div>
-                        </div>
-                      </div>
+                  <div className="w-10 flex flex-col justify-between py-0 text-xs text-gray-500 text-right pr-2">
+                    {yAxisLabels.map((label, index) => (
+                      <span key={index}>{label}</span>
                     ))}
                   </div>
-                </div>
-                {/* X-axis labels */}
-                <div className="ml-12 flex justify-between text-xs text-gray-500 mt-2">
-                  {visitTrends.length > 0 && (
-                    <>
-                      <span>{visitTrends[0]._id}</span>
-                      <span>{visitTrends[visitTrends.length - 1]._id}</span>
-                    </>
-                  )}
+                  {/* Chart area */}
+                  <div className="flex-1 flex flex-col">
+                    <div className="flex-1 flex items-end gap-2 border-l border-b border-gray-200 relative" style={{ minHeight: '200px' }}>
+                      {/* Horizontal grid lines */}
+                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                        {yAxisLabels.map((_, index) => (
+                          <div key={index} className="border-b border-gray-100 w-full"></div>
+                        ))}
+                      </div>
+                      {/* Bars */}
+                      {visitTrends.map((trend, index) => (
+                        <div key={index} className="flex-1 flex flex-col items-center justify-end h-full relative min-w-[30px]">
+                          <div
+                            className="w-full bg-indigo-500 rounded-t hover:bg-indigo-600 transition-colors cursor-pointer relative group"
+                            style={{ height: `${(trend.total / chartMaxValue) * 100}%`, minHeight: trend.total > 0 ? '4px' : '0', maxWidth: '50px' }}
+                            title={`${formatDateLabel(trend._id)}: ${trend.total} visits`}
+                          >
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                              {formatDateLabel(trend._id)}: {trend.total} visits
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* X-axis labels - show all dates below respective bars */}
+                    <div className="flex text-xs text-gray-500 mt-2">
+                      {visitTrends.map((trend, index) => (
+                        <div key={index} className="flex-1 text-center min-w-[30px]">
+                          <span className="truncate">{formatDateLabel(trend._id)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -427,10 +496,10 @@ const Reports = () => {
               onChange={(e) => { setPeriod(e.target.value); setPage(1); }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-white"
             >
-              <option value="week">Last Week</option>
-              <option value="month">Last Month</option>
-              <option value="quarter">Last Quarter</option>
-              <option value="year">Last Year</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="quarter">This Quarter</option>
+              <option value="year">This Year</option>
             </select>
           </div>
           {/* {activeTab === 'performance' && (

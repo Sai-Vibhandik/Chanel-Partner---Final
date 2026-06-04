@@ -334,7 +334,7 @@ export const createCommission = async (req, res, next) => {
  */
 export const getCompanyCommissions = async (req, res, next) => {
   try {
-    const { status, partnerId, propertyId, startDate, endDate, page = 1, limit = 10 } = req.query;
+    const { status, partnerId, propertyId, commissionType, startDate, endDate, page = 1, limit = 10 } = req.query;
 
     if (!req.user.companyId) {
       return res.status(200).json({
@@ -351,6 +351,13 @@ export const getCompanyCommissions = async (req, res, next) => {
     if (status) query.status = status;
     if (partnerId) query.partner = partnerId;
     if (propertyId) query.property = propertyId;
+
+    // Filter by commission type (fixed or percentage)
+    if (commissionType === 'fixed') {
+      query['commission.isFixed'] = true;
+    } else if (commissionType === 'percentage') {
+      query['commission.isFixed'] = { $ne: true };
+    }
 
     if (startDate || endDate) {
       query.createdAt = {};
@@ -521,13 +528,14 @@ export const getCommissionStats = async (req, res, next) => {
       }
     });
 
-    // Calculate total count (all currencies combined)
+    // Calculate total count and total amount (all currencies combined)
     const total = stats.reduce((sum, s) => sum + s.count, 0);
+    const totalAmount = stats.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
 
     res.status(200).json({
       success: true,
       data: {
-        overview: { total },
+        overview: { total, totalAmount },
         statusCountsByCurrency,
         monthlyPaidByCurrency,
         activeCurrencies: currencies,
@@ -549,10 +557,19 @@ export const getCommissionById = async (req, res, next) => {
     const commission = await Commission.findById(req.params.id)
       .populate('partner', 'firstName lastName email phone partnerProfile')
       .populate('property', 'name type location pricing details')
-      .populate('partnershipId', 'tier status commissionOverride')
+      .populate({
+        path: 'partnershipId',
+        select: 'tier status commissionOverride companyId',
+        populate: {
+          path: 'companyId',
+          select: 'name logo'
+        }
+      })
       .populate('visit', 'visitType scheduledDate scheduledTime clientDetails status')
       .populate('createdBy', 'firstName lastName')
-      .populate('payout.paidBy', 'firstName lastName');
+      .populate('payout.paidBy', 'firstName lastName')
+      .populate('approval.approvedBy', 'firstName lastName')
+      .populate('approval.override.overriddenBy', 'firstName lastName');
 
     if (!commission) {
       throw new ApiError(404, 'Commission not found');
@@ -666,15 +683,28 @@ export const approveCommission = async (req, res, next) => {
       ? `${commission.commission.currency === 'INR' ? '₹' : 'AED '}${commission.commission.calculatedAmount.toLocaleString()}`
       : 'Commission';
 
+    // Build notification message with override info if applicable
+    let notificationMessage = `Your commission of ${formattedAmount} for "${commission.property?.name || 'Property'}" has been approved and will be processed for payment.`;
+
+    if (overrideData) {
+      const originalAmount = commission.approval?.override?.originalAmount
+        ? `${commission.commission.currency === 'INR' ? '₹' : 'AED '}${commission.approval.override.originalAmount.toLocaleString()}`
+        : 'N/A';
+      notificationMessage = `Your commission for "${commission.property?.name || 'Property'}" has been approved with an adjusted amount of ${formattedAmount} (original: ${originalAmount}).`;
+    }
+
     createNotification({
       recipientId: commission.partner,
       type: 'commission_approved',
-      title: 'Commission Approved',
-      message: `Your commission of ${formattedAmount} for "${commission.property?.name || 'Property'}" has been approved and will be processed for payment.`,
+      title: overrideData ? 'Commission Adjusted' : 'Commission Approved',
+      message: notificationMessage,
       data: {
         commissionId: commission._id,
         propertyId: commission.property,
-        companyId: commission.companyId
+        companyId: commission.companyId,
+        overridden: !!overrideData,
+        originalAmount: overrideData?.originalAmount,
+        newAmount: commission.commission?.calculatedAmount
       },
       link: '/partner/commissions'
     }).catch(err => {

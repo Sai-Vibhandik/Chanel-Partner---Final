@@ -1,5 +1,57 @@
 import { getActivityLogs, getResourceActivityLogs, getUserActivityLogs } from '../services/activityLog.service.js';
 
+// Major activity types that viewers can see
+const MAJOR_ACTIVITIES = [
+  'commission_approved',
+  'commission_paid',
+  'partner_status_approved',
+  'partner_kyc_approved',
+  'visit_completed',
+  'property_published',
+  'agreement_signed'
+];
+
+/**
+ * Get recent major activities for the company (for viewers)
+ * @route GET /api/activity-logs/recent
+ */
+export const getRecentActivities = async (req, res) => {
+  try {
+    const { companyId } = req.user;
+    const { limit = 10 } = req.query;
+
+    const result = await getActivityLogs(companyId, {
+      page: 1,
+      limit: parseInt(limit),
+      action: MAJOR_ACTIVITIES
+    });
+
+    // Format activities for display
+    const activities = result.logs.map(log => ({
+      id: log._id,
+      action: log.action,
+      resourceType: log.resourceType,
+      resourceTitle: log.resourceTitle,
+      details: log.details,
+      userId: log.userId,
+      userName: log.userId ? `${log.userId.firstName || ''} ${log.userId.lastName || ''}`.trim() : 'System',
+      timestamp: log.timestamp
+    }));
+
+    res.json({
+      success: true,
+      data: activities
+    });
+  } catch (error) {
+    console.error('Error fetching recent activities:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch recent activities',
+      error: error.message
+    });
+  }
+};
+
 /**
  * Get activity logs for the company
  * @route GET /api/activity-logs

@@ -138,7 +138,6 @@ export const sidebarConfig = {
     links: [
       { path: '/platform/dashboard', label: 'Dashboard', icon: sidebarIcons.dashboard },
       { path: '/platform/companies', label: 'Companies', icon: sidebarIcons.companies },
-      { path: '/platform/partners', label: 'Partners', icon: sidebarIcons.partners },
       { path: '/platform/plans', label: 'Plans', icon: sidebarIcons.plans },
       { path: '/platform/landing', label: 'Landing Page', icon: sidebarIcons.globe },
       { path: '/platform/legal', label: 'Legal Pages', icon: sidebarIcons.documents },

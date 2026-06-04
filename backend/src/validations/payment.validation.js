@@ -36,10 +36,18 @@ export const validateInitRegistrationPayment = [
     .matches(/^[6-9]\d{9}$|^\+[1-9]\d{9,14}$/).withMessage('Please enter a valid phone number'),
 
   body('website')
-    .optional()
+    .optional({ checkFalsy: true })
     .trim()
-    .isURL().withMessage('Please enter a valid website URL')
-    .isLength({ max: 255 }).withMessage('Website URL cannot exceed 255 characters'),
+    .isLength({ max: 200 }).withMessage('Website cannot exceed 200 characters')
+    .custom((value) => {
+      // Allow URLs with or without protocol
+      if (!value) return true;
+      const urlPattern = /^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/;
+      if (!urlPattern.test(value)) {
+        throw new Error('Please enter a valid website URL');
+      }
+      return true;
+    }),
 
   body('regions')
     .optional()

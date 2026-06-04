@@ -33,11 +33,9 @@ const CommissionDetails = () => {
 
   const getStatusBadge = (status) => {
     const styles = {
-      pending_legal_review: 'bg-yellow-100 text-yellow-800',
-      pending_approval: 'bg-blue-100 text-blue-800',
-      approved: 'bg-green-100 text-green-800',
-      paid: 'bg-purple-100 text-purple-800',
-      rejected: 'bg-red-100 text-red-800',
+      pending: 'bg-yellow-100 text-yellow-800',
+      approved: 'bg-blue-100 text-blue-800',
+      paid: 'bg-green-100 text-green-800',
       cancelled: 'bg-gray-100 text-gray-800'
     };
     return styles[status] || 'bg-gray-100 text-gray-800';
@@ -45,33 +43,19 @@ const CommissionDetails = () => {
 
   const getStatusText = (status) => {
     const texts = {
-      pending_legal_review: 'Pending Legal Review',
-      pending_approval: 'Pending Finance Approval',
+      pending: 'Pending Approval',
       approved: 'Approved',
       paid: 'Paid',
-      rejected: 'Rejected',
       cancelled: 'Cancelled'
     };
     return texts[status] || status;
-  };
-
-  const getStatusInfo = (status) => {
-    const info = {
-      pending_legal_review: { color: 'yellow', icon: '⏳', message: 'Your commission is being reviewed by the Legal Manager. Please ensure all documents are uploaded.' },
-      pending_approval: { color: 'blue', icon: '📋', message: 'Legal review passed. Your commission is pending approval from the Finance Manager.' },
-      approved: { color: 'green', icon: '✓', message: 'Your commission has been approved and is awaiting payout.' },
-      paid: { color: 'purple', icon: '✓✓', message: 'Your commission has been paid out successfully.' },
-      rejected: { color: 'red', icon: '✗', message: 'Your commission was rejected. Please check the rejection reason below.' },
-      cancelled: { color: 'gray', icon: '✕', message: 'This commission has been cancelled.' }
-    };
-    return info[status] || info.pending_legal_review;
   };
 
   const formatDate = (date) => {
     if (!date) return 'N/A';
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
-      month: 'long',
+      month: 'short',
       day: 'numeric'
     });
   };
@@ -102,14 +86,12 @@ const CommissionDetails = () => {
     );
   }
 
-  const statusInfo = getStatusInfo(commission.status);
-
   return (
     <DashboardLayout sidebarLinks={config.links} title="Commission Details" subtitle={`ID: ${commission._id?.slice(-8).toUpperCase()}`} color={config.color}>
       {/* Back Button */}
       <button
         onClick={() => navigate('/partner/commissions')}
-        className="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900"
+        className="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -117,195 +99,232 @@ const CommissionDetails = () => {
         Back to Commissions
       </button>
 
-      {/* Status Banner */}
-      <div className={`rounded-xl p-6 mb-6 ${
-        statusInfo.color === 'yellow' ? 'bg-yellow-50 border border-yellow-200' :
-        statusInfo.color === 'blue' ? 'bg-blue-50 border border-blue-200' :
-        statusInfo.color === 'green' ? 'bg-green-50 border border-green-200' :
-        statusInfo.color === 'red' ? 'bg-red-50 border border-red-200' :
-        'bg-gray-50 border border-gray-200'
-      }`}>
-        <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-            statusInfo.color === 'yellow' ? 'bg-yellow-200' :
-            statusInfo.color === 'blue' ? 'bg-blue-200' :
-            statusInfo.color === 'green' ? 'bg-green-200' :
-            statusInfo.color === 'red' ? 'bg-red-200' :
-            'bg-gray-200'
-          }`}>
-            <span className="text-2xl">{statusInfo.icon}</span>
-          </div>
+      {/* Status Header */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusBadge(commission.status)}`}>
               {getStatusText(commission.status)}
             </span>
-            <p className="mt-2 text-gray-700">{statusInfo.message}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Commission Amount Card */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Commission Amount</h3>
-            <p className="text-4xl font-bold text-green-600 mb-4">
-              {formatCurrency(
-                commission.commission?.calculatedAmount,
-                commission.commission?.currency
-              )}
+            <p className="mt-2 text-gray-600">
+              {commission.status === 'paid'
+                ? 'Your commission has been paid out successfully.'
+                : commission.status === 'approved'
+                ? 'Your commission has been approved and is awaiting payment.'
+                : commission.status === 'cancelled'
+                ? 'This commission has been cancelled.'
+                : 'Your commission is pending approval from the Finance Manager.'}
             </p>
-            <div className="text-sm text-gray-600 space-y-1">
-              <p>Tier: <span className="font-medium capitalize">{commission.commission?.partnerTier}</span></p>
-              <p>Rate: <span className="font-medium text-green-600">{commission.commission?.effectivePercentage}%</span></p>
-            </div>
           </div>
-        </div>
-
-        {/* Details Cards */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Sale Details */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Sale Details</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Sale Price</span>
-                <span className="font-medium">
-                  {formatCurrency(
-                    commission.saleDetails?.salePrice,
-                    commission.commission?.currency
-                  )}
-                </span>
-              </div>
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Sale Date</span>
-                <span className="font-medium">{formatDate(commission.saleDetails?.saleDate)}</span>
-              </div>
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Buyer Name</span>
-                <span className="font-medium">{commission.saleDetails?.buyerName}</span>
-              </div>
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Contact Number</span>
-                <span className="font-medium">{commission.saleDetails?.buyerPhone}</span>
-              </div>
-              {commission.saleDetails?.buyerEmail && (
-                <div className="flex justify-between py-3 border-b border-gray-100">
-                  <span className="text-gray-600">Buyer Email ID</span>
-                  <span className="font-medium">{commission.saleDetails.buyerEmail}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Property Details */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Property Details</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Property Name</span>
-                <span className="font-medium">{commission.property?.name}</span>
-              </div>
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Type</span>
-                <span className="font-medium capitalize">{commission.property?.type}</span>
-              </div>
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Location</span>
-                <span className="font-medium">{commission.property?.location?.city}</span>
-              </div>
-              <div className="flex justify-between py-3 border-b border-gray-100">
-                <span className="text-gray-600">Listed Price</span>
-                <span className="font-medium">
-                  {formatCurrency(
-                    commission.property?.pricing?.basePrice,
-                    commission.property?.pricing?.currency
-                  )}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Company Details */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Company</h3>
-
-            <div className="flex items-center gap-4">
-              {commission.partnershipId?.companyId?.logo && (
-                <img
-                  src={commission.partnershipId.companyId.logo}
-                  alt={commission.partnershipId.companyId.name}
-                  className="w-12 h-12 rounded-lg object-cover"
-                />
-              )}
-              <div>
-                <p className="font-medium text-gray-900">{commission.partnershipId?.companyId?.name}</p>
-                <p className="text-sm text-gray-500">Your tier: <span className="font-medium capitalize">{commission.partnershipId?.tier}</span></p>
-              </div>
-            </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">Created</p>
+            <p className="font-medium text-gray-900">{formatDate(commission.createdAt)}</p>
           </div>
         </div>
       </div>
 
-      {/* Payout Details (if paid) */}
-      {commission.status === 'paid' && commission.payoutDetails?.paidAt && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Payout Details</h3>
+      {/* Commission Amount Card */}
+      <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-sm p-6 mb-6 text-white">
+        <p className="text-green-100 text-sm mb-1">Commission Amount</p>
+        <p className="text-4xl font-bold mb-3">
+          {formatCurrency(commission.commission?.calculatedAmount, commission.commission?.currency)}
+        </p>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div>
+            <span className="text-green-100">Tier:</span>{' '}
+            <span className="font-medium">{commission.commission?.partnerTier}</span>
+          </div>
+          <div>
+            <span className="text-green-100">Rate:</span>{' '}
+            <span className="font-medium">{commission.commission?.effectivePercentage}%</span>
+          </div>
+        </div>
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="flex justify-between py-3 border-b border-gray-100">
-              <span className="text-gray-600">Paid On</span>
-              <span className="font-medium">{formatDate(commission.payoutDetails.paidAt)}</span>
+      {/* Override Info */}
+      {commission.approval?.override?.isOverridden && (
+        <div className="bg-amber-50 rounded-xl border border-amber-200 p-6 mb-6">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
             </div>
-            <div className="flex justify-between py-3 border-b border-gray-100">
-              <span className="text-gray-600">Payment Method</span>
-              <span className="font-medium capitalize">{commission.payoutDetails.paymentMethod?.replace('_', ' ')}</span>
-            </div>
-            <div className="flex justify-between py-3 border-b border-gray-100">
-              <span className="text-gray-600">Reference</span>
-              <span className="font-medium">{commission.payoutDetails.paymentReference}</span>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-amber-800 mb-3">Commission Adjusted</h3>
+              <div className="bg-white rounded-lg p-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Original Amount:</span>
+                  <span className="text-gray-500 line-through">
+                    {formatCurrency(commission.approval.override.originalAmount, commission.commission?.currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Adjusted Amount:</span>
+                  <span className="font-bold text-green-600 text-lg">
+                    {formatCurrency(commission.approval.override.overriddenAmount, commission.commission?.currency)}
+                  </span>
+                </div>
+                {commission.approval.override.overridePercentage && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">New Rate:</span>
+                    <span className="font-medium">{commission.approval.override.overridePercentage}%</span>
+                  </div>
+                )}
+                {commission.approval.override.reason && (
+                  <div className="pt-3 border-t border-gray-200">
+                    <p className="text-sm text-gray-600 mb-1">Reason:</p>
+                    <p className="text-gray-800">{commission.approval.override.reason}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Details Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Sale Details */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Sale Details</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-500">Sale Price</span>
+              <span className="font-medium text-gray-900">
+                {formatCurrency(commission.saleDetails?.salePrice, commission.commission?.currency)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-500">Sale Date</span>
+              <span className="font-medium text-gray-900">{formatDate(commission.saleDetails?.saleDate)}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-500">Buyer Name</span>
+              <span className="font-medium text-gray-900">{commission.saleDetails?.buyerName || 'N/A'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-500">Contact Number</span>
+              <span className="font-medium text-gray-900">{commission.saleDetails?.buyerPhone || 'N/A'}</span>
+            </div>
+            {commission.saleDetails?.buyerEmail && (
+              <div className="flex justify-between items-center py-2">
+                <span className="text-gray-500">Buyer Email</span>
+                <span className="font-medium text-gray-900">{commission.saleDetails.buyerEmail}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Property Details */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Property Details</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-500">Property Name</span>
+              <span className="font-medium text-gray-900">{commission.property?.name || 'N/A'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-500">Type</span>
+              <span className="font-medium text-gray-900 capitalize">{commission.property?.type || 'N/A'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+              <span className="text-gray-500">Location</span>
+              <span className="font-medium text-gray-900">{commission.property?.location?.city || 'N/A'}</span>
+            </div>
+            <div className="flex justify-between items-center py-2">
+              <span className="text-gray-500">Listed Price</span>
+              <span className="font-medium text-gray-900">
+                {formatCurrency(commission.property?.pricing?.basePrice, commission.property?.pricing?.currency)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Company & Payout Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Company Details */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Company</h3>
+          <div className="flex items-center gap-4">
+            {commission.partnershipId?.companyId?.logo ? (
+              <img
+                src={commission.partnershipId.companyId.logo}
+                alt={commission.partnershipId.companyId.name}
+                className="w-12 h-12 rounded-lg object-cover"
+              />
+            ) : (
+              <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                <span className="text-xl font-bold text-gray-400">
+                  {commission.partnershipId?.companyId?.name?.charAt(0) || 'C'}
+                </span>
+              </div>
+            )}
+            <div>
+              <p className="font-medium text-gray-900">{commission.partnershipId?.companyId?.name || 'N/A'}</p>
+              <p className="text-sm text-gray-500">
+                Your Tier: <span className="font-medium capitalize">{commission.partnershipId?.tier || 'N/A'}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Payout Details */}
+        {commission.status === 'paid' && commission.payout?.paidAt && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Payout Details</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                <span className="text-gray-500">Paid On</span>
+                <span className="font-medium text-gray-900">{formatDate(commission.payout.paidAt)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                <span className="text-gray-500">Payment Method</span>
+                <span className="font-medium text-gray-900 capitalize">
+                  {commission.payout.paymentMethod?.replace('_', ' ') || 'N/A'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-gray-500">Reference</span>
+                <span className="font-medium text-gray-900">{commission.payout.paymentReference || 'N/A'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Documents Section */}
       {commission.documents && commission.documents.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Uploaded Documents</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {commission.documents.map((doc, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div key={index} className="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition-colors">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 capitalize">
+                    <p className="text-sm font-medium text-gray-900 capitalize truncate">
                       {doc.type?.replace(/_/g, ' ') || 'Document'}
                     </p>
-                    <p className="text-xs text-gray-500 truncate">{doc.name}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Uploaded: {new Date(doc.uploadedAt).toLocaleDateString()}
-                    </p>
+                    <p className="text-xs text-gray-500">{formatDate(doc.uploadedAt)}</p>
                   </div>
                 </div>
                 <a
                   href={doc.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-3 w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100"
+                  className="w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
                 >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
-                  View Document
+                  View
                 </a>
               </div>
             ))}
@@ -314,118 +333,12 @@ const CommissionDetails = () => {
       )}
 
       {/* Notes */}
-      {(commission.notes || commission.rejectionReason) && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
+      {commission.notes && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes</h3>
-
-          {commission.notes && (
-            <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-1">Notes:</p>
-              <p className="text-gray-900">{commission.notes}</p>
-            </div>
-          )}
-
-          {commission.rejectionReason && (
-            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-              <p className="text-sm text-red-600 mb-1">Rejection Reason:</p>
-              <p className="text-red-800">{commission.rejectionReason}</p>
-            </div>
-          )}
+          <p className="text-gray-700 whitespace-pre-wrap">{commission.notes}</p>
         </div>
       )}
-
-      {/* Timeline */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Timeline</h3>
-
-        <div className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium text-gray-900">Commission Created</p>
-              <p className="text-sm text-gray-500">{formatDate(commission.createdAt)}</p>
-            </div>
-          </div>
-
-          {/* Legal Review Status */}
-          {(commission.status === 'pending_legal_review' || commission.status === 'pending_approval' || commission.status === 'approved' || commission.status === 'paid') && (
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">Legal Review Passed</p>
-                <p className="text-sm text-gray-500">Documents verified by Legal Manager</p>
-              </div>
-            </div>
-          )}
-
-          {/* Rejected at Legal */}
-          {commission.status === 'rejected' && commission.rejectionReason?.startsWith('[Legal]') && (
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">Rejected by Legal</p>
-                <p className="text-sm text-gray-500">{formatDate(commission.updatedAt)}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Finance Approval */}
-          {(commission.status === 'approved' || commission.status === 'paid') && (
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">Approved by Finance</p>
-                <p className="text-sm text-gray-500">{formatDate(commission.updatedAt)}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Rejected at Finance */}
-          {commission.status === 'rejected' && !commission.rejectionReason?.startsWith('[Legal]') && (
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">Rejected by Finance</p>
-                <p className="text-sm text-gray-500">{formatDate(commission.updatedAt)}</p>
-              </div>
-            </div>
-          )}
-
-          {commission.status === 'paid' && commission.payoutDetails?.paidAt && (
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">Paid Out</p>
-                <p className="text-sm text-gray-500">{formatDate(commission.payoutDetails.paidAt)}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
     </DashboardLayout>
   );
 };

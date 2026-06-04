@@ -125,10 +125,10 @@ const ForgotPassword = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
+                Email ID<span className="text-red-500 align-super">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -139,9 +139,8 @@ const ForgotPassword = () => {
                 <input
                   id="email"
                   name="email"
-                  type="email"
+                  type="text"
                   autoComplete="email"
-                  required
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setFieldError(''); }}
                   maxLength={100}

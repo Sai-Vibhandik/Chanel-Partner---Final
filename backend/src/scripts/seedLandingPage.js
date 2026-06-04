@@ -41,7 +41,7 @@ const defaultLandingPageData = {
     title: 'Transform your partner ecosystem',
     highlightWord: 'partner',
     subtitle: 'The complete real estate partner management platform. Onboard partners, manage properties, track commissions, and grow your business across India and Dubai markets.',
-    primaryCta: 'Start Free Trial',
+    primaryCta: 'Get Started',
     secondaryCta: 'Access Dashboard',
     stats: [
       { value: '500+', label: 'Properties', description: 'Premium Listings' },
@@ -128,7 +128,7 @@ const defaultLandingPageData = {
     badge: 'Join the revolution',
     title: 'Ready to transform your real estate business?',
     subtitle: 'Join hundreds of forward-thinking real estate companies already scaling with ChannelPartner.',
-    primaryCta: 'Start Free Trial',
+    primaryCta: 'Get Started',
     secondaryCta: 'Talk to Sales'
   },
   testimonials: {

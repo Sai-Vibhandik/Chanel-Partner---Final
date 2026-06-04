@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { sidebarConfig } from '../../config/sidebar';
-import { getPlans, getSubscription, cancelSubscription, getPaymentHistory } from '../../services/payment.service.js';
-import { Check, CreditCard, Calendar, Download, AlertCircle, Loader2, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { getPlans, getSubscription, cancelSubscription, getPaymentHistory, getMyLimits } from '../../services/payment.service.js';
+import { Check, CreditCard, Calendar, AlertCircle, Loader2, RefreshCw, ArrowUpRight } from 'lucide-react';
 
 const Subscription = () => {
   const { user } = useAuth();
@@ -14,10 +14,12 @@ const Subscription = () => {
   const [subscription, setSubscription] = useState(null);
   const [plans, setPlans] = useState([]);
   const [paymentHistory, setPaymentHistory] = useState([]);
+  const [usageData, setUsageData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
@@ -26,10 +28,11 @@ const Subscription = () => {
 
   const fetchData = async () => {
     try {
-      const [subRes, plansRes, historyRes] = await Promise.all([
+      const [subRes, plansRes, historyRes, limitsRes] = await Promise.all([
         getSubscription().catch(() => ({ data: { subscription: null } })),
         getPlans().catch(() => ({ data: { plans: [] } })),
-        getPaymentHistory().catch(() => ({ data: { subscriptions: [] } }))
+        getPaymentHistory().catch(() => ({ data: { subscriptions: [] } })),
+        getMyLimits().catch(() => ({ data: { data: null } }))
       ]);
 
       if (subRes.data?.subscription) {
@@ -40,6 +43,12 @@ const Subscription = () => {
       }
       if (historyRes.data?.subscriptions) {
         setPaymentHistory(historyRes.data.subscriptions);
+      }
+      if (limitsRes.data?.data) {
+        setUsageData(limitsRes.data.data);
+      } else if (limitsRes.data) {
+        // Handle case where response is directly the data object
+        setUsageData(limitsRes.data);
       }
     } catch (err) {
       console.error('Error fetching subscription data:', err);
@@ -335,27 +344,70 @@ const Subscription = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
 
-              {/* Plan Limits */}
-              {currentPlan.limits && (
-                <div className="mt-6 pt-6 border-t border-gray-200">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Plan Limits</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-500">Properties</p>
-                      <p className="font-medium text-gray-900">
-                        {currentPlan.limits.maxProperties === -1 ? 'Unlimited' : currentPlan.limits.maxProperties}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-500">Duration</p>
-                      <p className="font-medium text-gray-900">
-                        {currentPlan.limits.maxDays || 30} days
-                      </p>
-                    </div>
+        {/* Current Usage */}
+        {usageData && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Current Usage</h2>
+            </div>
+            <div className="p-4 sm:p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Properties Usage */}
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-gray-700">Properties</p>
+                    <span className="text-sm text-gray-500">
+                      {usageData.limits?.properties?.used || 0} / {usageData.limits?.properties?.limit === -1 ? '∞' : usageData.limits?.properties?.limit || 0}
+                    </span>
                   </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${
+                        (usageData.limits?.properties?.percentage || 0) >= 90
+                          ? 'bg-red-500'
+                          : (usageData.limits?.properties?.percentage || 0) >= 70
+                            ? 'bg-yellow-500'
+                            : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min(usageData.limits?.properties?.percentage || 0, 100)}%` }}
+                    ></div>
+                  </div>
+                  {usageData.limits?.properties?.remaining !== 'unlimited' && usageData.limits?.properties?.limit !== -1 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {usageData.limits?.properties?.remaining || 0} remaining
+                    </p>
+                  )}
                 </div>
-              )}
+
+                {/* Days Remaining */}
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-gray-700">Days Remaining</p>
+                    <span className="text-sm text-gray-500">
+                      {usageData.subscription?.remainingDays || 0} days
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${
+                        (usageData.limits?.days?.percentage || 0) >= 90
+                          ? 'bg-red-500'
+                          : (usageData.limits?.days?.percentage || 0) >= 70
+                            ? 'bg-yellow-500'
+                            : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min(usageData.limits?.days?.percentage || 0, 100)}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Until {formatDate(subscription?.currentPeriodEnd || usageData.subscription?.currentPeriodEnd)}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -367,7 +419,7 @@ const Subscription = () => {
               <h2 className="text-lg font-semibold text-gray-900">Payment History</h2>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[500px]">
+              <table className="w-full min-w-[400px]">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -381,9 +433,6 @@ const Subscription = () => {
                     </th>
                     <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
-                    </th>
-                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Invoice
                     </th>
                   </tr>
                 </thead>
@@ -403,12 +452,6 @@ const Subscription = () => {
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(sub.status)}`}>
                           {sub.status?.charAt(0).toUpperCase() + sub.status?.slice(1)}
                         </span>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                        <button className="text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
-                          <Download className="w-4 h-4" />
-                          <span className="text-sm hidden sm:inline">Download</span>
-                        </button>
                       </td>
                     </tr>
                   ))}

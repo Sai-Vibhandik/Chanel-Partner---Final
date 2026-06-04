@@ -30,6 +30,7 @@ import {
   Facebook,
   Instagram,
   Youtube,
+  Quote,
 } from "lucide-react";
 import api from "../utils/api";
 import { getPublicPlans } from "../services/payment.service.js";
@@ -405,6 +406,7 @@ const Landing = () => {
   const [plans, setPlans] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedTestimonial, setSelectedTestimonial] = useState(null);
 
   const containerRef = useRef(null);
   const cursorRef = useRef(null);
@@ -657,20 +659,34 @@ const Landing = () => {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-20">
             {/* Logo */}
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-lg sm:rounded-xl blur-lg opacity-60" />
-                <div className="relative w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-lg sm:rounded-xl flex items-center justify-center">
-                  <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            <a
+              href="#hero"
+              className="flex items-center gap-2 sm:gap-3 cursor-pointer"
+            >
+              {navigation?.showLogo && navigation?.logo ? (
+                <img
+                  src={navigation.logo}
+                  alt="Logo"
+                  className="w-auto object-contain"
+                  style={{ height: `${navigation?.logoWidth || 40}px`, maxWidth: '200px' }}
+                />
+              ) : (
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-lg sm:rounded-xl blur-lg opacity-60" />
+                  <div className="relative w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-lg sm:rounded-xl flex items-center justify-center">
+                    <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  </div>
                 </div>
-              </div>
-              <span className="text-lg sm:text-xl font-semibold tracking-tight">
-                {navBrandName}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">
-                  {navBrandHighlight}
+              )}
+              {!(navigation?.showLogo && navigation?.logo) && (
+                <span className="text-lg sm:text-xl font-semibold tracking-tight">
+                  {navBrandName}
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">
+                    {navBrandHighlight}
+                  </span>
                 </span>
-              </span>
-            </div>
+              )}
+            </a>
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-6 lg:gap-8">
@@ -1091,34 +1107,47 @@ const Landing = () => {
 
           {/* Features Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {features.map((feature, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-gradient-to-br from-white/[0.08] to-white/[0.02] rounded-2xl border border-white/10 p-5 sm:p-6 relative overflow-hidden group hover:border-white/20 transition-colors"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="relative z-10">
-                  <div
-                    className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-gradient-to-br ${feature.color || "from-violet-500 to-purple-500"} flex items-center justify-center mb-3 sm:mb-4`}
-                  >
-                    <IconRenderer
-                      icon={feature.icon}
-                      className="w-5 h-5 sm:w-6 sm:h-6 text-white"
-                    />
+            {features.map((feature, index) => {
+              // Cycle through gradient colors based on index
+              const gradients = [
+                "from-violet-500 to-purple-500",
+                "from-blue-500 to-cyan-500",
+                "from-emerald-500 to-teal-500",
+                "from-orange-500 to-red-500",
+                "from-pink-500 to-rose-500",
+                "from-indigo-500 to-blue-500",
+              ];
+              const gradient = gradients[index % gradients.length];
+
+              return (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.1 }}
+                  className="bg-gradient-to-br from-white/[0.08] to-white/[0.02] rounded-2xl border border-white/10 p-5 sm:p-6 relative overflow-hidden group hover:border-white/20 transition-colors"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative z-10">
+                    <div
+                      className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 sm:mb-4`}
+                    >
+                      <IconRenderer
+                        icon={feature.icon}
+                        className="w-5 h-5 sm:w-6 sm:h-6 text-white"
+                      />
+                    </div>
+                    <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2">
+                      {feature.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-white/50">
+                      {feature.description}
+                    </p>
                   </div>
-                  <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-white/50">
-                    {feature.description}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </RevealSection>
@@ -1332,23 +1361,24 @@ const Landing = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: index * 0.1 }}
-                  className="bg-gradient-to-br from-white/[0.08] to-white/[0.02] rounded-2xl border border-white/10 p-5 sm:p-6"
+                  className="bg-gradient-to-br from-white/[0.08] to-white/[0.02] rounded-2xl border border-white/10 p-5 sm:p-6 overflow-hidden cursor-pointer hover:border-white/20 transition-colors"
+                  onClick={() => setSelectedTestimonial(testimonial)}
                 >
                   <div className="flex items-start gap-3 mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white font-semibold text-sm sm:text-base">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white font-semibold text-sm sm:text-base flex-shrink-0">
                       {testimonial.author?.charAt(0) || "U"}
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-white">
+                    <div className="min-w-0">
+                      <h4 className="font-semibold text-white truncate">
                         {testimonial.author || "Anonymous"}
                       </h4>
-                      <p className="text-xs sm:text-sm text-white/50">
+                      <p className="text-xs sm:text-sm text-white/50 truncate">
                         {testimonial.role}
                         {testimonial.company ? `, ${testimonial.company}` : ""}
                       </p>
                     </div>
                   </div>
-                  <p className="text-sm sm:text-base text-white/70 italic">
+                  <p className="text-sm sm:text-base text-white/70 italic line-clamp-4 break-words">
                     "{testimonial.quote}"
                   </p>
                 </motion.div>
@@ -1357,6 +1387,54 @@ const Landing = () => {
           </div>
         </RevealSection>
       )}
+
+      {/* Testimonial Modal */}
+      <AnimatePresence>
+        {selectedTestimonial && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setSelectedTestimonial(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#0F0F1A] rounded-2xl border border-white/10 p-6 sm:p-8 max-w-lg w-full max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-4 mb-6">
+                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
+                  {selectedTestimonial.author?.charAt(0) || "U"}
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-lg font-semibold text-white">
+                    {selectedTestimonial.author || "Anonymous"}
+                  </h4>
+                  <p className="text-sm text-white/50">
+                    {selectedTestimonial.role}
+                    {selectedTestimonial.company ? `, ${selectedTestimonial.company}` : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedTestimonial(null)}
+                  className="ml-auto text-white/50 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="relative">
+                <Quote className="absolute -top-2 -left-1 w-8 h-8 text-violet-500/20" />
+                <p className="text-base text-white/80 italic pl-8">
+                  "{selectedTestimonial.quote}"
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* FAQs Section */}
       {faqs?.items?.length > 0 && (
@@ -1518,15 +1596,26 @@ const Landing = () => {
             {/* Brand */}
             <div className="md:col-span-2">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-10 h-10 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-xl flex items-center justify-center">
-                  <Building2 className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-xl font-semibold text-white">
-                  {footer?.brandName || "Channel"}
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">
-                    {footer?.brandHighlight || "Partner"}
+                {footer?.showLogo && footer?.logo ? (
+                  <img
+                    src={footer.logo}
+                    alt="Logo"
+                    className="w-auto object-contain"
+                    style={{ height: `${footer?.logoWidth || 40}px`, maxWidth: '200px' }}
+                  />
+                ) : (
+                  <div className="w-10 h-10 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-xl flex items-center justify-center">
+                    <Building2 className="w-5 h-5 text-white" />
+                  </div>
+                )}
+                {!(footer?.showLogo && footer?.logo) && (
+                  <span className="text-xl font-semibold text-white">
+                    {footer?.brandName || "Channel"}
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">
+                      {footer?.brandHighlight || "Partner"}
+                    </span>
                   </span>
-                </span>
+                )}
               </div>
               <p className="text-slate-400 text-sm mb-4 max-w-sm">
                 {footerTagline}
