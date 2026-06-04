@@ -193,7 +193,6 @@ export const isTokenBlacklisted = (token) => {
 export const clearAllUserTokens = (userId) => {
   // In production, use Redis to store user tokens and clear them
   // For now, this is a placeholder
-  console.log(`Clearing all tokens for user: ${userId}`);
 };
 
 export default {

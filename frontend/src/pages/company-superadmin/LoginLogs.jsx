@@ -73,7 +73,7 @@ const LoginLogs = () => {
       const response = await api.get(`/login-logs/stats?${params.toString()}`);
       setStats(response.data.data);
     } catch (err) {
-      console.error('Failed to load stats:', err);
+      // Error loading stats
     }
   };
 

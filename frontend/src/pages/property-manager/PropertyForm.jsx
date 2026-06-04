@@ -186,7 +186,6 @@ const PropertyForm = () => {
         floorPlans: savedFloorPlans ? JSON.parse(savedFloorPlans) : []
       };
     } catch (err) {
-      console.error('Failed to restore draft:', err);
       return { form: getInitialFormData(), images: [], brochure: null, floorPlans: [], videos: [] };
     }
   };
@@ -237,18 +236,13 @@ const PropertyForm = () => {
     const fetchPartners = async () => {
       try {
         // Get company ID from user's profile
-        console.log('User object:', user);
         const companyId = user?.companyId || user?.company?._id || user?.company;
-        console.log('Company ID:', companyId);
         if (!companyId) {
-          console.log('No company ID found for user');
           return;
         }
         const res = await api.get(`/partner-company/company/${companyId}/partners?limit=100`);
-        console.log('Partners response:', res.data);
         // The response returns partnerships, extract partner info
         const partnerships = res.data.data.partnerships || [];
-        console.log('Partnerships:', partnerships);
         const partnersList = partnerships
           .filter(p => p.status === 'active')
           .map(p => ({
@@ -259,10 +253,8 @@ const PropertyForm = () => {
             tier: p.tier
           }))
           .filter(p => p._id);
-        console.log('Partners list:', partnersList);
         setPartners(partnersList);
       } catch (err) {
-        console.error('Failed to fetch partners:', err);
       }
     };
     if (user) {
@@ -309,7 +301,6 @@ const PropertyForm = () => {
       const response = await api.get('/companies/my-limits');
       setLimits(response.data.data);
     } catch (err) {
-      console.error('Failed to load limits:', err);
     } finally {
       setLimitsLoading(false);
     }
@@ -386,11 +377,6 @@ const PropertyForm = () => {
       });
       setImages(property.images || []);
       setVideos(property.videos || []);
-      console.log('Loaded property data:', {
-        hasBrochure: !!property.brochure,
-        brochure: property.brochure,
-        floorPlansCount: property.floorPlans?.length || 0
-      });
       setBrochure(property.brochure || null);
       setFloorPlans(property.floorPlans || []);
     } catch (err) {
@@ -469,12 +455,8 @@ const PropertyForm = () => {
         formDataToSend.append('file', file);
         formDataToSend.append('folder', `properties/${id || 'new'}`);
 
-        console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
-
         const response = await api.post('/upload/image', formDataToSend);
         const { url, publicId } = response.data.data;
-
-        console.log('Upload successful:', { url, publicId });
 
         setImages(prev => [...prev, {
           url,
@@ -487,8 +469,6 @@ const PropertyForm = () => {
       // Clear the file input
       e.target.value = '';
     } catch (err) {
-      console.error('Upload error:', err);
-      console.error('Error response:', err.response?.data);
       toast.error(err.response?.data?.message || 'Failed to upload image. Please try again.');
     } finally {
       setUploadingImage(false);
@@ -603,19 +583,6 @@ const PropertyForm = () => {
         status: publishStatus
       };
 
-      console.log('Submitting property data:', {
-        isEdit,
-        imagesCount: images.length,
-        images: images,
-        videosCount: videos.length,
-        hasBrochure: !!brochure,
-        brochure: brochure,
-        floorPlansCount: floorPlans.length,
-        floorPlans: floorPlans
-      });
-
-      console.log('Full submitData brochure field:', JSON.stringify(submitData.brochure, null, 2));
-
       // Ensure commission is properly formatted
       if (submitData.commission) {
         const fixedAmount = parseFloat(submitData.commission.fixedAmount);
@@ -624,7 +591,6 @@ const PropertyForm = () => {
           fixedAmount: isNaN(fixedAmount) ? null : fixedAmount,
           isFixed: Boolean(submitData.commission.isFixed)
         };
-        console.log('Commission data being sent:', submitData.commission);
       }
 
       // Clean up empty string values for enum fields - convert to undefined
@@ -638,11 +604,6 @@ const PropertyForm = () => {
 
       if (isEdit) {
         const response = await api.put(`/properties/${id}`, submitData);
-        console.log('Property updated successfully:', {
-          hasBrochure: !!response.data?.data?.property?.brochure,
-          brochure: response.data?.data?.property?.brochure,
-          floorPlansCount: response.data?.data?.property?.floorPlans?.length || 0
-        });
         toast.success('Property updated successfully.');
         navigate(basePath);
       } else {
@@ -1730,16 +1691,13 @@ const PropertyForm = () => {
                   formDataToSend.append('file', file);
                   formDataToSend.append('folder', `properties/brochures`);
                   const response = await api.post('/upload/document', formDataToSend);
-                  console.log('Brochure upload response:', response.data);
                   const newBrochure = {
                     url: response.data.data.url,
                     publicId: response.data.data.publicId,
                     name: file.name
                   };
-                  console.log('Setting brochure state:', newBrochure);
                   setBrochure(newBrochure);
                 } catch (err) {
-                  console.error('Brochure upload error:', err);
                   const errorMsg = err.response?.data?.message || 'Upload failed. Please try again.';
                   setFieldErrors(prev => ({ ...prev, brochure: errorMsg }));
                 } finally {
@@ -1805,7 +1763,6 @@ const PropertyForm = () => {
                     setFloorPlans(prev => [...prev, { url, publicId, name: file.name }]);
                   }
                 } catch (err) {
-                  console.error('Floor plan upload error:', err);
                   const errorMsg = err.response?.data?.message || 'Upload failed. Please try again.';
                   setFieldErrors(prev => ({ ...prev, floorPlans: errorMsg }));
                 } finally {

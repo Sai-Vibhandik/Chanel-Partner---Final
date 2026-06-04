@@ -31,7 +31,7 @@ export const SocketProvider = ({ children }) => {
 
       setUnreadCount(count || 0);
     } catch (error) {
-      console.error('Failed to fetch unread count:', error.message);
+      // Silently fail - unread count will be fetched on next socket event
     }
   }, [user]);
 
@@ -46,8 +46,6 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
-    console.log('Initializing socket for user:', user.role, 'companyId:', user.companyId);
-
     // Token is stored in httpOnly cookies, so we don't need to pass it explicitly
     // The server will read it from cookies automatically
     const newSocket = io(SOCKET_URL, {
@@ -59,36 +57,23 @@ export const SocketProvider = ({ children }) => {
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected, user:', user?.role, 'companyId:', user?.companyId);
       setIsConnected(true);
       // Fetch initial unread count when connected
       fetchUnreadCount();
     });
 
     newSocket.on('disconnect', () => {
-      console.log('Socket disconnected');
       setIsConnected(false);
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error.message);
       setIsConnected(false);
-    });
-
-    // Debug: log all events received
-    newSocket.onAny((eventName, ...args) => {
-      console.log('Socket event received:', eventName, args);
     });
 
     // Handle incoming chat notifications
     newSocket.on('chat-notification', (data) => {
-      console.log('Received chat-notification:', data);
-      console.log('Current unread count before increment:', unreadCount);
       // Instant update - increment unread count immediately
-      setUnreadCount(prev => {
-        console.log('Incrementing unread count from', prev, 'to', prev + 1);
-        return prev + 1;
-      });
+      setUnreadCount(prev => prev + 1);
 
       // Show toast notification
       const senderName = data.adminName || data.partnerName || 'Someone';
@@ -112,7 +97,6 @@ export const SocketProvider = ({ children }) => {
 
     // Handle unread count updates from server
     newSocket.on('unread-count-updated', (data) => {
-      console.log('Unread count updated:', data);
       if (data.unreadCount === 'refresh') {
         // Server signaled to refresh from API
         fetchUnreadCount();

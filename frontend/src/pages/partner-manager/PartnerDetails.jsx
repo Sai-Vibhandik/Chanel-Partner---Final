@@ -38,7 +38,7 @@ const PartnerDetails = () => {
       const response = await api.get(`/companies/${user.companyId}/settings`);
       setCompanySettings(response.data.data);
     } catch (err) {
-      console.error('Failed to fetch company settings:', err);
+      // Error fetching company settings
     }
   };
 

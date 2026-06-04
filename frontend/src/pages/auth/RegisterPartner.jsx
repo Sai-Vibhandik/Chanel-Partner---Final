@@ -131,7 +131,6 @@ const RegisterPartner = () => {
         }
       } catch (err) {
         // If check fails, proceed anyway (will be caught during registration)
-        console.error('Email check failed:', err);
       } finally {
         setCheckingEmail(false);
       }

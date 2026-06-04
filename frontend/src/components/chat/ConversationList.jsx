@@ -18,7 +18,7 @@ const ConversationList = ({ onSelectConversation, selectedPartnershipId, adminTy
       });
       setConversations(res.data.data.conversations || []);
     } catch (error) {
-      console.error('Error fetching conversations:', error);
+      // Error fetching conversations
     } finally {
       setLoading(false);
     }
@@ -31,12 +31,9 @@ const ConversationList = ({ onSelectConversation, selectedPartnershipId, adminTy
   // Listen for new messages - instant update to unread count
   useEffect(() => {
     const unsubscribe = onNewMessage?.((data) => {
-      console.log('ConversationList received new-message:', data);
       // Check if the current user sent this message
       const senderId = data.message?.sender?.userId?._id || data.message?.sender?.userId;
       const isOwnMessage = senderId === user?._id || senderId?.toString() === user?._id?.toString();
-
-      console.log('Sender ID:', senderId, 'User ID:', user?._id, 'Is own message:', isOwnMessage);
 
       // Update the conversation list
       setConversations(prev => {
@@ -69,18 +66,15 @@ const ConversationList = ({ onSelectConversation, selectedPartnershipId, adminTy
     if (!socket) return;
 
     const handleChatNotification = (data) => {
-      console.log('ConversationList received chat-notification:', data);
       // chat-notification is only sent to the OTHER party, so we don't need to check isOwnMessage
       // But we should still check if we're currently viewing this conversation
       const isViewingConversation = selectedPartnershipId === data.partnershipId;
-      console.log('Selected partnership:', selectedPartnershipId, 'Notification partnership:', data.partnershipId, 'Is viewing:', isViewingConversation);
 
       if (!isViewingConversation) {
         // Update the conversation list to show new message and increment unread
         setConversations(prev => {
           const updatedConversations = prev.map(conv => {
             if (conv.partnership?._id === data.partnershipId) {
-              console.log('Incrementing unread for conversation:', conv.partnership?._id, 'New count:', (conv.unreadCount || 0) + 1);
               return {
                 ...conv,
                 lastMessage: data.message,

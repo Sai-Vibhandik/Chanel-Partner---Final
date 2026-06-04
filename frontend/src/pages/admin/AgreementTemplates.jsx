@@ -103,7 +103,7 @@ const AgreementTemplates = () => {
       const response = await api.get('/agreements/history');
       setHistory(response.data.data.history);
     } catch (err) {
-      console.error('Failed to load template history:', err);
+      // Error loading template history
     } finally {
       setHistoryLoading(false);
     }

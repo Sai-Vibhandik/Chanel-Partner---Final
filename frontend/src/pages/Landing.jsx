@@ -450,7 +450,6 @@ const Landing = () => {
           setPlans(plansResponse.data.plans);
         }
       } catch (error) {
-        console.error("Failed to fetch landing page data:", error);
       } finally {
         setDataLoading(false);
       }

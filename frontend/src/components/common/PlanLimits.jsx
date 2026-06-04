@@ -17,7 +17,6 @@ const PlanLimits = ({ compact = false }) => {
       const response = await getPlanLimits();
       setLimits(response.data);
     } catch (err) {
-      console.error('Error fetching plan limits:', err);
       setError('Failed to load plan limits');
     } finally {
       setLoading(false);

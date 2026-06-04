@@ -37,7 +37,6 @@ const FinanceManagerDashboard = () => {
         recentTransactions: data.recentTransactions || []
       });
     } catch (error) {
-      console.error('Error fetching commission stats:', error);
     } finally {
       setLoading(false);
     }

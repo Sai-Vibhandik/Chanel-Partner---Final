@@ -48,7 +48,7 @@ const Reports = () => {
       const response = await api.get(`/partner-company/reports/performance?${params.toString()}`);
       setPerformanceData(response.data?.data);
     } catch (error) {
-      console.error('Failed to fetch performance report:', error);
+      // Error fetching performance report
     } finally {
       setLoading(false);
     }
@@ -66,7 +66,7 @@ const Reports = () => {
       const response = await api.get(`/partner-company/reports/commissions?${params.toString()}`);
       setCommissionData(response.data?.data);
     } catch (error) {
-      console.error('Failed to fetch commission report:', error);
+      // Error fetching commission report
     } finally {
       setLoading(false);
     }

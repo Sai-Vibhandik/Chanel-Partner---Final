@@ -83,10 +83,8 @@ const CommissionForm = () => {
     try {
       // Get partnerships for the user's company
       const response = await api.get(`/partner-company/company/${user.companyId}/partners`);
-      console.log('Partnerships response:', response.data);
       setPartnerships(response.data.data.partnerships.filter(p => p.status === 'active'));
     } catch (err) {
-      console.error('Failed to load partnerships:', err.response?.data || err.message);
     }
   };
 
@@ -94,11 +92,9 @@ const CommissionForm = () => {
     try {
       // Get properties for the company
       const response = await api.get('/properties');
-      console.log('Properties response:', response.data);
       // Only show active properties (not sold or draft)
       setProperties(response.data.data.properties.filter(p => p.status === 'active'));
     } catch (err) {
-      console.error('Failed to load properties:', err.response?.data || err.message);
     }
   };
 
@@ -107,7 +103,6 @@ const CommissionForm = () => {
       const response = await api.get('/companies/my-settings');
       setCompanySettings(response.data.data.settings);
     } catch (err) {
-      console.error('Failed to load company settings');
     }
   };
 

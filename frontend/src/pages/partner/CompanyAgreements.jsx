@@ -248,7 +248,6 @@ const CompanyAgreements = () => {
         });
       }
     } catch (err) {
-      console.error('Failed to load signature details:', err);
     }
   };
 

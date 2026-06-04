@@ -33,7 +33,7 @@ const PartnerManagerDashboard = () => {
       const response = await api.get(`/companies/${user.companyId}/settings`);
       setCompanySettings(response.data.data);
     } catch (error) {
-      console.error('Failed to fetch company settings:', error);
+      // Error fetching company settings
     }
   };
 
@@ -56,7 +56,7 @@ const PartnerManagerDashboard = () => {
         }
       });
     } catch (error) {
-      console.error('Failed to fetch stats:', error);
+      // Error fetching stats
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ const PartnerManagerDashboard = () => {
       const response = await api.get('/partners/recent-activities?limit=10');
       setActivities(response.data?.data?.activities || []);
     } catch (error) {
-      console.error('Failed to fetch activities:', error);
+      // Error fetching activities
     } finally {
       setActivitiesLoading(false);
     }

@@ -445,8 +445,6 @@ export const getAvailableSlots = async (req, res, next) => {
  */
 export const getAvailableOffices = async (req, res, next) => {
   try {
-    console.log('getAvailableOffices called by user:', req.user._id, 'role:', req.user.role);
-
     // For partners, get offices from companies they have partnerships with
     const PartnerCompany = (await import("../models/PartnerCompany.js"))
       .default;
@@ -456,10 +454,7 @@ export const getAvailableOffices = async (req, res, next) => {
       status: "active",
     }).select("companyId");
 
-    console.log('Found partnerships:', partnerships.length);
-
     const companyIds = partnerships.map((p) => p.companyId);
-    console.log('Company IDs:', companyIds);
 
     const offices = await OfficeLocation.find({
       companyId: { $in: companyIds },
@@ -467,8 +462,6 @@ export const getAvailableOffices = async (req, res, next) => {
     })
       .select("name address phone email googleMapsUrl operatingHours isActive companyId")
       .sort({ displayOrder: 1, name: 1 });
-
-    console.log('Found offices:', offices.length);
 
     res.status(200).json({
       success: true,

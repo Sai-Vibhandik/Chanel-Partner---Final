@@ -142,7 +142,7 @@ export const logout = async () => {
   try {
     await api.post('/auth/logout');
   } catch (error) {
-    console.error('Logout error:', error);
+    // Silently fail - user will be redirected anyway
   } finally {
     localStorage.removeItem('user');
     window.location.href = '/login';

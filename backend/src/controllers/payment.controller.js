@@ -136,8 +136,6 @@ export const initRegistrationPayment = async (req, res, next) => {
       password
     } = req.body;
 
-    console.log('Initializing registration payment for:', email);
-
     // Validate required fields
     if (!planId || !companyName || !email || !firstName || !lastName || !password) {
       throw new ApiError(400, 'Missing required fields');
@@ -175,7 +173,6 @@ export const initRegistrationPayment = async (req, res, next) => {
     if (existingPending) {
       // Return existing order if still valid
       if (existingPending.razorpayOrderId && existingPending.canProcessPayment()) {
-        console.log('Returning existing pending registration for:', email);
         return res.status(200).json({
           success: true,
           data: {
@@ -218,7 +215,6 @@ export const initRegistrationPayment = async (req, res, next) => {
     const registrationToken = generateRegistrationToken();
 
     // Create pending registration record
-    console.log('Creating pending registration...');
     const pendingRegistration = await PendingRegistration.create({
       registrationToken,
       companyData: {
@@ -245,15 +241,11 @@ export const initRegistrationPayment = async (req, res, next) => {
       status: 'pending_payment'
     });
 
-    console.log('Pending registration created:', pendingRegistration._id);
-
     // Create Razorpay order
-    console.log('Creating Razorpay order...');
     const rzp = getRazorpayInstance();
 
     // Generate short receipt ID (max 40 chars for Razorpay)
     const receiptId = `reg_${pendingRegistration._id.toString().slice(-12)}_${Date.now().toString().slice(-8)}`;
-    console.log('Receipt ID:', receiptId, 'Length:', receiptId.length);
 
     const order = await rzp.orders.create({
       amount,
@@ -266,8 +258,6 @@ export const initRegistrationPayment = async (req, res, next) => {
         type: 'registration'
       }
     });
-
-    console.log('Razorpay order created:', order.id);
 
     // Update pending registration with order ID
     pendingRegistration.razorpayOrderId = order.id;
@@ -755,8 +745,6 @@ export const handleWebhook = async (req, res, next) => {
     const event = req.body;
     const eventType = event.event;
 
-    console.log(`Received Razorpay webhook: ${eventType}`);
-
     // Handle different webhook events
     switch (eventType) {
       case 'payment.captured':
@@ -771,8 +759,6 @@ export const handleWebhook = async (req, res, next) => {
       case 'subscription.completed':
         await handleSubscriptionCompleted(event);
         break;
-      default:
-        console.log(`Unhandled webhook event: ${eventType}`);
     }
 
     res.status(200).json({ status: 'ok' });

@@ -43,7 +43,8 @@ export const handleCalendlyWebhook = async (req, res, next) => {
         break;
 
       default:
-        console.log(`Unhandled Calendly event: ${event}`);
+        // Unhandled event type - silently ignore
+        break;
     }
 
     res.status(200).json({ success: true, message: 'Webhook processed' });
@@ -127,12 +128,10 @@ async function handleBookingCreated(payload) {
     });
 
     if (existingVisit) {
-      console.log(`Visit already exists for Calendly event: ${visitData.calendlyEventId}`);
       return;
     }
 
     const visit = await Visit.create(visitData);
-    console.log(`Created visit from Calendly booking: ${visit._id}`);
 
   } catch (error) {
     console.error('Error handling Calendly booking:', error);
@@ -154,7 +153,6 @@ async function handleBookingCanceled(payload) {
       visit.status = 'cancelled';
       visit.cancellationReason = 'Canceled via Calendly';
       await visit.save();
-      console.log(`Cancelled visit from Calendly: ${visit._id}`);
     }
   } catch (error) {
     console.error('Error handling Calendly cancellation:', error);
@@ -217,7 +215,7 @@ function parseCalendlyTracking(payload) {
     tracking.notes = invitee.notes || payload.notes || '';
 
   } catch (e) {
-    console.log('Could not parse Calendly tracking params:', e.message);
+    // Silently ignore parsing errors
   }
 
   return tracking;

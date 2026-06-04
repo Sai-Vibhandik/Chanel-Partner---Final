@@ -38,7 +38,6 @@ const PropertyManagerDashboard = () => {
         byType: data.byType || {}
       });
     } catch (error) {
-      console.error('Error fetching property stats:', error);
     }
   };
 
@@ -48,7 +47,6 @@ const PropertyManagerDashboard = () => {
       const properties = res.data?.data?.properties || [];
       setRecentProperties(properties);
     } catch (error) {
-      console.error('Error fetching recent properties:', error);
     } finally {
       setLoading(false);
     }

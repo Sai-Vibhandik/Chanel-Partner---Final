@@ -154,18 +154,11 @@ export const createTeamMember = async (req, res, next) => {
 
     // If sendInvite is true, send invitation email with credentials
     // Send email asynchronously (don't wait for it)
-    console.log('📧 Team member created. sendInvite:', sendInvite, 'Type:', typeof sendInvite);
     if (sendInvite) {
-      console.log('📧 Preparing to send team invitation email to:', user.email);
       sendTeamInviteEmail(user, userPassword, company, req.user)
-        .then(() => {
-          console.log(`✅ Team invitation email sent to ${user.email}`);
-        })
         .catch(err => {
-          console.error('❌ Failed to send team invitation email:', err.message);
+          console.error('Failed to send team invitation email:', err.message);
         });
-    } else {
-      console.log('📧 sendInvite is false/undefined, skipping email');
     }
 
     // Create notification for the new team member
@@ -520,11 +513,8 @@ export const resendInvite = async (req, res, next) => {
 
     // Send invitation email with new temporary password
     sendTeamInviteEmail(user, temporaryPassword, company, req.user)
-      .then(() => {
-        console.log(`✅ Team invitation email resent to ${user.email}`);
-      })
       .catch(err => {
-        console.error('❌ Failed to resend team invitation email:', err.message);
+        console.error('Failed to resend team invitation email:', err.message);
       });
 
     // Log activity

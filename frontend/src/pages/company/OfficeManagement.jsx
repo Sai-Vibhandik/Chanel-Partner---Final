@@ -99,7 +99,6 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
               }
             }
           } catch (e) {
-            console.error('Date parse error:', e);
           }
           return {
             _id: bd._id,
@@ -137,7 +136,6 @@ const OfficeManagement = ({ role = 'company_superadmin' }) => {
         }
       }
     } catch (err) {
-      console.error('Failed to load availability');
       setError('Failed to load availability settings.');
     }
   };

@@ -55,7 +55,6 @@ const Reports = () => {
       setVisitData(visitsRes.data?.data || {});
       setCommissionData(commissionsRes.data?.data || {});
     } catch (error) {
-      console.error('Error fetching viewer reports:', error);
     } finally {
       setLoading(false);
     }

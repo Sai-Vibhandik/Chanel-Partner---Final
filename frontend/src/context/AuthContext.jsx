@@ -57,7 +57,7 @@ export const AuthProvider = ({ children }) => {
       // Call logout endpoint to blacklist token and clear cookies
       await api.post('/auth/logout');
     } catch (error) {
-      console.error('Logout error:', error);
+      // Silently fail - user will be logged out anyway
     } finally {
       setUser(null);
       setCompany(null);

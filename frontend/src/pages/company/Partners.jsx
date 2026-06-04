@@ -42,7 +42,7 @@ const Partners = () => {
       const response = await api.get(`/companies/${user.companyId}/settings`);
       setCompanySettings(response.data.data);
     } catch (err) {
-      console.error('Failed to fetch company settings:', err);
+      // Error fetching company settings
     }
   };
 
@@ -123,7 +123,7 @@ const Partners = () => {
       link.click();
       document.body.removeChild(link);
     } catch (err) {
-      console.error('Export failed:', err);
+      // Error exporting partners
       alert('Failed to export partners');
     } finally {
       setExporting(false);

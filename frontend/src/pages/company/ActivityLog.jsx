@@ -49,7 +49,7 @@ const ActivityLog = () => {
       setActionTypes(response.data.data.actionTypes || []);
       setResourceTypes(response.data.data.resourceTypes || []);
     } catch (err) {
-      console.error('Failed to load action types:', err);
+      // Failed to load action types
     }
   };
 

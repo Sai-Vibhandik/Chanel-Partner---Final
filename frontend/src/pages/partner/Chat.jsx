@@ -22,7 +22,7 @@ const PartnerChat = () => {
       const res = await api.get('/chat/my-conversations');
       setConversations(res.data.data.conversations || []);
     } catch (error) {
-      console.error('Error fetching conversations:', error);
+      // Error fetching conversations
     } finally {
       setLoading(false);
     }

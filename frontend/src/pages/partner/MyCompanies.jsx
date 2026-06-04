@@ -44,7 +44,7 @@ const MyCompanies = () => {
       const response = await api.get('/companies/public/list');
       setCompanies(response.data.data.companies);
     } catch (err) {
-      console.error('Failed to load companies');
+      // Failed to load companies
     }
   };
 

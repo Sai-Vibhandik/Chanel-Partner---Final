@@ -66,7 +66,6 @@ const RegisterCompany = () => {
           setRestoredFromStorage(true);
         }
       } catch (err) {
-        console.error('Failed to load saved progress:', err);
         localStorage.removeItem(REGISTRATION_STORAGE_KEY);
       }
     }
@@ -109,7 +108,6 @@ const RegisterCompany = () => {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch plans:', err);
       } finally {
         setPlansLoading(false);
       }
@@ -229,7 +227,6 @@ const RegisterCompany = () => {
         }
       } catch (err) {
         // If check fails, proceed anyway (will be caught at payment step)
-        console.error('Email check failed:', err);
       } finally {
         setCheckingEmail(false);
       }
@@ -383,8 +380,6 @@ const RegisterCompany = () => {
       await completeRegistration(verifyResponse.data.paymentToken);
 
     } catch (err) {
-      console.error('Payment error:', err);
-
       // Check if error has validation errors array
       const errorData = err.response?.data;
       if (errorData?.errors && Array.isArray(errorData.errors)) {

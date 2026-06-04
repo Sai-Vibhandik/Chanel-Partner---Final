@@ -156,10 +156,6 @@ export const uploadDocument = async (req, res, next) => {
  */
 export const uploadImage = async (req, res, next) => {
   try {
-    console.log('Upload image request received');
-    console.log('Files:', req.files);
-    console.log('Body:', req.body);
-
     // Check if Cloudinary is configured
     if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
       console.warn('Cloudinary not configured, returning mock URL');
@@ -185,12 +181,6 @@ export const uploadImage = async (req, res, next) => {
     }
 
     const file = req.files.file;
-    console.log('File details:', {
-      name: file.name,
-      size: file.size,
-      mimetype: file.mimetype,
-      tempFilePath: file.tempFilePath
-    });
 
     const folder = (req.body && req.body.folder) || 'images';
 
@@ -201,12 +191,10 @@ export const uploadImage = async (req, res, next) => {
     }
 
     // Upload to Cloudinary
-    console.log('Uploading to Cloudinary...');
     const result = await cloudinary.uploader.upload(file.tempFilePath, {
       folder: `channel-partner-portal/${folder}`,
       resource_type: 'image'
     });
-    console.log('Cloudinary upload result:', result.public_id);
 
     res.status(200).json({
       success: true,

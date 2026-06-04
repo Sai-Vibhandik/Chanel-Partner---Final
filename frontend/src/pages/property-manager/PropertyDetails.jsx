@@ -34,11 +34,6 @@ const PropertyDetails = () => {
       setLoading(true);
       setError('');
       const response = await api.get(`/properties/${id}`);
-      console.log('Property data:', response.data?.data?.property);
-      console.log('Images:', response.data?.data?.property?.images);
-      console.log('Videos:', response.data?.data?.property?.videos);
-      console.log('Brochure:', response.data?.data?.property?.brochure);
-      console.log('Floor Plans:', response.data?.data?.property?.floorPlans);
       const propertyData = response.data?.data?.property || null;
       setProperty(propertyData);
       if (propertyData) {
@@ -46,7 +41,6 @@ const PropertyDetails = () => {
         setOriginalStatus(propertyData.status);
       }
     } catch (err) {
-      console.error('Error fetching property:', err);
       const errorMessage = err.response?.data?.message || 'Failed to load property';
       setError(errorMessage);
       toast.error(errorMessage);

@@ -51,7 +51,6 @@ const PlatformDashboard = () => {
         recentCompanies: companyData.recent || []
       });
     } catch (error) {
-      console.error('Error fetching platform stats:', error);
     } finally {
       setLoading(false);
     }

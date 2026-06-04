@@ -247,7 +247,6 @@ export const sendMessage = async (req, res, next) => {
     if (senderType === 'partner') {
       // Notify admin
       const adminRoom = `company:${partnership.companyId}:${adminType}`;
-      console.log(`[REST API] Sending chat-notification to room: ${adminRoom}`);
       io.to(adminRoom).emit('chat-notification', {
         partnershipId,
         adminType,
@@ -257,7 +256,6 @@ export const sendMessage = async (req, res, next) => {
     } else {
       // Notify partner
       const partnerRoom = `user:${partnership.partnerId._id}`;
-      console.log(`[REST API] Sending chat-notification to room: ${partnerRoom}`);
       io.to(partnerRoom).emit('chat-notification', {
         partnershipId,
         adminType,

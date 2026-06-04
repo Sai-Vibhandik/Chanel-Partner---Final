@@ -166,7 +166,6 @@ const AgreementSigning = () => {
         // After refresh, if no more pending, the component will show success screen
       }
     } catch (err) {
-      console.error('Sign agreement error:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Failed to sign agreement. Please try again.';
       toast.error(errorMessage);
     } finally {

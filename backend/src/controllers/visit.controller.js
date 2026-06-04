@@ -493,12 +493,8 @@ export const getCompanyVisits = async (req, res, next) => {
   try {
     const { status, date, upcoming, partnerId, officeId, visitType, startDate, endDate, page = 1, limit = 10 } = req.query;
 
-    console.log('getCompanyVisits called by user:', req.user._id, 'role:', req.user.role, 'companyId:', req.user.companyId);
-    console.log('Filters:', { status, officeId, visitType, startDate, endDate });
-
     // Check if user has companyId
     if (!req.user.companyId) {
-      console.log('User has no companyId assigned');
       // Return empty array instead of error for users without company assignment
       return res.status(200).json({
         success: true,

@@ -17,19 +17,6 @@ import { logActivity, getRequestMetadata, ActionTypes, ResourceTypes } from '../
  */
 export const createProperty = async (req, res, next) => {
   try {
-    console.log('Creating property - received data:', {
-      hasImages: !!req.body.images,
-      imagesCount: req.body.images?.length || 0,
-      images: req.body.images,
-      hasVideos: !!req.body.videos,
-      videosCount: req.body.videos?.length || 0,
-      hasBrochure: !!req.body.brochure,
-      hasFloorPlans: !!req.body.floorPlans,
-      floorPlansCount: req.body.floorPlans?.length || 0,
-      commission: req.body.commission,
-      status: req.body.status
-    });
-
     const {
       name, description, type, region,
       location, pricing, details,
@@ -38,10 +25,6 @@ export const createProperty = async (req, res, next) => {
       images, videos, brochure, floorPlans,
       status // Allow status to be passed
     } = req.body;
-
-    console.log('Extracted images:', images);
-    console.log('Brochure data received:', brochure);
-    console.log('Commission data received:', commission);
 
     // Validate region-specific details
     if (region === 'india' && indiaDetails?.reraNumber) {
@@ -53,17 +36,6 @@ export const createProperty = async (req, res, next) => {
 
     // Determine status (default to 'draft' if not provided)
     const propertyStatus = status || 'draft';
-
-    console.log('Creating property with commission:', {
-      received: commission,
-      processed: {
-        basePercentage: parseFloat(commission?.basePercentage) || 0,
-        isFixed: Boolean(commission?.isFixed),
-        fixedAmount: commission?.fixedAmount
-      }
-    });
-
-    console.log('Creating property with visibility:', JSON.stringify(visibility, null, 2));
 
     const property = await Property.create({
       companyId: req.user.companyId,
@@ -101,26 +73,17 @@ export const createProperty = async (req, res, next) => {
       publishedAt: propertyStatus === 'active' ? new Date() : undefined
     });
 
-    console.log('Property created - saved brochure:', property.brochure);
-    console.log('Property created - saved floorPlans:', property.floorPlans?.length, 'plans');
-
     await property.populate('createdBy', 'firstName lastName');
     await property.populate('companyId', 'name logo regions');
 
     // Send email notification to partners if property is created as active
     if (propertyStatus === 'active') {
-      console.log('📧 Property created as active, sending notifications to partners...');
-      console.log('   Property:', property.name);
-      console.log('   Company:', property.companyId?.name);
-
       try {
         // Get all active partners for this company
         const activePartnerships = await PartnerCompany.find({
           companyId: property.companyId,
           status: 'active'
         }).populate('partnerId', 'firstName lastName email');
-
-        console.log('   Active partnerships found:', activePartnerships.length);
 
         // Filter partners who should see this property based on visibility settings
         const partnersToNotify = activePartnerships.filter(partnership => {
@@ -142,14 +105,10 @@ export const createProperty = async (req, res, next) => {
           return true;
         }).map(p => p.partnerId);
 
-        console.log('   Partners to notify:', partnersToNotify.length);
-        console.log('   Partner emails:', partnersToNotify.map(p => p.email));
-
         // Send emails (don't await, run in background)
         if (partnersToNotify.length > 0) {
-          console.log('   📧 Sending property notification emails...');
           sendNewPropertyEmail(partnersToNotify, property, property.companyId).catch(err => {
-            console.error('   ❌ Failed to send property notification emails:', err);
+            console.error('Failed to send property notification emails:', err);
           });
 
           // Create notifications for partners
@@ -165,14 +124,12 @@ export const createProperty = async (req, res, next) => {
             },
             link: '/partner/properties'
           }).catch(err => {
-            console.error('   ❌ Failed to create property notification:', err.message);
+            console.error('Failed to create property notification:', err.message);
           });
-        } else {
-          console.log('   ⚠️ No partners to notify');
         }
       } catch (emailError) {
         // Don't fail the request if email fails
-        console.error('   ❌ Error sending property notification:', emailError);
+        console.error('Error sending property notification:', emailError);
       }
     }
 
@@ -315,9 +272,6 @@ export const getProperties = async (req, res, next) => {
             { 'visibility.type': 'hidden', 'visibility.partnerIds': { $ne: req.user._id } }
           ]
         });
-
-        console.log('Partner properties query for user:', req.user._id.toString());
-        console.log('Visibility filter:', JSON.stringify(query.$and, null, 2));
       } else {
         // Company staff see their company's properties
         query.companyId = req.user.companyId;
@@ -455,7 +409,6 @@ export const getProperty = async (req, res, next) => {
       }
       property.stats.totalViews = (property.stats.totalViews || 0) + 1;
       property.markModified('stats'); // Required for Mongoose to detect nested object changes
-      console.log(`Property ${property._id} view count updated to: ${property.stats.totalViews}`);
       await property.save();
     }
 
@@ -475,18 +428,6 @@ export const getProperty = async (req, res, next) => {
  */
 export const updateProperty = async (req, res, next) => {
   try {
-    console.log('Updating property - received data:', {
-      hasImages: !!req.body.images,
-      imagesCount: req.body.images?.length || 0,
-      hasVideos: !!req.body.videos,
-      videosCount: req.body.videos?.length || 0,
-      hasBrochure: !!req.body.brochure,
-      brochureData: req.body.brochure,
-      hasFloorPlans: !!req.body.floorPlans,
-      floorPlansCount: req.body.floorPlans?.length || 0,
-      commission: req.body.commission
-    });
-
     const property = await Property.findById(req.params.id);
 
     if (!property) {
@@ -510,16 +451,11 @@ export const updateProperty = async (req, res, next) => {
       'images', 'videos', 'brochure', 'floorPlans'
     ];
 
-    console.log('Update request body keys:', Object.keys(req.body));
-    console.log('Brochure in request:', JSON.stringify(req.body.brochure, null, 2));
-    console.log('Floor plans in request:', req.body.floorPlans);
-
     updateFields.forEach(field => {
       if (req.body[field] !== undefined) {
         if (field === 'commission') {
           // Handle commission specifically to ensure proper number parsing
           const commissionData = req.body[field];
-          console.log('Updating commission - received:', commissionData);
           property.set('commission', {
             basePercentage: parseFloat(commissionData?.basePercentage) || 0,
             isFixed: Boolean(commissionData?.isFixed),
@@ -527,7 +463,6 @@ export const updateProperty = async (req, res, next) => {
               ? parseFloat(commissionData.fixedAmount)
               : null
           });
-          console.log('Commission after update:', property.commission);
         } else if (field === 'visibility') {
           // Handle visibility specifically to ensure partnerIds are ObjectIds
           const visibilityData = req.body[field];
@@ -540,11 +475,9 @@ export const updateProperty = async (req, res, next) => {
               return typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
             })
           });
-          console.log('Visibility after update:', property.visibility);
         } else if (field === 'brochure') {
           // Handle brochure explicitly to ensure Mongoose detects changes
           const brochureData = req.body.brochure;
-          console.log('Setting brochure to:', JSON.stringify(brochureData, null, 2));
           if (brochureData && brochureData.url) {
             property.set('brochure', {
               url: String(brochureData.url),
@@ -557,24 +490,17 @@ export const updateProperty = async (req, res, next) => {
           } else {
             property.set('brochure', brochureData);
           }
-          console.log('Brochure after update:', property.brochure);
         } else if (field === 'floorPlans') {
           // Handle floorPlans explicitly for arrays
           property.set('floorPlans', req.body.floorPlans);
-          console.log('FloorPlans after update:', property.floorPlans?.length, 'plans');
         } else {
           property[field] = req.body[field];
         }
       }
     });
 
-    console.log('Commission after update:', property.commission);
-
     property.updatedBy = req.user._id;
     await property.save();
-
-    console.log('Property saved - brochure:', property.brochure);
-    console.log('Property saved - floorPlans:', property.floorPlans?.length, 'plans');
 
     await property.populate('companyId', 'name logo regions');
     await property.populate('updatedBy', 'firstName lastName');
@@ -688,10 +614,6 @@ export const updatePropertyStatus = async (req, res, next) => {
 
     // Handle visit cancellations when property becomes unavailable
     if (['off_market', 'sold_out'].includes(status)) {
-      console.log('📧 Property status changed to', status, ', checking for visits to cancel...');
-      console.log('   Property:', property.name);
-      console.log('   Property ID:', property._id);
-
       try {
         // Find ALL visits for this property (pending, approved, scheduled)
         // Note: We cancel ALL future visits, not just pending/approved
@@ -699,8 +621,6 @@ export const updatePropertyStatus = async (req, res, next) => {
           property: property._id,
           status: { $in: ['pending', 'approved', 'scheduled'] }
         }).populate('partner', 'firstName lastName email');
-
-        console.log('   Found', affectedVisits.length, 'visits to cancel');
 
         if (affectedVisits.length > 0) {
           // Get company info for email
@@ -722,7 +642,6 @@ export const updatePropertyStatus = async (req, res, next) => {
               visit.cancellationReason = cancellationReason;
               await visit.save();
               cancelledCount++;
-              console.log(`   ✓ Cancelled visit ${visit._id} for partner ${visit.partner?._id}`);
 
               // Skip if no partner
               if (!visit.partner) continue;
@@ -744,43 +663,33 @@ export const updatePropertyStatus = async (req, res, next) => {
               // Send email notification
               if (visit.partner.email) {
                 sendVisitCancelledEmail(visit, visit.partner, property, company, cancellationReason).catch(err => {
-                  console.error('   ❌ Failed to send visit cancellation email to', visit.partner.email, err);
+                  console.error('Failed to send visit cancellation email to', visit.partner.email, err);
                 });
               }
             } catch (visitError) {
               errorCount++;
-              console.error(`   ❌ Error cancelling visit ${visit._id}:`, visitError);
+              console.error(`Error cancelling visit ${visit._id}:`, visitError);
             }
           }
-
-          console.log(`   ✓ Cancelled ${cancelledCount} visits, ${errorCount} errors`);
         }
       } catch (cancelError) {
         // Log error but still continue with the response
-        console.error('   ❌ Error in visit cancellation process:', cancelError);
+        console.error('Error in visit cancellation process:', cancelError);
         // Don't throw - still return success for property status update
       }
     }
 
     // Send email notification to partners when property becomes active
     if (status === 'active' && previousStatus !== 'active') {
-      console.log('📧 Property status changed to active, checking for partners to notify...');
-      console.log('   Property:', property.name);
-      console.log('   Company ID:', property.companyId);
-      console.log('   Previous status:', previousStatus);
-
       try {
         // Get company info
         const company = await Company.findById(property.companyId);
-        console.log('   Company:', company?.name);
 
         // Get all active partners for this company
         const activePartnerships = await PartnerCompany.find({
           companyId: property.companyId,
           status: 'active'
         }).populate('partnerId', 'firstName lastName email');
-
-        console.log('   Active partnerships found:', activePartnerships.length);
 
         // Filter partners who should see this property based on visibility settings
         const partnersToNotify = activePartnerships.filter(partnership => {
@@ -802,24 +711,16 @@ export const updatePropertyStatus = async (req, res, next) => {
           return true;
         }).map(p => p.partnerId);
 
-        console.log('   Partners to notify:', partnersToNotify.length);
-        console.log('   Partner emails:', partnersToNotify.map(p => p.email));
-
         // Send emails (don't await, run in background)
         if (partnersToNotify.length > 0) {
-          console.log('   📧 Sending property notification emails...');
           sendNewPropertyEmail(partnersToNotify, property, company).catch(err => {
-            console.error('   ❌ Failed to send property notification emails:', err);
+            console.error('Failed to send property notification emails:', err);
           });
-        } else {
-          console.log('   ⚠️ No partners to notify');
         }
       } catch (emailError) {
         // Don't fail the request if email fails
-        console.error('   ❌ Error sending property notification:', emailError);
+        console.error('Error sending property notification:', emailError);
       }
-    } else if (status === 'active' && previousStatus === 'active') {
-      console.log('📧 Property was already active, skipping email notification');
     }
 
     // Log activity
@@ -1200,9 +1101,6 @@ export const getPropertiesForPartnership = async (req, res, next) => {
       ];
     }
 
-    console.log('Query for partnership properties:', JSON.stringify(query, null, 2));
-    console.log('Visibility filter applied for partner:', req.user._id.toString());
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await Property.countDocuments(query);
 
@@ -1211,8 +1109,6 @@ export const getPropertiesForPartnership = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
-    console.log(`Found ${properties.length} properties for partnership ${partnershipId}`);
 
     // Get partner's tier and commission percentage for this partnership
     const tierPercentages = partnership.commissionPercentage
@@ -1409,8 +1305,6 @@ export const getPropertyPerformanceReport = async (req, res, next) => {
         endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); // Last day of month
     }
 
-    console.log('Performance Report - Period:', period, 'StartDate:', startDate, 'EndDate:', endDate);
-
     // Get all properties for the company
     const properties = await Property.find({ companyId: req.user.companyId })
       .select('_id name type status location city stats')
@@ -1542,8 +1436,6 @@ export const getVisitAnalytics = async (req, res, next) => {
         startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
         endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); // Last day of month
     }
-
-    console.log('Visit Analytics - Period:', period, 'StartDate:', startDate, 'EndDate:', endDate);
 
     const Visit = (await import('../models/Visit.js')).default;
 

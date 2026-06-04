@@ -51,7 +51,6 @@ const Subscription = () => {
         setUsageData(limitsRes.data);
       }
     } catch (err) {
-      console.error('Error fetching subscription data:', err);
     } finally {
       setLoading(false);
     }
@@ -76,7 +75,6 @@ const Subscription = () => {
       setShowCancelModal(false);
       setCancelReason('');
     } catch (err) {
-      console.error('Error cancelling subscription:', err);
       setError('Failed to cancel subscription. Please try again.');
     } finally {
       setCancelling(false);

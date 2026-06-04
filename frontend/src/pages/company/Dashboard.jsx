@@ -62,7 +62,6 @@ const CompanyDashboard = () => {
         statusCountsByCurrency: commissionsRes.data?.data?.statusCountsByCurrency || {}
       });
     } catch (error) {
-      console.error('Failed to fetch stats:', error);
     } finally {
       setLoading(false);
     }
@@ -74,7 +73,6 @@ const CompanyDashboard = () => {
       const response = await api.get('/partner-company/dashboard/activity?limit=10');
       setDashboardActivity(response.data?.data || { activities: [] });
     } catch (error) {
-      console.error('Failed to fetch dashboard activity:', error);
       setDashboardActivity({ activities: [] });
     } finally {
       setActivityLoading(false);

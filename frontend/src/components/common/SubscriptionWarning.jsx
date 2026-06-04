@@ -21,7 +21,7 @@ const SubscriptionWarning = () => {
       const response = await api.get('/payments/subscription');
       setSubscription(response.data?.subscription);
     } catch (err) {
-      console.error('Failed to fetch subscription:', err);
+      // Failed to fetch subscription
     } finally {
       setLoading(false);
     }

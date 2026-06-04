@@ -210,7 +210,6 @@ const PartnerManagerVisits = () => {
       const response = await api.get(`/visits/company?${params.toString()}`);
       setVisits(response.data.data.visits || []);
     } catch (err) {
-      console.error('Failed to load visits:', err.response?.data || err.message);
       toast.error(err.response?.data?.message || 'Failed to load visits');
     } finally {
       setLoading(false);
@@ -222,7 +221,7 @@ const PartnerManagerVisits = () => {
       const response = await api.get('/visits/stats');
       setStats(response.data.data);
     } catch (err) {
-      console.error('Failed to load stats:', err.response?.data || err.message);
+      // Failed to load stats
     }
   };
 
@@ -231,7 +230,7 @@ const PartnerManagerVisits = () => {
       const response = await api.get('/offices');
       setOffices(response.data.data.offices || []);
     } catch (err) {
-      console.error('Failed to load offices');
+      // Failed to load offices
     }
   };
 
@@ -240,7 +239,7 @@ const PartnerManagerVisits = () => {
       const response = await api.get('/partners');
       setPartners(response.data.data.partners || []);
     } catch (err) {
-      console.error('Failed to load partners');
+      // Failed to load partners
     }
   };
 
@@ -277,7 +276,7 @@ const PartnerManagerVisits = () => {
                   }
                 }
               } catch (e) {
-                console.error('Date parse error:', e);
+                // Date parse error
               }
               return { date: dateStr, reason: b.reason || 'Blocked' };
             }).filter(b => b.date)
@@ -286,7 +285,7 @@ const PartnerManagerVisits = () => {
       });
       setOfficeAvailability(availabilityMap);
     } catch (err) {
-      console.error('Failed to load office availability:', err);
+      // Failed to load office availability
     } finally {
       setAvailabilityLoading(false);
     }

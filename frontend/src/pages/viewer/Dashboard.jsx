@@ -71,7 +71,6 @@ const ViewerDashboard = () => {
         commissionByCurrency
       });
     } catch (error) {
-      console.error('Error fetching viewer stats:', error);
     } finally {
       setLoading(false);
     }
@@ -82,7 +81,6 @@ const ViewerDashboard = () => {
       const res = await api.get('/activity-logs/recent?limit=5');
       setRecentActivities(res.data.data || []);
     } catch (error) {
-      console.error('Error fetching recent activities:', error);
     }
   };
 

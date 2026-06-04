@@ -94,7 +94,7 @@ const Properties = () => {
       const response = await api.get('/properties/stats');
       setStats(response.data.data);
     } catch (err) {
-      console.error('Failed to load stats:', err);
+      // Failed to load stats
     }
   };
 
@@ -103,7 +103,7 @@ const Properties = () => {
       const response = await api.get('/companies/my-limits');
       setLimits(response.data.data);
     } catch (err) {
-      console.error('Failed to load limits:', err);
+      // Failed to load limits
     }
   };
 

@@ -93,7 +93,6 @@ const Commissions = () => {
       });
       setPartners(uniquePartners);
     } catch (err) {
-      console.error('Failed to load partners');
     }
   };
 
@@ -102,7 +101,6 @@ const Commissions = () => {
       const response = await api.get('/properties?limit=100');
       setProperties(response.data.data.properties || []);
     } catch (err) {
-      console.error('Failed to load properties');
     }
   };
 
@@ -145,7 +143,6 @@ const Commissions = () => {
       setStats(response.data.data);
       setActiveCurrencies(response.data.data.activeCurrencies || ['INR']);
     } catch (err) {
-      console.error('Failed to load stats');
     }
   };
 

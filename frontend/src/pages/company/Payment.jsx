@@ -51,7 +51,6 @@ const Payment = () => {
           setCurrentSubscription(subRes.data.subscription);
         }
       } catch (err) {
-        console.error('Error fetching data:', err);
         toast.error('Failed to load plans. Please try again.');
       } finally {
         setLoading(false);
@@ -129,7 +128,6 @@ const Payment = () => {
         throw new Error(verifyRes.message || 'Payment verification failed');
       }
     } catch (err) {
-      console.error('Payment error:', err);
       toast.error(err.response?.data?.message || err.message || 'Payment failed. Please try again.');
     } finally {
       setProcessing(false);

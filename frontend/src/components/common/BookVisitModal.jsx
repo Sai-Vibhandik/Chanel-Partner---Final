@@ -185,21 +185,21 @@ const BookVisitModal = ({
       const activePartnerships = response.data.data.partnerships?.filter(p => p.status === 'active') || [];
       setPartnerships(activePartnerships);
       if (activePartnerships.length > 0 && !selectedPartnership) setSelectedPartnership(activePartnerships[0]._id);
-    } catch (err) { console.error('Failed to load partnerships'); }
+    } catch (err) { }
   };
 
   const fetchPropertiesForPartnership = async (partnershipId) => {
     try {
       const response = await api.get(`/properties/partnership/${partnershipId}`);
       setProperties(response.data.data.properties || []);
-    } catch (err) { console.error('Failed to load properties'); setProperties([]); }
+    } catch (err) { setProperties([]); }
   };
 
   const fetchOffices = async () => {
     try {
       const response = await api.get('/offices/available');
       setOffices(response.data.data.offices || []);
-    } catch (err) { console.error('Failed to load offices'); setOffices([]); }
+    } catch (err) { setOffices([]); }
   };
 
   const fetchAvailableSlots = async () => {
@@ -218,7 +218,7 @@ const BookVisitModal = ({
         setAvailableSlots(dateInfo?.slots || []);
         setBlockedReason('');
       }
-    } catch (err) { console.error('Failed to load available slots:', err); setAvailableSlots([]); setBlockedReason(''); }
+    } catch (err) { setAvailableSlots([]); setBlockedReason(''); }
     finally { setLoadingSlots(false); }
   };
 
@@ -226,23 +226,18 @@ const BookVisitModal = ({
   const fetchBlockedDates = async (officeId) => {
     if (!officeId) { setBlockedDates([]); return; }
     try {
-      console.log('Fetching blocked dates for office:', officeId);
       const response = await api.get(`/offices/${officeId}/availability`);
-      console.log('Availability response:', response.data);
       const availability = response.data.data.availability;
       if (availability?.blockedDates?.length > 0) {
         const formattedBlockedDates = availability.blockedDates.map(b => ({
           date: new Date(b.date).toISOString().split('T')[0],
           reason: b.reason || 'Blocked'
         }));
-        console.log('Formatted blocked dates:', formattedBlockedDates);
         setBlockedDates(formattedBlockedDates);
       } else {
-        console.log('No blocked dates found');
         setBlockedDates([]);
       }
     } catch (err) {
-      console.error('Failed to load blocked dates:', err);
       setBlockedDates([]);
     }
   };

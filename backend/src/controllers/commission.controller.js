@@ -95,13 +95,6 @@ export const createCommission = async (req, res, next) => {
       partnerId = partnership.partnerId;
     }
 
-    console.log('Partnership partnerId extraction:', {
-      rawPartnerId: partnership.partnerId,
-      hasId: !!partnership.partnerId._id,
-      extractedPartnerId: partnerId,
-      partnerIdType: typeof partnerId
-    });
-
     if (partnership.companyId.toString() !== req.user.companyId.toString()) {
       throw new ApiError(403, 'Access denied - partnership does not belong to your company');
     }
@@ -175,17 +168,6 @@ export const createCommission = async (req, res, next) => {
     }
 
     // Create commission
-    console.log('Creating commission with data:', {
-      companyId: req.user.companyId,
-      partnershipId,
-      partner: partnerId,
-      property: propertyId,
-      visit: visitId || null,
-      source,
-      saleDetails,
-      commission: finalCommissionData
-    });
-
     const commission = await Commission.create({
       companyId: req.user.companyId,
       partnershipId,
@@ -224,7 +206,6 @@ export const createCommission = async (req, res, next) => {
     }).populate('partner', 'firstName lastName email');
 
     if (affectedVisits.length > 0) {
-      console.log(`📧 Commission created: Cancelling ${affectedVisits.length} visits for sold property`);
       const cancellationReason = 'This property has been sold and is no longer available for visits.';
 
       // Get company info for email
@@ -287,7 +268,6 @@ export const createCommission = async (req, res, next) => {
       const partnerUser = await User.findById(partnerId);
       if (partnerUser && partnerUser.email) {
         await sendCommissionCreatedEmail(partnerUser, commission, property, company);
-        console.log('📧 Commission created email sent to partner:', partnerUser.email);
       }
     } catch (emailErr) {
       console.error('Failed to send commission created email:', emailErr.message);
@@ -718,7 +698,6 @@ export const approveCommission = async (req, res, next) => {
       const company = await Company.findById(commission.companyId);
       if (partnerUser && partnerUser.email && property) {
         await sendCommissionApprovedEmail(partnerUser, commission, property, company);
-        console.log('📧 Commission approved email sent to partner:', partnerUser.email);
       }
     } catch (emailErr) {
       console.error('Failed to send commission approved email:', emailErr.message);
@@ -842,7 +821,6 @@ export const markAsPaid = async (req, res, next) => {
         const company = await Company.findById(commission.companyId);
         if (partnerUser && partnerUser.email && property) {
           await sendCommissionPaidEmail(partnerUser, commission, property, company);
-          console.log('📧 Commission paid email sent to partner:', partnerUser.email);
         }
       } catch (emailErr) {
         console.error('Failed to send commission paid email:', emailErr.message);
@@ -935,7 +913,6 @@ export const cancelCommission = async (req, res, next) => {
         property.salePrice = null;
         property.commissionId = null;
         await property.save();
-        console.log(`📧 Commission cancelled: Property ${property.name} status reverted to active`);
       }
     }
 

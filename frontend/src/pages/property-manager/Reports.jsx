@@ -45,7 +45,6 @@ const Reports = () => {
       const response = await api.get(`/properties/reports/performance?${params.toString()}`);
       setPerformanceData(response.data?.data);
     } catch (error) {
-      console.error('Failed to fetch performance report:', error);
     } finally {
       setLoading(false);
     }
@@ -60,7 +59,6 @@ const Reports = () => {
       const response = await api.get(`/properties/reports/visit-analytics?${params.toString()}`);
       setAnalyticsData(response.data?.data);
     } catch (error) {
-      console.error('Failed to fetch analytics:', error);
     } finally {
       setLoading(false);
     }
@@ -130,7 +128,6 @@ const Reports = () => {
         URL.revokeObjectURL(url);
       }
     } catch (error) {
-      console.error('Failed to export report:', error);
     } finally {
       setExportLoading(false);
     }

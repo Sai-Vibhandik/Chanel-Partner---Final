@@ -103,7 +103,6 @@ const DashboardLayout = ({ children, sidebarLinks: propSidebarLinks, title, subt
         });
       } catch (err) {
         // Notifications API might not be available for all roles
-        console.log('Could not fetch notifications API:', err.message);
       }
 
       // Fetch role-specific notifications
@@ -121,7 +120,6 @@ const DashboardLayout = ({ children, sidebarLinks: propSidebarLinks, title, subt
             });
           }
         } catch (err) {
-          console.log('Could not fetch commission stats:', err.message);
         }
       } else if (user.role === 'partner') {
         try {
@@ -138,7 +136,6 @@ const DashboardLayout = ({ children, sidebarLinks: propSidebarLinks, title, subt
             });
           }
         } catch (err) {
-          console.log('Could not fetch visits:', err.message);
         }
 
         try {
@@ -166,13 +163,11 @@ const DashboardLayout = ({ children, sidebarLinks: propSidebarLinks, title, subt
             });
           }
         } catch (err) {
-          console.log('Could not fetch commissions:', err.message);
         }
       }
 
       setNotifications(notificationsList);
     } catch (err) {
-      console.error('Failed to fetch notifications:', err);
     } finally {
       setNotificationLoading(false);
     }
@@ -186,7 +181,6 @@ const DashboardLayout = ({ children, sidebarLinks: propSidebarLinks, title, subt
       try {
         await api.put(`/notifications/${notification.id}/read`);
       } catch (err) {
-        console.log('Could not mark notification as read:', err.message);
       }
     }
 
@@ -204,7 +198,6 @@ const DashboardLayout = ({ children, sidebarLinks: propSidebarLinks, title, subt
       // Update local state to mark all as read
       setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
     } catch (err) {
-      console.error('Failed to mark all as read:', err.message);
     }
   };
 

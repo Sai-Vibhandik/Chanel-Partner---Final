@@ -78,14 +78,12 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
 
     // Join company room for admin users (for general company broadcasts)
     const isAdmin = ['company_superadmin', 'partner_manager'].includes(socket.user.role);
-    console.log(`User ${socket.user.firstName} role: ${socket.user.role}, companyId: ${socket.user.companyId}, isAdmin: ${isAdmin}`);
 
     if (socket.user.companyId && isAdmin) {
       const companyRoom = `company:${socket.user.companyId}`;
       const roleRoom = `company:${socket.user.companyId}:${socket.user.role}`;
       socket.join(companyRoom);
       socket.join(roleRoom);
-      console.log(`Admin ${socket.user.firstName} joined rooms: ${companyRoom}, ${roleRoom}`);
     }
 
     // Handle joining a conversation room
@@ -96,7 +94,6 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
         // Validate access
         const roomId = getConversationRoomId(partnershipId, adminType);
         socket.join(roomId);
-        console.log(`User ${socket.user.firstName} joined room: ${roomId}`);
 
         // Send acknowledgment
         socket.emit('joined-conversation', { partnershipId, adminType });
@@ -110,7 +107,6 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
       const { partnershipId, adminType } = data;
       const roomId = getConversationRoomId(partnershipId, adminType);
       socket.leave(roomId);
-      console.log(`User ${socket.user.firstName} left room: ${roomId}`);
     });
 
     // Handle sending a message
@@ -204,8 +200,6 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
           readAt: { $exists: false }
         });
 
-        console.log(`Marking ${countBefore} messages as read for partnership ${partnershipId}, adminType ${adminType}`);
-
         const result = await ChatMessage.updateMany(
           {
             partnershipId: partnershipObjectId,
@@ -218,8 +212,6 @@ export const initializeSocket = (httpServer, corsOrigin = 'http://localhost:5173
             readBy: socket.user._id
           }
         );
-
-        console.log(`Marked ${result.modifiedCount} messages as read`);
 
         const roomId = getConversationRoomId(partnershipId, adminType);
 
@@ -294,7 +286,6 @@ const sendNotificationToOtherParty = async (partnershipId, adminType, senderType
     if (senderType === 'partner') {
       // Notify admin (company_superadmin or partner_manager based on adminType)
       const adminRoom = `company:${partnership.companyId}:${adminType}`;
-      console.log(`Sending chat-notification to room: ${adminRoom}`);
       io.to(adminRoom).emit('chat-notification', {
         partnershipId,
         adminType,
@@ -304,7 +295,6 @@ const sendNotificationToOtherParty = async (partnershipId, adminType, senderType
     } else {
       // Notify partner
       const partnerRoom = `user:${partnership.partnerId._id}`;
-      console.log(`Sending chat-notification to room: ${partnerRoom}`);
       io.to(partnerRoom).emit('chat-notification', {
         partnershipId,
         adminType,

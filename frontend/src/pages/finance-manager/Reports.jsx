@@ -46,7 +46,6 @@ const Reports = () => {
       const response = await api.get(`/commissions/reports/overview?${params.toString()}`);
       setOverviewData(response.data?.data);
     } catch (error) {
-      console.error('Failed to fetch overview:', error);
     } finally {
       setLoading(false);
     }
@@ -64,7 +63,6 @@ const Reports = () => {
       const response = await api.get(`/commissions/reports/payouts?${params.toString()}`);
       setPayoutData(response.data?.data);
     } catch (error) {
-      console.error('Failed to fetch payouts:', error);
     } finally {
       setLoading(false);
     }
@@ -97,7 +95,6 @@ const Reports = () => {
         document.body.removeChild(link);
       }
     } catch (error) {
-      console.error('Failed to export report:', error);
     } finally {
       setExportLoading(false);
     }

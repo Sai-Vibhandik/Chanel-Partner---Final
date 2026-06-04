@@ -42,7 +42,6 @@ const PropertyDetails = () => {
       const response = await api.get(`/properties/${id}`);
       setProperty(response.data?.data?.property || null);
     } catch (err) {
-      console.error('Error fetching property:', err);
       toast.error(err.response?.data?.message || 'Failed to load property');
     } finally {
       setLoading(false);
@@ -61,7 +60,6 @@ const PropertyDetails = () => {
         setSelectedPartnership(propertyCompanyPartnerships[0]._id);
       }
     } catch (err) {
-      console.error('Failed to load partnerships');
     }
   };
 

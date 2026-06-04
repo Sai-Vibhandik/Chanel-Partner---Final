@@ -19,7 +19,6 @@ const LegalPage = ({ slug }) => {
       const response = await api.get(`/legal/${slug}`);
       setPage(response.data.data);
     } catch (err) {
-      console.error('Error loading legal page:', err);
       setError('Failed to load page.');
     } finally {
       setIsLoading(false);

@@ -34,14 +34,13 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
     try {
       await api.put(`/chat/conversations/${partnershipId}/${adminType}/read`);
     } catch (error) {
-      console.error('Error marking messages as read:', error);
+      // Error marking messages as read
     }
   }, [partnershipId, adminType]);
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
     if (!partnershipId || !adminType) {
-      console.log('ChatWindow: Missing partnershipId or adminType');
       setLoading(false);
       return;
     }
@@ -49,14 +48,12 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
     try {
       setLoading(true);
       setError(null);
-      console.log('ChatWindow: Fetching messages for', partnershipId, adminType);
       const res = await api.get(`/chat/conversations/${partnershipId}/${adminType}`);
-      console.log('ChatWindow: Messages response', res.data);
       if (isMounted.current) {
         setMessages(res.data.data?.messages || []);
       }
     } catch (error) {
-      console.error('ChatWindow: Error fetching messages:', error);
+      // Error fetching messages
       if (isMounted.current) {
         setError('Failed to load messages');
       }
@@ -214,7 +211,7 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
 
       setAttachments(prev => [...prev, ...uploadedFiles]);
     } catch (error) {
-      console.error('Error uploading file:', error);
+      // Error uploading file
       toast.error(error.response?.data?.message || 'Failed to upload file. Please try again.');
     } finally {
       setUploadingFile(false);
@@ -256,7 +253,7 @@ const ChatWindow = ({ partnershipId, adminType, currentUser, otherUserName }) =>
       setNewMessage('');
       setAttachments([]);
     } catch (error) {
-      console.error('Error sending message:', error);
+      // Error sending message
     } finally {
       setSending(false);
     }

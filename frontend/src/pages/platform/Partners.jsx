@@ -118,7 +118,7 @@ const Partners = () => {
       link.click();
       document.body.removeChild(link);
     } catch (err) {
-      console.error('Export failed:', err);
+      // Error exporting partners
       alert('Failed to export partners');
     } finally {
       setExporting(false);
@@ -130,7 +130,7 @@ const Partners = () => {
       const response = await api.get('/partners/stats');
       setStats(response.data.data);
     } catch (err) {
-      console.error('Failed to load stats:', err);
+      // Error loading stats
     }
   };
 
